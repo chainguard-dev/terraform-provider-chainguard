@@ -1,3 +1,8 @@
+/*
+Copyright 2023 Chainguard, Inc.
+SPDX-License-Identifier: Apache-2.0
+*/
+
 package provider
 
 import (
@@ -89,6 +94,11 @@ func (p *Provider) Schema(_ context.Context, _ provider.SchemaRequest, resp *pro
 	}
 }
 
+type providerData struct {
+	client  platform.Clients
+	version string
+}
+
 // Configure prepares a Chainguard API client for data sources and resources.
 func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
 	var data ProviderModel
@@ -146,14 +156,22 @@ func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest,
 		return
 	}
 
-	resp.DataSourceData = clients
-	resp.ResourceData = clients
+	d := &providerData{
+		client:  clients,
+		version: p.version,
+	}
+
+	resp.DataSourceData = d
+	resp.ResourceData = d
 }
 
 // DataSources defines the data sources implemented in the provider.
 func (p *Provider) DataSources(_ context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
+		NewClusterCIDRDataSource,
+		NewClusterDiscoveryDataSource,
 		NewGroupDataSource,
+		NewIdentityDataSource,
 		NewRoleDataSource,
 	}
 }
@@ -165,7 +183,10 @@ func (p *Provider) Resources(_ context.Context) []func() resource.Resource {
 	}
 }
 
-func protoErrorToDiagnostic(err error, summary string) diag.Diagnostic {
+// errorToDiagnostic converts an error into a diag.Diagnostic.
+// If err is a GRPC error, attempt to parse the status code and message from the error.
+// codes.Unauthenticated is handled as a special case to suggest how to generate a token.
+func errorToDiagnostic(err error, summary string) diag.Diagnostic {
 	var d diag.Diagnostic
 
 	switch stat, ok := status.FromError(err); {

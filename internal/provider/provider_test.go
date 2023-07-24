@@ -1,10 +1,16 @@
+/*
+Copyright 2023 Chainguard, Inc.
+SPDX-License-Identifier: Apache-2.0
+*/
+
 package provider
 
 import (
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
-	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"os"
 	"testing"
+
+	"github.com/hashicorp/terraform-plugin-framework/providerserver"
+	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 )
 
 const (

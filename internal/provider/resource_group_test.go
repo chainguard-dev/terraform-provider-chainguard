@@ -1,12 +1,18 @@
+/*
+Copyright 2023 Chainguard, Inc.
+SPDX-License-Identifier: Apache-2.0
+*/
+
 package provider
 
 import (
 	"fmt"
-	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
-	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"os"
 	"regexp"
 	"testing"
+
+	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
 func testAccResourceGroup(parent, name, description string) string {
