@@ -1,3 +1,8 @@
+/*
+Copyright 2023 Chainguard, Inc.
+SPDX-License-Identifier: Apache-2.0
+*/
+
 package provider
 
 import (
@@ -14,7 +19,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	"chainguard.dev/api/pkg/uidp"
-	"chainguard.dev/api/proto/platform"
 	"chainguard.dev/api/proto/platform/common"
 	"chainguard.dev/api/proto/platform/iam"
 	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
@@ -34,7 +38,7 @@ func NewGroupResource() resource.Resource {
 
 // groupResource is the resource implementation.
 type groupResource struct {
-	client platform.Clients
+	managedResource
 }
 
 type groupResourceModel struct {
@@ -44,21 +48,8 @@ type groupResourceModel struct {
 	ParentID    types.String `tfsdk:"parent_id"`
 }
 
-func (r *groupResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
-	}
-
-	client, ok := req.ProviderData.(platform.Clients)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Data Source Configure Type",
-			fmt.Sprintf("Expected platform.Clients, got: %T. Please report this issue to the provider developers.", req.ProviderData),
-		)
-		return
-	}
-
-	r.client = client
+func (r *groupResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	r.configure(ctx, req, resp)
 }
 
 // Metadata returns the resource type name.
@@ -74,13 +65,13 @@ func (r *groupResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 			"id": schema.StringAttribute{
 				Description:   "The exact UIDP of this IAM group.",
 				Computed:      true,
-				Validators:    []validator.String{validators.UIDPValidator{}},
+				Validators:    []validator.String{validators.UIDP{}},
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"parent_id": schema.StringAttribute{
 				Description:   "Parent IAM group of this group. If not set, this group is assumed to be a root group.",
 				Optional:      true,
-				Validators:    []validator.String{validators.UIDPValidator{}},
+				Validators:    []validator.String{validators.UIDP{}},
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"name": schema.StringAttribute{
@@ -119,9 +110,9 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 			Description: plan.Description.ValueString(),
 		},
 	}
-	g, err := r.client.IAM().Groups().Create(ctx, cr)
+	g, err := r.prov.client.IAM().Groups().Create(ctx, cr)
 	if err != nil {
-		resp.Diagnostics.Append(protoErrorToDiagnostic(err, fmt.Sprintf("failed to create group %q", cr.Group.Name)))
+		resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to create group %q", cr.Group.Name)))
 		return
 	}
 
@@ -152,9 +143,9 @@ func (r *groupResource) Read(ctx context.Context, req resource.ReadRequest, resp
 		Name: state.Name.ValueString(),
 		Uidp: uf,
 	}
-	groupList, err := r.client.IAM().Groups().List(ctx, f)
+	groupList, err := r.prov.client.IAM().Groups().List(ctx, f)
 	if err != nil {
-		resp.Diagnostics.Append(protoErrorToDiagnostic(err, "failed to list groups"))
+		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to list groups"))
 		return
 	}
 
@@ -191,13 +182,13 @@ func (r *groupResource) Update(ctx context.Context, req resource.UpdateRequest, 
 		return
 	}
 
-	g, err := r.client.IAM().Groups().Update(ctx, &iam.Group{
+	g, err := r.prov.client.IAM().Groups().Update(ctx, &iam.Group{
 		Id:          data.ID.ValueString(),
 		Name:        data.Name.ValueString(),
 		Description: data.Description.ValueString(),
 	})
 	if err != nil {
-		resp.Diagnostics.Append(protoErrorToDiagnostic(err, fmt.Sprintf("failed to update group %q", data.ID.ValueString())))
+		resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to update group %q", data.ID.ValueString())))
 		return
 	}
 
@@ -221,11 +212,11 @@ func (r *groupResource) Delete(ctx context.Context, req resource.DeleteRequest, 
 
 	id := state.ID.ValueString()
 	tflog.Info(ctx, fmt.Sprintf("deleting group %q", id))
-	_, err := r.client.IAM().Groups().Delete(ctx, &iam.DeleteGroupRequest{
+	_, err := r.prov.client.IAM().Groups().Delete(ctx, &iam.DeleteGroupRequest{
 		Id: id,
 	})
 	if err != nil {
-		resp.Diagnostics.Append(protoErrorToDiagnostic(err, fmt.Sprintf("failed to delete group %q", id)))
+		resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to delete group %q", id)))
 		return
 	}
 	tflog.Info(ctx, fmt.Sprintf("group %q deleted", id))

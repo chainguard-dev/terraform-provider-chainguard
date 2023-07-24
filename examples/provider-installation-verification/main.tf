@@ -12,44 +12,13 @@ terraform {
 }
 
 provider "chainguard" {
-  #console_api = "https://console-api.enforce.dev"
-  console_api = "https://console-api.cmdpdx.dev"
+  console_api = "https://console-api.enforce.dev"
 }
-#data "chainguard_role" "viewer" {
-#  name   = "viewer"
-#  parent = "/"
-#}
-#
-#output "viewer_role" {
-#  value = data.chainguard_role.viewer
-#}
-
-# TODO(colin): remove temporary testing resources below
-data "chainguard_group" "cmdpdx_root" {
-  name = "cmdpdx.dev"
+data "chainguard_role" "viewer" {
+  name   = "viewer"
+  parent = "/"
 }
 
-data "chainguard_group" "tf-test-data" {
-  name      = "tf-test"
-  parent_id = data.chainguard_group.cmdpdx_root.id
-}
-
-resource "chainguard_group" "tf-test" {
-  name        = "tf-test"
-  parent_id   = data.chainguard_group.cmdpdx_root.id
-  description = "a test group of the new provider!"
-}
-
-resource "chainguard_group" "sub-tf-test" {
-  name        = "tf-test"
-  parent_id   = chainguard_group.tf-test.id
-  description = "a test (sub) group of the new provider!"
-}
-
-output "tf-test" {
-  value = chainguard_group.tf-test
-}
-
-output "sub-tf-test" {
-  value = chainguard_group.sub-tf-test
+output "viewer_role" {
+  value = data.chainguard_role.viewer
 }

@@ -1,18 +1,22 @@
+/*
+Copyright 2023 Chainguard, Inc.
+SPDX-License-Identifier: Apache-2.0
+*/
+
 package provider
 
 import (
 	"context"
 	"fmt"
 
-	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
-	"chainguard.dev/api/proto/platform"
 	"chainguard.dev/api/proto/platform/iam"
+	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
 )
 
 // Ensure the implementation satisfies the expected interfaces.
@@ -28,7 +32,7 @@ func NewRoleDataSource() datasource.DataSource {
 
 // roleDataSource is the data source implementation.
 type roleDataSource struct {
-	client platform.Clients
+	dataSource
 }
 
 type roleDataSourceModel struct {
@@ -37,6 +41,10 @@ type roleDataSourceModel struct {
 	Parent types.String `tfsdk:"parent"`
 
 	Items []*roleModel `tfsdk:"items"`
+}
+
+func (d roleDataSourceModel) InputParams() string {
+	return fmt.Sprintf("[id=%s, name=%s, parentd=%s]", d.ID, d.Name, d.Parent)
 }
 
 type roleModel struct {
@@ -51,21 +59,8 @@ func (d *roleDataSource) Metadata(_ context.Context, req datasource.MetadataRequ
 	resp.TypeName = req.ProviderTypeName + "_role"
 }
 
-func (d *roleDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
-	}
-
-	client, ok := req.ProviderData.(platform.Clients)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Data Source Configure Type",
-			fmt.Sprintf("Expected platform.Clients, got: %T. Please report this issue to the provider developers.", req.ProviderData),
-		)
-		return
-	}
-
-	d.client = client
+func (d *roleDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	d.configure(ctx, req, resp)
 }
 
 // Schema defines the schema for the data source.
@@ -76,18 +71,18 @@ func (d *roleDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, r
 			"id": schema.StringAttribute{
 				Description: "The exact UIDP of the role to lookup.",
 				Optional:    true,
-				Validators:  []validator.String{validators.UIDPValidator{}},
+				Validators:  []validator.String{validators.UIDP{}},
 			},
 			"name": schema.StringAttribute{
 				Description: "The name of the role to lookup.",
 				Optional:    true,
-				Validators:  []validator.String{validators.NameValidator{}},
+				Validators:  []validator.String{validators.Name{}},
 			},
 			"parent": schema.StringAttribute{
 				Description: "The UIDP of the group in which to lookup the named role.",
 				Optional:    true,
 				// TODO(colin): default value
-				Validators: []validator.String{validators.UIDPValidator{AllowRoot: true}},
+				Validators: []validator.String{validators.UIDP{AllowRoot: true}},
 			},
 			"items": schema.ListNestedAttribute{
 				Description: "Roles matched by the data source's filter.",
@@ -125,14 +120,15 @@ func (d *roleDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	tflog.Info(ctx, "read role data-source request", map[string]interface{}{"input-params": data.InputParams()})
 
-	all, err := d.client.IAM().Roles().List(ctx, &iam.RoleFilter{
+	all, err := d.prov.client.IAM().Roles().List(ctx, &iam.RoleFilter{
 		Id:     data.ID.ValueString(),
 		Name:   data.Name.ValueString(),
 		Parent: data.Parent.ValueString(),
 	})
 	if err != nil {
-		resp.Diagnostics.Append(protoErrorToDiagnostic(err, "failed to list roles"))
+		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to list roles"))
 		return
 	}
 
@@ -156,12 +152,14 @@ func (d *roleDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 	}
 	// Role wasn't found, or was deleted outside Terraform
 	if len(all.GetItems()) == 0 {
-		data = roleDataSourceModel{}
 		resp.State.RemoveResource(ctx)
-	} else {
+		resp.Diagnostics.Append(dataNotFound("role", "" /* extra */, data))
+		return
+	} else if d.prov.version == "acctest" {
 		// Set the ID on roleDataSourceModel for acceptance tests.
-		// TODO(colin): replace this
-		data.ID = types.StringValue("replace-me")
+		// https://developer.hashicorp.com/terraform/tutorials/providers-plugin-framework/providers-plugin-framework-acceptance-testing#implement-data-source-id-attribute
+		// TODO(colin): replace this?
+		data.ID = types.StringValue("placeholder")
 	}
 
 	// Set state

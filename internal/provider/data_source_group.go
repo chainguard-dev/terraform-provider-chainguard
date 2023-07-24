@@ -1,3 +1,8 @@
+/*
+Copyright 2023 Chainguard, Inc.
+SPDX-License-Identifier: Apache-2.0
+*/
+
 package provider
 
 import (
@@ -12,7 +17,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	"chainguard.dev/api/pkg/uidp"
-	"chainguard.dev/api/proto/platform"
 	"chainguard.dev/api/proto/platform/common"
 	"chainguard.dev/api/proto/platform/iam"
 )
@@ -30,10 +34,9 @@ func NewGroupDataSource() datasource.DataSource {
 
 // groupDataSource is the data source implementation.
 type groupDataSource struct {
-	client platform.Clients
+	dataSource
 }
 
-// TODO(colin): should group data source return >1 group?
 type groupDataSourceModel struct {
 	ID          types.String `tfsdk:"id"`
 	Name        types.String `tfsdk:"name"`
@@ -41,26 +44,17 @@ type groupDataSourceModel struct {
 	ParentID    types.String `tfsdk:"parent_id"`
 }
 
+func (d groupDataSourceModel) InputParams() string {
+	return fmt.Sprintf("[id=%s, name=%s, parent_id=%s]", d.ID, d.Name, d.ParentID)
+}
+
 // Metadata returns the data source type name.
 func (d *groupDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_group"
 }
 
-func (d *groupDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	if req.ProviderData == nil {
-		return
-	}
-
-	client, ok := req.ProviderData.(platform.Clients)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Data Source Configure Type",
-			fmt.Sprintf("Expected platform.Clients, got: %T. Please report this issue to the provider developers.", req.ProviderData),
-		)
-		return
-	}
-
-	d.client = client
+func (d *groupDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+	d.configure(ctx, req, resp)
 }
 
 // Schema defines the schema for the data source.
@@ -75,7 +69,7 @@ func (d *groupDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 			"name": schema.StringAttribute{
 				Description: "The name of the group to lookup",
 				Optional:    true,
-				Validators:  []validator.String{validators.NameValidator{}},
+				Validators:  []validator.String{validators.Name{}},
 			},
 			"description": schema.StringAttribute{
 				Description: "Description of the matched IAM group",
@@ -85,7 +79,7 @@ func (d *groupDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 				Description: "The UIDP of the group in which to lookup the named group.",
 				Optional:    true,
 				// TODO(colin): default value
-				Validators: []validator.String{validators.UIDPValidator{AllowRoot: true}},
+				Validators: []validator.String{validators.UIDP{AllowRoot: true}},
 			},
 		},
 	}
@@ -109,18 +103,18 @@ func (d *groupDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 		Name: data.Name.ValueString(),
 		Uidp: uf,
 	}
-	groupList, err := d.client.IAM().Groups().List(ctx, f)
+	groupList, err := d.prov.client.IAM().Groups().List(ctx, f)
 	if err != nil {
-		resp.Diagnostics.Append(protoErrorToDiagnostic(err, "failed to list groups"))
+		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to list groups"))
 		return
 	}
 
-	// TODO(colin): should group data source return >1 group?
 	switch c := len(groupList.GetItems()); {
 	case c == 0:
-		// Group was already deleted outside TF, remove from state
-		data = groupDataSourceModel{}
+		// Group was not found (either never existed, or was deleted). Remove from state.
+		resp.Diagnostics.Append(dataNotFound("group", "" /* extra */, data))
 		resp.State.RemoveResource(ctx)
+		return
 	case c == 1:
 		g := groupList.GetItems()[0]
 		data.ID = types.StringValue(g.Id)
@@ -129,7 +123,7 @@ func (d *groupDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 		data.ParentID = types.StringValue(uidp.Parent(g.Id))
 	default:
 		tflog.Error(ctx, fmt.Sprintf("group list returned %d groups for filter %v", c, f))
-		resp.Diagnostics.AddError("more than one group found matching filters", fmt.Sprintf("filters=%v\nPlease provide more context to narrow query (e.g. parent_id).", data))
+		resp.Diagnostics.Append(dataTooManyFound("group", "Please provide more context to narrow query (e.g. parent_id).", data))
 		return
 	}
 
