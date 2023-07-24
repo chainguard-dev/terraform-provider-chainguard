@@ -3,6 +3,8 @@
 The Chainguard Terraform provider manages Chainguard resources (IAM groups,
 clusters, policy etc) using Terraform.
 
+The provider is written to be compatible with the [Terraform Plugin Framework](https://developer.hashicorp.com/terraform/tutorials/providers-plugin-framework/providers-plugin-framework-provider)
+
 ## Requirements
 
 -	[Terraform](https://www.terraform.io/downloads.html) >= 0.13.x
@@ -49,13 +51,13 @@ provider_installation {
     # url = "https://storage.googleapis.com/us.artifacts.staging-enforce-cd1e.appspot.com/terraform-provider/"
 
     include = [
-      "registry.terraform.io/chainguard/chainguard",
+      "registry.terraform.io/chainguard-dev/chainguard",
     ]
   }
 
   direct {
     exclude = [
-      "registry.terraform.io/chainguard/chainguard",
+      "registry.terraform.io/chainguard-dev/chainguard",
     ]
   }
 }
@@ -69,7 +71,7 @@ environment of choice by setting the `console_api` parameter (defaults to
 terraform {
   required_providers {
     chainguard = {
-      source = "chainguard/chainguard"
+      source = "chainguard-dev/chainguard"
     }
   }
 }
@@ -94,7 +96,7 @@ be published), you can configure your Terraform CLI to do so.
 cat <<EOF > dev.tfrc
 provider_installation {
   dev_overrides {
-    "chainguard/chainguard" = "/path/to/terraform-provider-chainguard"
+    "chainguard-dev/chainguard" = "/path/to/terraform-provider-chainguard"
   }
 }
 EOF
@@ -131,41 +133,3 @@ TF_ACC=1 go test ./... -v
 ```
 
 *Note:* Acceptance tests create real resources, and often cost money to run.
-
-## Creating a release
-
-We currently release the terraform provider to our public GCS artifacts bucket along side `chainctl` binaries. The `cmd/promoter` tool automates this process. To use it build and then select a bucket and prefix for your release:
-
-```shell
-# Build the promoter
-go build -o promoter cmd/promoter/*.go
-
-# Login for some GCP application creds
-gcloud auth default-application login
-
-# NB: must run from the root of the repository
-./promoter --bucket example-bucket --prefix foo/bar
-```
-
-The promoter requires `git`, `go`, and `goreleaser` and must be run from the
-root of the repository (i.e this directory). The promoter requires write access
-to the bucket used.
-
-After you've created your release you can use it by setting your terraformrc file:
-
-```hcl
-provider_installation {
-  network_mirror {
-    url = "https://storage.googleapis.com/example-bucket/foo/bar/"
-    include = [
-      "registry.terraform.io/chainguard/chainguard",
-    ]
-  }
-
-  direct {
-    exclude = [
-      "registry.terraform.io/chainguard/chainguard",
-    ]
-  }
-}
-```
