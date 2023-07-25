@@ -44,10 +44,10 @@ func TestAccGroupResource(t *testing.T) {
 			{
 				Config: providerConfig + testAccResourceGroup(parent, name, description),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr(`chainguard_group.test`, `parent_id`, parent),
-					resource.TestCheckResourceAttr(`chainguard_group.test`, `name`, name),
-					resource.TestCheckResourceAttr(`chainguard_group.test`, `description`, description),
-					resource.TestMatchResourceAttr(`chainguard_group.test`, `id`, childpattern),
+					resource.TestCheckResourceAttr("chainguard_group.test", "parent_id", parent),
+					resource.TestCheckResourceAttr("chainguard_group.test", "name", name),
+					resource.TestCheckResourceAttr("chainguard_group.test", "description", description),
+					resource.TestMatchResourceAttr("chainguard_group.test", "id", childpattern),
 				),
 			},
 
@@ -62,10 +62,10 @@ func TestAccGroupResource(t *testing.T) {
 			{
 				Config: providerConfig + testAccResourceGroup(parent, newName, newDescription),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr(`chainguard_group.test`, `parent_id`, parent),
-					resource.TestCheckResourceAttr(`chainguard_group.test`, `name`, newName),
-					resource.TestCheckResourceAttr(`chainguard_group.test`, `description`, newDescription),
-					resource.TestMatchResourceAttr(`chainguard_group.test`, `id`, childpattern),
+					resource.TestCheckResourceAttr("chainguard_group.test", "parent_id", parent),
+					resource.TestCheckResourceAttr("chainguard_group.test", "name", newName),
+					resource.TestCheckResourceAttr("chainguard_group.test", "description", newDescription),
+					resource.TestMatchResourceAttr("chainguard_group.test", "id", childpattern),
 				),
 			},
 

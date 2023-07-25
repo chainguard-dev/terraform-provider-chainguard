@@ -14,14 +14,45 @@ import (
 
 	"chainguard.dev/api/pkg/uidp"
 	"chainguard.dev/api/pkg/validation"
+	"chainguard.dev/api/proto/capabilities"
 )
 
 var (
+	_ validator.String = &Capability{}
 	_ validator.String = &Enum{}
 	_ validator.String = &Name{}
 	_ validator.String = &NonEmpty{}
 	_ validator.String = &UIDP{}
 )
+
+// Capability validates the string value is a valid role capability.
+type Capability struct{}
+
+func (v Capability) Description(_ context.Context) string {
+	return "Check a given name is a valid Chainguard role capability."
+}
+
+func (v Capability) MarkdownDescription(ctx context.Context) string {
+	// TODO(colin): look into this further
+	return v.Description(ctx)
+}
+
+func (v Capability) ValidateString(_ context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+	// Attributes may be optional, and thus null, which should not fail validation.
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+
+	sc := req.ConfigValue.ValueString()
+	c, err := capabilities.Parse(sc)
+	if err != nil {
+		resp.Diagnostics.AddError(fmt.Sprintf("failed to parse capability %q", sc), err.Error())
+	}
+	if c == capabilities.Capability_UNKNOWN {
+		resp.Diagnostics.AddError(fmt.Sprintf("failed to parse capability %q", sc),
+			"unknown capability: "+sc)
+	}
+}
 
 // Enum validates the string is a valid enum name.
 type Enum struct {
