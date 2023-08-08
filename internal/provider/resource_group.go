@@ -65,13 +65,13 @@ func (r *groupResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 			"id": schema.StringAttribute{
 				Description:   "The exact UIDP of this IAM group.",
 				Computed:      true,
-				Validators:    []validator.String{validators.UIDP{}},
+				Validators:    []validator.String{validators.UIDP(false /* allowRoot */)},
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"parent_id": schema.StringAttribute{
 				Description:   "Parent IAM group of this group. If not set, this group is assumed to be a root group.",
 				Optional:      true,
-				Validators:    []validator.String{validators.UIDP{}},
+				Validators:    []validator.String{validators.UIDP(false /* allowRoot */)},
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"name": schema.StringAttribute{
@@ -93,14 +93,13 @@ func (r *groupResource) ImportState(ctx context.Context, req resource.ImportStat
 
 // Create creates the resource and sets the initial Terraform state.
 func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	tflog.Info(ctx, "read group request", map[string]interface{}{"request": req})
-
 	// Read the plan data into the resource model.
 	var plan groupResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	tflog.Info(ctx, fmt.Sprintf("create group request: name=%s, parent_id=%s", plan.Name, plan.ParentID))
 
 	// Create the group.
 	cr := &iam.CreateGroupRequest{
@@ -118,20 +117,18 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 
 	// Save group details in the state.
 	plan.ID = types.StringValue(g.Id)
-	diags := resp.State.Set(ctx, &plan)
-	resp.Diagnostics.Append(diags...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
 // Read refreshes the Terraform state with the latest data.
 func (r *groupResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	tflog.Info(ctx, "read group request", map[string]interface{}{"request": req})
-
 	// Read the current state into the resource model.
 	var state groupResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	tflog.Info(ctx, fmt.Sprintf("read group request: %s", state.ID))
 
 	// Query for the group to update state
 	uf := &common.UIDPFilter{}
@@ -152,35 +149,33 @@ func (r *groupResource) Read(ctx context.Context, req resource.ReadRequest, resp
 	switch c := len(groupList.GetItems()); {
 	case c == 0:
 		// Group was already deleted outside TF, remove from state
-		state = groupResourceModel{}
 		resp.State.RemoveResource(ctx)
+
 	case c == 1:
 		g := groupList.GetItems()[0]
 		state.ID = types.StringValue(g.Id)
 		state.Name = types.StringValue(g.Name)
 		state.Description = types.StringValue(g.Description)
 		state.ParentID = types.StringValue(uidp.Parent(g.Id))
+
+		// Set state
+		resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+
 	default:
 		tflog.Error(ctx, fmt.Sprintf("group list returned %d groups for filter %v", c, f))
 		resp.Diagnostics.AddError("more than one group found matching filters", fmt.Sprintf("filters=%v\nPlease provide more context to narrow query (e.g. parent_id).", state))
-		return
 	}
-
-	// Set state
-	diags := resp.State.Set(ctx, &state)
-	resp.Diagnostics.Append(diags...)
 }
 
 // Update updates the resource and sets the updated Terraform state on success.
 func (r *groupResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	tflog.Info(ctx, "update group request", map[string]interface{}{"request": req})
-
 	// Read the plan into the resource model.
 	var data groupResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	tflog.Info(ctx, fmt.Sprintf("update group request: %s", data.ID))
 
 	g, err := r.prov.client.IAM().Groups().Update(ctx, &iam.Group{
 		Id:          data.ID.ValueString(),
@@ -192,26 +187,24 @@ func (r *groupResource) Update(ctx context.Context, req resource.UpdateRequest, 
 		return
 	}
 
+	// Set state.
 	data.ID = types.StringValue(g.Id)
 	data.Name = types.StringValue(g.GetName())
 	data.Description = types.StringValue(g.GetDescription())
-	diags := resp.State.Set(ctx, &data)
-	resp.Diagnostics.Append(diags...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
 // Delete deletes the resource and removes the Terraform state on success.
 func (r *groupResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	tflog.Info(ctx, "delete group request", map[string]interface{}{"request": req})
-
 	// Read the current state into the resource model.
 	var state groupResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	tflog.Info(ctx, fmt.Sprintf("delete group request: %s", state.ID))
 
 	id := state.ID.ValueString()
-	tflog.Info(ctx, fmt.Sprintf("deleting group %q", id))
 	_, err := r.prov.client.IAM().Groups().Delete(ctx, &iam.DeleteGroupRequest{
 		Id: id,
 	})
@@ -219,5 +212,4 @@ func (r *groupResource) Delete(ctx context.Context, req resource.DeleteRequest, 
 		resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to delete group %q", id)))
 		return
 	}
-	tflog.Info(ctx, fmt.Sprintf("group %q deleted", id))
 }

@@ -9,6 +9,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
+	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
+
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -21,7 +24,6 @@ import (
 
 	"chainguard.dev/api/pkg/uidp"
 	"chainguard.dev/api/proto/platform/iam"
-	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
 )
 
 // Ensure the implementation satisfies the expected interfaces.
@@ -86,12 +88,8 @@ func (r *roleResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 				Required:    true,
 				ElementType: types.StringType,
 				Validators: []validator.List{
-					validators.ListLength{Min: 1},
-					validators.EachString{
-						Validators: []validator.String{
-							validators.Capability{},
-						},
-					},
+					listvalidator.SizeAtLeast(1),
+					listvalidator.ValueStringsAre(validators.Capability()),
 				},
 			},
 		},
@@ -111,7 +109,7 @@ func (r *roleResource) Create(ctx context.Context, req resource.CreateRequest, r
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	tflog.Info(ctx, "create role request", map[string]interface{}{"plan": plan})
+	tflog.Info(ctx, fmt.Sprintf("create role request: name=%s, parent_id=%s", plan.Name, plan.ParentID))
 
 	// Create the role.
 	caps := make([]string, 0, len(plan.Capabilities.Elements()))
@@ -135,8 +133,7 @@ func (r *roleResource) Create(ctx context.Context, req resource.CreateRequest, r
 
 	// Save role details in the state.
 	plan.ID = types.StringValue(role.Id)
-	diags := resp.State.Set(ctx, &plan)
-	resp.Diagnostics.Append(diags...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
 // Read refreshes the Terraform state with the latest data.
@@ -147,7 +144,7 @@ func (r *roleResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	tflog.Info(ctx, "read role request", map[string]interface{}{"state": state})
+	tflog.Info(ctx, fmt.Sprintf("read role request: %s", state.ID))
 
 	// Query for the role to update state
 	roleID := state.ID.ValueString()
@@ -162,9 +159,8 @@ func (r *roleResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 	switch c := len(roleList.GetItems()); {
 	case c == 0:
 		// Role doesn't exist or was deleted outside TF
-		state = roleResourceModel{}
 		resp.State.RemoveResource(ctx)
-		return
+
 	case c == 1:
 		r := roleList.GetItems()[0]
 		state.ID = types.StringValue(r.Id)
@@ -178,14 +174,14 @@ func (r *roleResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 			resp.Diagnostics.Append(diags...)
 			return
 		}
+
+		// Set state
+		resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+
 	default:
 		tflog.Error(ctx, fmt.Sprintf("role list returned %d roles for id %q", c, roleID))
 		resp.Diagnostics.AddError("internal error", fmt.Sprintf("fatal data corruption: id %s matched more than one role", roleID))
-		return
 	}
-
-	// Set state
-	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
 // Update updates the resource and sets the updated Terraform state on success.
@@ -196,7 +192,7 @@ func (r *roleResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	tflog.Info(ctx, "update role request", map[string]interface{}{"plan": data})
+	tflog.Info(ctx, fmt.Sprintf("update role request: %s", data.ID))
 
 	caps := make([]string, 0, len(data.Capabilities.Elements()))
 	resp.Diagnostics.Append(data.Capabilities.ElementsAs(ctx, &caps, false /* allowUnhandled */)...)
@@ -236,10 +232,9 @@ func (r *roleResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	tflog.Info(ctx, "delete group request", map[string]interface{}{"state": state})
+	tflog.Info(ctx, fmt.Sprintf("delete role request: %s", state.ID))
 
 	id := state.ID.ValueString()
-	tflog.Info(ctx, fmt.Sprintf("deleting role %q", id))
 	_, err := r.prov.client.IAM().Roles().Delete(ctx, &iam.DeleteRoleRequest{
 		Id: id,
 	})
@@ -247,5 +242,4 @@ func (r *roleResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 		resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to delete role %q", id)))
 		return
 	}
-	tflog.Info(ctx, fmt.Sprintf("role %q deleted", id))
 }
