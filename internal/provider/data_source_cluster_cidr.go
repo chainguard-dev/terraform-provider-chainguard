@@ -69,13 +69,12 @@ func (d *clusterCIDRDataSource) Schema(_ context.Context, _ datasource.SchemaReq
 
 // Read refreshes the Terraform state with the latest data.
 func (d *clusterCIDRDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
-	tflog.Info(ctx, "read cluster CIDR blocks data-source request", map[string]interface{}{"request": req})
-
 	var data clusterCIDRDataSourceModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	tflog.Info(ctx, "read cluster CIDR blocks data-source request", map[string]interface{}{"config": data})
 
 	cidr, err := d.prov.client.Tenant().Clusters().CIDR(ctx, &tenant.ClusterCIDRRequest{})
 	if err != nil {
@@ -99,6 +98,5 @@ func (d *clusterCIDRDataSource) Read(ctx context.Context, req datasource.ReadReq
 	data.CIDRBlocks = blocks
 
 	// Set state
-	diags = resp.State.Set(ctx, &data)
-	resp.Diagnostics.Append(diags...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

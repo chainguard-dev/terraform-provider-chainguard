@@ -71,18 +71,18 @@ func (d *roleDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, r
 			"id": schema.StringAttribute{
 				Description: "The exact UIDP of the role to lookup.",
 				Optional:    true,
-				Validators:  []validator.String{validators.UIDP{}},
+				Validators:  []validator.String{validators.UIDP(false /* allowRoot */)},
 			},
 			"name": schema.StringAttribute{
 				Description: "The name of the role to lookup.",
 				Optional:    true,
-				Validators:  []validator.String{validators.Name{}},
+				Validators:  []validator.String{validators.Name()},
 			},
 			"parent": schema.StringAttribute{
 				Description: "The UIDP of the group in which to lookup the named role.",
 				Optional:    true,
 				// TODO(colin): default value
-				Validators: []validator.String{validators.UIDP{AllowRoot: true}},
+				Validators: []validator.String{validators.UIDP(true /* allowRoot */)},
 			},
 			"items": schema.ListNestedAttribute{
 				Description: "Roles matched by the data source's filter.",
@@ -152,7 +152,6 @@ func (d *roleDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 	}
 	// Role wasn't found, or was deleted outside Terraform
 	if len(all.GetItems()) == 0 {
-		resp.State.RemoveResource(ctx)
 		resp.Diagnostics.Append(dataNotFound("role", "" /* extra */, data))
 		return
 	} else if d.prov.version == "acctest" {
@@ -163,6 +162,5 @@ func (d *roleDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 	}
 
 	// Set state
-	diags := resp.State.Set(ctx, &data)
-	resp.Diagnostics.Append(diags...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

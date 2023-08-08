@@ -81,6 +81,26 @@ func (p *Provider) Metadata(_ context.Context, _ provider.MetadataRequest, resp 
 	resp.Version = p.version
 }
 
+// DataSources defines the data sources implemented in the provider.
+func (p *Provider) DataSources(_ context.Context) []func() datasource.DataSource {
+	return []func() datasource.DataSource{
+		NewClusterCIDRDataSource,
+		NewClusterDiscoveryDataSource,
+		NewGroupDataSource,
+		NewIdentityDataSource,
+		NewRoleDataSource,
+	}
+}
+
+// Resources defines the resources implemented in the provider.
+func (p *Provider) Resources(_ context.Context) []func() resource.Resource {
+	return []func() resource.Resource{
+		NewGroupResource,
+		NewRoleResource,
+		NewRolebindingResource,
+	}
+}
+
 // Schema defines the provider-level schema for configuration data.
 func (p *Provider) Schema(_ context.Context, _ provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
@@ -163,25 +183,6 @@ func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest,
 
 	resp.DataSourceData = d
 	resp.ResourceData = d
-}
-
-// DataSources defines the data sources implemented in the provider.
-func (p *Provider) DataSources(_ context.Context) []func() datasource.DataSource {
-	return []func() datasource.DataSource{
-		NewClusterCIDRDataSource,
-		NewClusterDiscoveryDataSource,
-		NewGroupDataSource,
-		NewIdentityDataSource,
-		NewRoleDataSource,
-	}
-}
-
-// Resources defines the resources implemented in the provider.
-func (p *Provider) Resources(_ context.Context) []func() resource.Resource {
-	return []func() resource.Resource{
-		NewGroupResource,
-		NewRoleResource,
-	}
 }
 
 // errorToDiagnostic converts an error into a diag.Diagnostic.

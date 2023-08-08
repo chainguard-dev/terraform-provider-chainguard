@@ -9,6 +9,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
+
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -17,7 +20,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	"chainguard.dev/api/proto/platform/iam"
-	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
 )
 
 // Ensure the implementation satisfies the expected interfaces.
@@ -67,12 +69,16 @@ func (d *identityDataSource) Schema(_ context.Context, _ datasource.SchemaReques
 			"issuer": schema.StringAttribute{
 				Description: "The exact issuer of the identity.",
 				Required:    true,
-				Validators:  []validator.String{validators.NonEmpty{}},
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
 			},
 			"subject": schema.StringAttribute{
 				Description: "The exact subject of the identity.",
 				Required:    true,
-				Validators:  []validator.String{validators.NonEmpty{}},
+				Validators: []validator.String{
+					stringvalidator.LengthAtLeast(1),
+				},
 			},
 		},
 	}
@@ -85,6 +91,7 @@ func (d *identityDataSource) Read(ctx context.Context, req datasource.ReadReques
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	tflog.Info(ctx, "read identity data-source request", map[string]interface{}{"config": data})
 
 	lr := &iam.LookupRequest{
 		Subject: data.Subject.ValueString(),
@@ -98,10 +105,8 @@ func (d *identityDataSource) Read(ctx context.Context, req datasource.ReadReques
 			resp.Diagnostics.Append(errorToDiagnostic(err, "failed to list identities"))
 		}
 	} else {
+		// Set state
 		data.ID = types.StringValue(id.Id)
+		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	}
-
-	// Set state
-	diags := resp.State.Set(ctx, &data)
-	resp.Diagnostics.Append(diags...)
 }

@@ -2,7 +2,7 @@ module github.com/chainguard-dev/terraform-provider-chainguard
 
 go 1.20
 
-// TODO(colin): how to do this without the replace
+// TODO(colin): remove once api is public or package published
 replace chainguard.dev/api => ../mono/api
 
 require (
@@ -51,6 +51,7 @@ require (
 	github.com/hashicorp/terraform-exec v0.18.1 // indirect
 	github.com/hashicorp/terraform-json v0.17.1 // indirect
 	github.com/hashicorp/terraform-plugin-docs v0.16.0 // indirect
+	github.com/hashicorp/terraform-plugin-framework-validators v0.10.0 // indirect
 	github.com/hashicorp/terraform-plugin-go v0.18.0 // indirect
 	github.com/hashicorp/terraform-plugin-log v0.9.0 // indirect
 	github.com/hashicorp/terraform-plugin-sdk/v2 v2.26.1 // indirect

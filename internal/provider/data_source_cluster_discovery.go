@@ -9,6 +9,10 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"golang.org/x/exp/maps"
+
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -17,7 +21,6 @@ import (
 
 	"chainguard.dev/api/proto/platform/tenant"
 	"github.com/chainguard-dev/terraform-provider-chainguard/internal/protoutil"
-	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
 )
 
 // Ensure the implementation satisfies the expected interfaces.
@@ -77,6 +80,9 @@ func (d *clusterDiscoveryDataSource) Configure(ctx context.Context, req datasour
 
 // Schema defines the schema for the data source.
 func (d *clusterDiscoveryDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+	providers := maps.Keys(tenant.Cluster_Provider_value)
+	states := maps.Keys(tenant.ClusterDiscoveryRequest_State_value)
+
 	resp.Schema = schema.Schema{
 		Description: "Potential clusters to install found via Enforce cluster discovery.",
 		Attributes: map[string]schema.Attribute{
@@ -89,11 +95,7 @@ func (d *clusterDiscoveryDataSource) Schema(_ context.Context, _ datasource.Sche
 				Required:    true,
 				ElementType: types.StringType,
 				Validators: []validator.List{
-					validators.EachString{
-						Validators: []validator.String{
-							validators.Enum{Valid: tenant.Cluster_Provider_value},
-						},
-					},
+					listvalidator.ValueStringsAre(stringvalidator.OneOf(providers...)),
 				},
 			},
 			"profiles": schema.ListAttribute{
@@ -101,12 +103,8 @@ func (d *clusterDiscoveryDataSource) Schema(_ context.Context, _ datasource.Sche
 				Required:    true,
 				ElementType: types.StringType,
 				Validators: []validator.List{
-					validators.ListLength{Min: 1},
-					validators.EachString{
-						Validators: []validator.String{
-							validators.OneOf{Valid: []string{"enforcer", "observer"}},
-						},
-					},
+					listvalidator.SizeAtLeast(1),
+					listvalidator.ValueStringsAre(stringvalidator.OneOf("enforcer", "observer")),
 				},
 			},
 			"states": schema.ListAttribute{
@@ -114,11 +112,7 @@ func (d *clusterDiscoveryDataSource) Schema(_ context.Context, _ datasource.Sche
 				Optional:    true,
 				ElementType: types.StringType,
 				Validators: []validator.List{
-					validators.EachString{
-						Validators: []validator.String{
-							validators.Enum{Valid: tenant.ClusterDiscoveryRequest_State_value},
-						},
-					},
+					listvalidator.ValueStringsAre(stringvalidator.OneOf(states...)),
 				},
 			},
 			"results": schema.ListNestedAttribute{
@@ -200,7 +194,7 @@ func (d *clusterDiscoveryDataSource) Read(ctx context.Context, req datasource.Re
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	tflog.Info(ctx, "read cluster discovery data-source request", map[string]interface{}{"input-params": data.InputParams()})
+	tflog.Info(ctx, "read cluster discovery data-source request", map[string]interface{}{"config": data})
 
 	providers := make([]tenant.Cluster_Provider, 0, len(data.Providers.Elements()))
 	ss := make([]string, 0, len(providers))
@@ -248,7 +242,7 @@ func (d *clusterDiscoveryDataSource) Read(ctx context.Context, req datasource.Re
 
 	results := make([]*clusterDiscoveryResults, 0, len(disc.Results))
 	for _, result := range disc.Results {
-		// Pre-null types.List values in case they aren't set.
+		// Pre-null types.List values in case they aren't set below.
 		state := &clusterDiscoveryResultsState{
 			Profiles: types.ListNull(types.StringType),
 			Steps:    types.ListNull(types.StringType),
@@ -280,13 +274,12 @@ func (d *clusterDiscoveryDataSource) Read(ctx context.Context, req datasource.Re
 			resp.Diagnostics.Append(diags...)
 			if diags.HasError() {
 				tflog.Error(ctx, "failed to convert Enrolled.Profiles []string to ListValue",
-					map[string]interface{}{"steps": s.Enrolled.Profiles})
+					map[string]interface{}{"profiles": s.Enrolled.Profiles})
 				return
 			}
 			state.State = types.StringValue("enrolled")
 			state.ID = types.StringValue(s.Enrolled.Id)
 			state.Profiles = profs
-			//state.Profiles = s.Enrolled.Profiles
 			state.Server = types.StringValue(s.Enrolled.Info.Server)
 			state.CertificateAuthorityData = types.StringValue(string(s.Enrolled.Info.CertificateAuthorityData))
 		}
@@ -302,6 +295,5 @@ func (d *clusterDiscoveryDataSource) Read(ctx context.Context, req datasource.Re
 	data.Results = results
 
 	// Set state
-	diags := resp.State.Set(ctx, &data)
-	resp.Diagnostics.Append(diags...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

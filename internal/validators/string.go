@@ -8,6 +8,8 @@ package validators
 import (
 	"context"
 	"fmt"
+	"net/url"
+	"regexp"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -18,26 +20,30 @@ import (
 )
 
 var (
-	_ validator.String = &Capability{}
-	_ validator.String = &Enum{}
-	_ validator.String = &Name{}
-	_ validator.String = &NonEmpty{}
-	_ validator.String = &UIDP{}
+	_ validator.String = &capability{}
+	_ validator.String = &name{}
+	_ validator.String = &isHTTPS{}
+	_ validator.String = &runFuncs{}
+	_ validator.String = &uidpVal{}
 )
 
 // Capability validates the string value is a valid role capability.
-type Capability struct{}
+func Capability() validator.String {
+	return capability{}
+}
 
-func (v Capability) Description(_ context.Context) string {
+type capability struct{}
+
+func (v capability) Description(_ context.Context) string {
 	return "Check a given name is a valid Chainguard role capability."
 }
 
-func (v Capability) MarkdownDescription(ctx context.Context) string {
+func (v capability) MarkdownDescription(ctx context.Context) string {
 	// TODO(colin): look into this further
 	return v.Description(ctx)
 }
 
-func (v Capability) ValidateString(_ context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+func (v capability) ValidateString(_ context.Context, req validator.StringRequest, resp *validator.StringResponse) {
 	// Attributes may be optional, and thus null, which should not fail validation.
 	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
 		return
@@ -54,42 +60,89 @@ func (v Capability) ValidateString(_ context.Context, req validator.StringReques
 	}
 }
 
-// Enum validates the string is a valid enum name.
-type Enum struct {
-	Valid map[string]int32
+func IsHTTPS() validator.String {
+	return isHTTPS{}
 }
 
-func (v Enum) Description(_ context.Context) string {
-	return "Check a string is a valid enum name."
+type isHTTPS struct{}
+
+func (v isHTTPS) Description(_ context.Context) string {
+	return "Validate a string is valid URL with schema HTTPS."
 }
 
-func (v Enum) MarkdownDescription(ctx context.Context) string {
+func (v isHTTPS) MarkdownDescription(ctx context.Context) string {
 	// TODO(colin): look into this further
 	return v.Description(ctx)
 }
 
-func (v Enum) ValidateString(_ context.Context, req validator.StringRequest, resp *validator.StringResponse) {
-	// TODO(colin): case insensitve?
-	val := req.ConfigValue.ValueString()
-	if _, ok := v.Valid[val]; !ok {
-		resp.Diagnostics.AddError("failed enum validation",
-			fmt.Sprintf("value %q is not a valid enum value", val))
+func (v isHTTPS) ValidateString(_ context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+	// Attributes may be optional, and thus null, which should not fail validation.
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+
+	raw := req.ConfigValue.ValueString()
+	u, err := url.Parse(raw)
+	if err != nil {
+		resp.Diagnostics.AddError("failed HTTPS validation", fmt.Sprintf("failed to parse %q as a URL: %s", raw, err.Error()))
+	} else if u.Scheme != "https" {
+		resp.Diagnostics.AddError("failed HTTPS validation", fmt.Sprintf("URL must have HTTPS scheme, got %q", u.Scheme))
+	}
+}
+
+type ValidateStringFunc func(string) error
+
+type runFuncs struct {
+	funcs []ValidateStringFunc
+}
+
+func RunFuncs(fns ...ValidateStringFunc) validator.String {
+	return runFuncs{
+		funcs: fns,
+	}
+}
+
+func (v runFuncs) Description(_ context.Context) string {
+	return "Validate a string with an arbitrary number of functions that accept a string and return an error."
+}
+
+func (v runFuncs) MarkdownDescription(ctx context.Context) string {
+	// TODO(colin): look into this further
+	return v.Description(ctx)
+}
+
+func (v runFuncs) ValidateString(_ context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+	// Attributes may be optional, and thus null, which should not fail validation.
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+
+	s := req.ConfigValue.ValueString()
+
+	for _, fn := range v.funcs {
+		if err := fn(s); err != nil {
+			resp.Diagnostics.AddError("failed string validation", err.Error())
+		}
 	}
 }
 
 // Name validates the string value is a valid Chainguard name.
-type Name struct{}
+func Name() validator.String {
+	return name{}
+}
 
-func (v Name) Description(_ context.Context) string {
+type name struct{}
+
+func (v name) Description(_ context.Context) string {
 	return "Check a given name is a valid Chainguard resource name."
 }
 
-func (v Name) MarkdownDescription(ctx context.Context) string {
+func (v name) MarkdownDescription(ctx context.Context) string {
 	// TODO(colin): look into this further
 	return v.Description(ctx)
 }
 
-func (v Name) ValidateString(_ context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+func (v name) ValidateString(_ context.Context, req validator.StringRequest, resp *validator.StringResponse) {
 	// Attributes may be optional, and thus null, which should not fail validation.
 	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
 		return
@@ -102,81 +155,68 @@ func (v Name) ValidateString(_ context.Context, req validator.StringRequest, res
 	}
 }
 
-// NonEmpty validates the string value is non-empty.
-type NonEmpty struct{}
-
-func (v NonEmpty) Description(_ context.Context) string {
-	return "Check a given string is a non-empty."
-}
-
-func (v NonEmpty) MarkdownDescription(ctx context.Context) string {
-	// TODO(colin): look into this further
-	return v.Description(ctx)
-}
-
-func (v NonEmpty) ValidateString(_ context.Context, req validator.StringRequest, resp *validator.StringResponse) {
-	if req.ConfigValue.ValueString() == "" {
-		resp.Diagnostics.AddError("failed non-empty validation",
-			fmt.Sprintf("%s cannot be an empty string", req.Path.String()))
-	}
-}
-
-// OneOf validates the string value is a member of a given set of valid strings.
-type OneOf struct {
-	Valid []string
-}
-
-func (v OneOf) Description(_ context.Context) string {
-	return "Check that the given string is a member of a given set of valid strings."
-}
-
-func (v OneOf) MarkdownDescription(ctx context.Context) string {
-	// TODO(colin): look into this further
-	return v.Description(ctx)
-}
-
-func (v OneOf) ValidateString(_ context.Context, req validator.StringRequest, resp *validator.StringResponse) {
-	s := strings.TrimSpace(req.ConfigValue.ValueString())
-	for _, valid := range v.Valid {
-		// Found it!
-		if s == valid {
-			return
-		}
-	}
-	// Didn't find it :(
-	resp.Diagnostics.AddError("failed one-of validation",
-		fmt.Sprintf("%s is not a member of valid choices: %v", s, v.Valid))
-}
-
 // UIDP validates the string value is a valid Chainguard UIDP.
-type UIDP struct {
-	AllowRoot bool
+func UIDP(allowRoot bool) validator.String {
+	return uidpVal{allowRoot: allowRoot}
 }
 
-func (v UIDP) Description(_ context.Context) string {
+type uidpVal struct {
+	allowRoot bool
+}
+
+func (v uidpVal) Description(_ context.Context) string {
 	return "Check that the given string is a valid Chainguard UIDP."
 }
 
-func (v UIDP) MarkdownDescription(ctx context.Context) string {
+func (v uidpVal) MarkdownDescription(ctx context.Context) string {
 	// TODO(colin): look into this further
 	return v.Description(ctx)
 }
 
-func (v UIDP) ValidateString(_ context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+func (v uidpVal) ValidateString(_ context.Context, req validator.StringRequest, resp *validator.StringResponse) {
 	// Attributes may be optional, and thus null, which should not fail validation.
 	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
 		return
 	}
 
 	id := strings.TrimSpace(req.ConfigValue.ValueString())
-	if !uidp.Valid(id) && !(v.AllowRoot && id == "/") {
+	if !uidp.Valid(id) && !(v.allowRoot && id == "/") {
 		switch {
-		case v.AllowRoot:
+		case v.allowRoot:
 			resp.Diagnostics.AddError("failed uidp validation",
 				fmt.Sprintf("%s is not a valid UIDP (or the '/' sentinel)", id))
 		default:
 			resp.Diagnostics.AddError("failed uidp validation",
 				fmt.Sprintf("%s is not a valid UIDP", id))
 		}
+	}
+}
+
+// ValidRegExp validates the string value is a compilable regular expression.
+func ValidRegExp() validator.String {
+	return validRegExp{}
+}
+
+type validRegExp struct{}
+
+func (v validRegExp) Description(_ context.Context) string {
+	return "Check that the given string is a compilable regular expression."
+}
+
+func (v validRegExp) MarkdownDescription(ctx context.Context) string {
+	// TODO(colin): look into this further
+	return v.Description(ctx)
+}
+
+func (v validRegExp) ValidateString(_ context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+	// Attributes may be optional, and thus null, which should not fail validation.
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+
+	exp := strings.TrimSpace(req.ConfigValue.ValueString())
+	_, err := regexp.Compile(exp)
+	if err != nil {
+		resp.Diagnostics.AddError("failed regexp validation", err.Error())
 	}
 }

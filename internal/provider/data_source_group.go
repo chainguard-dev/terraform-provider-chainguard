@@ -69,7 +69,7 @@ func (d *groupDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 			"name": schema.StringAttribute{
 				Description: "The name of the group to lookup",
 				Optional:    true,
-				Validators:  []validator.String{validators.Name{}},
+				Validators:  []validator.String{validators.Name()},
 			},
 			"description": schema.StringAttribute{
 				Description: "Description of the matched IAM group",
@@ -79,7 +79,7 @@ func (d *groupDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 				Description: "The UIDP of the group in which to lookup the named group.",
 				Optional:    true,
 				// TODO(colin): default value
-				Validators: []validator.String{validators.UIDP{AllowRoot: true}},
+				Validators: []validator.String{validators.UIDP(true /* allowRoot */)},
 			},
 		},
 	}
@@ -92,6 +92,7 @@ func (d *groupDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	tflog.Info(ctx, "read group data-source request", map[string]interface{}{"config": data})
 
 	// TODO(colin): what if parent_id == /
 	uf := &common.UIDPFilter{}
@@ -111,23 +112,21 @@ func (d *groupDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 
 	switch c := len(groupList.GetItems()); {
 	case c == 0:
-		// Group was not found (either never existed, or was deleted). Remove from state.
+		// Group was not found (either never existed, or was deleted).
 		resp.Diagnostics.Append(dataNotFound("group", "" /* extra */, data))
-		resp.State.RemoveResource(ctx)
-		return
+
 	case c == 1:
 		g := groupList.GetItems()[0]
 		data.ID = types.StringValue(g.Id)
 		data.Name = types.StringValue(g.Name)
 		data.Description = types.StringValue(g.Description)
 		data.ParentID = types.StringValue(uidp.Parent(g.Id))
+
+		// Set state
+		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+
 	default:
 		tflog.Error(ctx, fmt.Sprintf("group list returned %d groups for filter %v", c, f))
 		resp.Diagnostics.Append(dataTooManyFound("group", "Please provide more context to narrow query (e.g. parent_id).", data))
-		return
 	}
-
-	// Set state
-	diags := resp.State.Set(ctx, &data)
-	resp.Diagnostics.Append(diags...)
 }
