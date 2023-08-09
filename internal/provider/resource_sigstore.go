@@ -105,15 +105,13 @@ func (r *sigstoreResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 				Description: "KMS backed Certificate Authority",
 				Attributes: map[string]schema.Attribute{
 					"key_ref": schema.StringAttribute{
-						Description: "reference to the signing key used for this CA most likely a KMS key prefixed with gcpkms://, awskms://, azurekms:// etc and the relevant resource name",
-						// This attribute is required, but only if the block is defined. See Validators.
-						Optional:      true,
+						Description:   "reference to the signing key used for this CA most likely a KMS key prefixed with gcpkms://, awskms://, azurekms:// etc and the relevant resource name",
+						Optional:      true, // This attribute is required, but only if the block is defined. See Validators.
 						PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 					},
 					"cert_chain": schema.StringAttribute{
-						Description: "root certificate and (optional) chain in PEM-encoded format",
-						// This attribute is required, but only if the block is defined. See Validators.
-						Optional:      true,
+						Description:   "root certificate and (optional) chain in PEM-encoded format",
+						Optional:      true, // This attribute is required, but only if the block is defined. See Validators.
 						PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 					},
 				},
@@ -135,9 +133,8 @@ func (r *sigstoreResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 				Description: "Google Cloud Private CA backed Certificate Authority",
 				Attributes: map[string]schema.Attribute{
 					"ref": schema.StringAttribute{
-						Description: "reference to the Google CA service in the format projects/<project>/locations/<location>/<name>",
-						// This attribute is required, but only if the block is defined. See Validators.
-						Optional:      true,
+						Description:   "reference to the Google CA service in the format projects/<project>/locations/<location>/<name>",
+						Optional:      true, // This attribute is required, but only if the block is defined. See Validators.
 						PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 					},
 				},
