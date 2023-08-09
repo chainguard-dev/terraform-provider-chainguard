@@ -13,6 +13,58 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
+func Test_isURL_ValidateString(t *testing.T) {
+	tests := map[string]struct {
+		input   string
+		https   bool
+		wantErr bool
+	}{
+		"valid http url": {
+			input:   "http://something.com",
+			https:   false,
+			wantErr: false,
+		},
+		"valid https url": {
+			input:   "https://something-else.com",
+			https:   true,
+			wantErr: false,
+		},
+		"wrong scheme": {
+			input:   "http://something.com",
+			https:   true,
+			wantErr: true,
+		},
+		"not a url": {
+			input:   "not-a-url",
+			wantErr: true,
+		},
+		"missing scheme": {
+			input:   "no-scheme.com",
+			wantErr: true,
+		},
+		"missing host": {
+			input:   "http://",
+			wantErr: true,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			req := validator.StringRequest{
+				ConfigValue: types.StringValue(test.input),
+			}
+			resp := &validator.StringResponse{}
+
+			IsURL(test.https).ValidateString(context.Background(), req, resp)
+
+			if resp.Diagnostics.HasError() != test.wantErr {
+				t.Fatalf("IsURL.ValidateString() mismatch, want=%t got=%t",
+					test.wantErr, resp.Diagnostics.HasError())
+			}
+		})
+	}
+}
+
 func TestNameValidateString(t *testing.T) {
 	tests := map[string]struct {
 		input   string

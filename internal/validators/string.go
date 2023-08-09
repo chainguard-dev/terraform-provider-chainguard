@@ -22,7 +22,7 @@ import (
 var (
 	_ validator.String = &capability{}
 	_ validator.String = &name{}
-	_ validator.String = &isHTTPS{}
+	_ validator.String = &isURL{}
 	_ validator.String = &runFuncs{}
 	_ validator.String = &uidpVal{}
 )
@@ -60,22 +60,24 @@ func (v capability) ValidateString(_ context.Context, req validator.StringReques
 	}
 }
 
-func IsHTTPS() validator.String {
-	return isHTTPS{}
+func IsURL(requireHTTPS bool) validator.String {
+	return isURL{RequireHTTPS: requireHTTPS}
 }
 
-type isHTTPS struct{}
-
-func (v isHTTPS) Description(_ context.Context) string {
-	return "Validate a string is valid URL with schema HTTPS."
+type isURL struct {
+	RequireHTTPS bool
 }
 
-func (v isHTTPS) MarkdownDescription(ctx context.Context) string {
+func (v isURL) Description(_ context.Context) string {
+	return "Check if a string is valid URL, and optionally validate the schema is HTTPS."
+}
+
+func (v isURL) MarkdownDescription(ctx context.Context) string {
 	// TODO(colin): look into this further
 	return v.Description(ctx)
 }
 
-func (v isHTTPS) ValidateString(_ context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+func (v isURL) ValidateString(_ context.Context, req validator.StringRequest, resp *validator.StringResponse) {
 	// Attributes may be optional, and thus null, which should not fail validation.
 	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
 		return
@@ -83,9 +85,14 @@ func (v isHTTPS) ValidateString(_ context.Context, req validator.StringRequest, 
 
 	raw := req.ConfigValue.ValueString()
 	u, err := url.Parse(raw)
-	if err != nil {
-		resp.Diagnostics.AddError("failed HTTPS validation", fmt.Sprintf("failed to parse %q as a URL: %s", raw, err.Error()))
-	} else if u.Scheme != "https" {
+
+	// url.Parse is fairly lenient, let's be stricter.
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		resp.Diagnostics.AddError("failed URL validation", fmt.Sprintf("failed to parse %q as a URL", raw))
+		return
+	}
+
+	if v.RequireHTTPS && u.Scheme != "https" {
 		resp.Diagnostics.AddError("failed HTTPS validation", fmt.Sprintf("URL must have HTTPS scheme, got %q", u.Scheme))
 	}
 }
