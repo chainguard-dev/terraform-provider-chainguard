@@ -97,6 +97,7 @@ func (p *Provider) Resources(_ context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		NewGroupResource,
 		NewGroupInviteResource,
+		NewPolicyResource,
 		NewRoleResource,
 		NewRolebindingResource,
 		NewSigstoreResource,
