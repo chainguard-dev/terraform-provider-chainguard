@@ -79,7 +79,7 @@ func (d *groupDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 				Description: "The UIDP of the group in which to lookup the named group.",
 				Optional:    true,
 				// TODO(colin): default value
-				Validators: []validator.String{validators.UIDP(true /* allowRoot */)},
+				Validators: []validator.String{validators.UIDP(true /* allowRootSentinel */)},
 			},
 		},
 	}
