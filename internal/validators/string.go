@@ -163,12 +163,13 @@ func (v name) ValidateString(_ context.Context, req validator.StringRequest, res
 }
 
 // UIDP validates the string value is a valid Chainguard UIDP.
-func UIDP(allowRoot bool) validator.String {
-	return uidpVal{allowRoot: allowRoot}
+// allowRootSentinel allows "/" as a valid UIDP, which for some endpoints signals root.
+func UIDP(allowRootSentinel bool) validator.String {
+	return uidpVal{allowRootSentinel: allowRootSentinel}
 }
 
 type uidpVal struct {
-	allowRoot bool
+	allowRootSentinel bool
 }
 
 func (v uidpVal) Description(_ context.Context) string {
@@ -187,9 +188,9 @@ func (v uidpVal) ValidateString(_ context.Context, req validator.StringRequest, 
 	}
 
 	id := strings.TrimSpace(req.ConfigValue.ValueString())
-	if !uidp.Valid(id) && !(v.allowRoot && id == "/") {
+	if !uidp.Valid(id) && !(v.allowRootSentinel && id == "/") {
 		switch {
-		case v.allowRoot:
+		case v.allowRootSentinel:
 			resp.Diagnostics.AddError("failed uidp validation",
 				fmt.Sprintf("%s is not a valid UIDP (or the '/' sentinel)", id))
 		default:

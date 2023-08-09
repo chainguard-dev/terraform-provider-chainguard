@@ -71,7 +71,7 @@ func (r *subscriptionResource) Schema(_ context.Context, _ resource.SchemaReques
 				Description:   "Parent IAM group of subscription. Sets the scope of the events subscribed to.",
 				Required:      true,
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
-				Validators:    []validator.String{validators.UIDP(false /* allowRoot */)},
+				Validators:    []validator.String{validators.UIDP(false /* allowRootSentinel */)},
 			},
 			"sink": schema.StringAttribute{
 				Description:   "Address to which events will be sent using the selected protocol",

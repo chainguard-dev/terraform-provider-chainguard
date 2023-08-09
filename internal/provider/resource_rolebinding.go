@@ -69,17 +69,17 @@ func (r *rolebindingResource) Schema(_ context.Context, _ resource.SchemaRequest
 				Description:   "The id of the IAM group to grant the identity access to with the role's capabilities.",
 				Required:      true,
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
-				Validators:    []validator.String{validators.UIDP(false /* allowRoot */)},
+				Validators:    []validator.String{validators.UIDP(false /* allowRootSentinel */)},
 			},
 			"identity": schema.StringAttribute{
 				Description: "The id of an identity to grant role's capabilities to at the scope of the IAM group.",
 				Required:    true,
-				Validators:  []validator.String{validators.UIDP(false /* allowRoot */)},
+				Validators:  []validator.String{validators.UIDP(false /* allowRootSentinel */)},
 			},
 			"role": schema.StringAttribute{
 				Description: "The role to grant identity at the scope of the IAM group.",
 				Required:    true,
-				Validators:  []validator.String{validators.UIDP(false /* allowRoot */)},
+				Validators:  []validator.String{validators.UIDP(false /* allowRootSentinel */)},
 			},
 		},
 	}

@@ -65,13 +65,13 @@ func (r *groupResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 			"id": schema.StringAttribute{
 				Description:   "The exact UIDP of this IAM group.",
 				Computed:      true,
-				Validators:    []validator.String{validators.UIDP(false /* allowRoot */)},
+				Validators:    []validator.String{validators.UIDP(false /* allowRootSentinel */)},
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"parent_id": schema.StringAttribute{
 				Description:   "Parent IAM group of this group. If not set, this group is assumed to be a root group.",
 				Optional:      true,
-				Validators:    []validator.String{validators.UIDP(false /* allowRoot */)},
+				Validators:    []validator.String{validators.UIDP(false /* allowRootSentinel */)},
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"name": schema.StringAttribute{

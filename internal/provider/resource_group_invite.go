@@ -73,7 +73,7 @@ func (r *groupInviteResource) Schema(_ context.Context, _ resource.SchemaRequest
 				Description:   "The Group to which this invite code grants access.",
 				Required:      true,
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
-				Validators:    []validator.String{validators.UIDP(false /* allowRoot */)},
+				Validators:    []validator.String{validators.UIDP(false /* allowRootSentinel */)},
 			},
 			"expiration": schema.StringAttribute{
 				Description:   "The RFC3339 encoded date and time at which this invitation will no longer be valid.",
@@ -87,7 +87,7 @@ func (r *groupInviteResource) Schema(_ context.Context, _ resource.SchemaRequest
 				Description:   "The role that this invite code grants.",
 				Required:      true,
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
-				Validators:    []validator.String{validators.UIDP(false /* allowRoot */)},
+				Validators:    []validator.String{validators.UIDP(false /* allowRootSentinel */)},
 			},
 			"email": schema.StringAttribute{
 				Description:   "The email address of the identity that is allowed to accept this invite code.",
