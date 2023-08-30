@@ -12,16 +12,17 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
-
 	"chainguard.dev/api/pkg/uidp"
 	"chainguard.dev/api/pkg/validation"
 	"chainguard.dev/api/proto/capabilities"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
 var (
 	_ validator.String = &capability{}
 	_ validator.String = &name{}
+	_ validator.String = &ifParentDefined{}
 	_ validator.String = &isURL{}
 	_ validator.String = &runFuncs{}
 	_ validator.String = &uidpVal{}
@@ -60,6 +61,49 @@ func (v capability) ValidateString(_ context.Context, req validator.StringReques
 	}
 }
 
+// IfParentDefined executes the given set of validators only if the parent of the attribute this
+// validator is defined for is itself defined.
+// This is useful for validating attributes within a block that is mutually exclusive with other blocks.
+func IfParentDefined(validators ...validator.String) validator.String {
+	return ifParentDefined{
+		validators: validators,
+	}
+}
+
+type ifParentDefined struct {
+	validators []validator.String
+}
+
+func (v ifParentDefined) Description(_ context.Context) string {
+	return "Execute the given validators only if this object at the given path is defined."
+}
+
+func (v ifParentDefined) MarkdownDescription(ctx context.Context) string {
+	return v.Description(ctx)
+}
+
+func (v ifParentDefined) ValidateString(ctx context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+	parent := req.Path.ParentPath()
+	o := types.Object{}
+	if diags := req.Config.GetAttribute(ctx, parent, &o); diags.HasError() {
+		resp.Diagnostics.Append(diags...)
+		return
+	}
+
+	// Don't run validators if the object at path isn't defined.
+	if o.IsNull() || o.IsUnknown() {
+		return
+	}
+
+	for _, val := range v.validators {
+		r := new(validator.StringResponse)
+		val.ValidateString(ctx, req, r)
+		resp.Diagnostics.Append(r.Diagnostics...)
+	}
+}
+
+// IsURL validates the given attribute is a valid URL of the form http[s]://host.tld
+// If requiresHTTPS is true, the scheme must be https.
 func IsURL(requireHTTPS bool) validator.String {
 	return isURL{RequireHTTPS: requireHTTPS}
 }
@@ -103,6 +147,7 @@ type runFuncs struct {
 	funcs []ValidateStringFunc
 }
 
+// RunFuncs executes the given set of ValidateStringFunc. Useful for one-off string validation functions.
 func RunFuncs(fns ...ValidateStringFunc) validator.String {
 	return runFuncs{
 		funcs: fns,
