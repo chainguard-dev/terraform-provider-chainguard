@@ -12,9 +12,9 @@ import (
 	"regexp"
 	"strings"
 
-	"chainguard.dev/api/pkg/uidp"
-	"chainguard.dev/api/pkg/validation"
-	"chainguard.dev/api/proto/capabilities"
+	"chainguard.dev/sdk/pkg/uidp"
+	"chainguard.dev/sdk/pkg/validation"
+	"chainguard.dev/sdk/proto/capabilities"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )

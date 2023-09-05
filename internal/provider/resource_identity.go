@@ -27,9 +27,9 @@ import (
 	"golang.org/x/exp/maps"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"chainguard.dev/api/pkg/uidp"
-	"chainguard.dev/api/pkg/validation"
-	iam "chainguard.dev/api/proto/platform/iam/v1"
+	"chainguard.dev/sdk/pkg/uidp"
+	"chainguard.dev/sdk/pkg/validation"
+	iam "chainguard.dev/sdk/proto/platform/iam/v1"
 	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
 )
 

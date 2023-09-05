@@ -3,10 +3,10 @@ module github.com/chainguard-dev/terraform-provider-chainguard
 go 1.20
 
 // TODO(colin): remove once api is public or package published
-replace chainguard.dev/api => ../mono/api
+replace chainguard.dev/sdk => ../mono/sdk
 
 require (
-	chainguard.dev/api v0.0.0-00010101000000-000000000000
+	chainguard.dev/sdk v0.0.0-00010101000000-000000000000
 	github.com/hashicorp/terraform-plugin-docs v0.16.0
 	github.com/hashicorp/terraform-plugin-framework v1.3.1
 	github.com/hashicorp/terraform-plugin-framework-validators v0.10.0
