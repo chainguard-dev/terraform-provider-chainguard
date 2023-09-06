@@ -19,7 +19,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"chainguard.dev/api/proto/platform/iam"
+	iam "chainguard.dev/api/proto/platform/iam/v1"
 )
 
 // Ensure the implementation satisfies the expected interfaces.

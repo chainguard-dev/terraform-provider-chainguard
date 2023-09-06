@@ -13,7 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
-	"chainguard.dev/api/proto/platform/tenant"
+	tenant "chainguard.dev/api/proto/platform/tenant/v1"
 )
 
 // Ensure the implementation satisfies the expected interfaces.
