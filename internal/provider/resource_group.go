@@ -19,8 +19,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	"chainguard.dev/api/pkg/uidp"
-	"chainguard.dev/api/proto/platform/common"
-	"chainguard.dev/api/proto/platform/iam"
+	common "chainguard.dev/api/proto/platform/common/v1"
+	iam "chainguard.dev/api/proto/platform/iam/v1"
 	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
 )
 

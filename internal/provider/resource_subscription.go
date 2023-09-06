@@ -19,7 +19,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	"chainguard.dev/api/pkg/uidp"
-	"chainguard.dev/api/proto/platform/events"
+	events "chainguard.dev/api/proto/platform/events/v1"
 	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
 )
 

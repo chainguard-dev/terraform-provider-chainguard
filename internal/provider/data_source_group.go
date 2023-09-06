@@ -17,8 +17,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	"chainguard.dev/api/pkg/uidp"
-	"chainguard.dev/api/proto/platform/common"
-	"chainguard.dev/api/proto/platform/iam"
+	common "chainguard.dev/api/proto/platform/common/v1"
+	iam "chainguard.dev/api/proto/platform/iam/v1"
 )
 
 // Ensure the implementation satisfies the expected interfaces.

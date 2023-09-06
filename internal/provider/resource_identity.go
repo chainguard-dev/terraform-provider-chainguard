@@ -29,7 +29,7 @@ import (
 
 	"chainguard.dev/api/pkg/uidp"
 	"chainguard.dev/api/pkg/validation"
-	"chainguard.dev/api/proto/platform/iam"
+	iam "chainguard.dev/api/proto/platform/iam/v1"
 	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
 )
 
