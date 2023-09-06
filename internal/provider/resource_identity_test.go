@@ -6,15 +6,30 @@ SPDX-License-Identifier: Apache-2.0
 package provider
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"math/rand"
+	"net/http"
 	"os"
 	"regexp"
 	"strings"
 	"testing"
 	"time"
 
+	gooidc "github.com/coreos/go-oidc/v3/oidc"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	sdkauth "chainguard.dev/sdk/pkg/auth"
+	"chainguard.dev/sdk/pkg/sts"
+	"chainguard.dev/sdk/pkg/uidp"
+	"chainguard.dev/sdk/proto/platform"
+	iam "chainguard.dev/sdk/proto/platform/iam/v1"
 )
 
 func pattern(s string) string {
@@ -508,11 +523,12 @@ func TestAccResourceIdentityTypeChange(t *testing.T) {
 				),
 			},
 			{
-				Config: testAccResourceIdentityServicePrincipal(group, "ted", service),
+				Config: testAccResourceIdentityServicePrincipal(group, "bill", service),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestMatchResourceAttr(`chainguard_identity.user`, `id`, childpattern),
-					resource.TestMatchResourceAttr(`chainguard_identity.user`, `name`, literal("ted")),
+					resource.TestMatchResourceAttr(`chainguard_identity.user`, `name`, literal("bill")),
 					resource.TestMatchResourceAttr(`chainguard_identity.user`, `service_principal`, literal(service)),
+					resource.TestCheckNoResourceAttr(`chainguard_identity.user`, `claim_match`),
 				),
 			},
 		},
@@ -539,6 +555,7 @@ func TestAccResourceIdentityTypeChange(t *testing.T) {
 					resource.TestMatchResourceAttr(`chainguard_identity.user`, `static.issuer`, literal(issuer)),
 					resource.TestMatchResourceAttr(`chainguard_identity.user`, `static.issuer_keys`, literal(issuerKeys)),
 					resource.TestMatchResourceAttr(`chainguard_identity.user`, `static.subject`, literal(subject)),
+					resource.TestCheckNoResourceAttr(`chainguard_identity.user`, `service_principal`),
 				),
 			},
 		},
@@ -560,12 +577,13 @@ func TestAccResourceIdentityTypeChange(t *testing.T) {
 				),
 			},
 			{
-				Config: testAccResourceIdentityLiteral(group, "ted", issuer, subject),
+				Config: testAccResourceIdentityLiteral(group, "bill", issuer, subject),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestMatchResourceAttr(`chainguard_identity.user`, `id`, childpattern),
-					resource.TestMatchResourceAttr(`chainguard_identity.user`, `name`, literal("ted")),
+					resource.TestMatchResourceAttr(`chainguard_identity.user`, `name`, literal("bill")),
 					resource.TestMatchResourceAttr(`chainguard_identity.user`, `claim_match.issuer`, literal(issuer)),
 					resource.TestMatchResourceAttr(`chainguard_identity.user`, `claim_match.subject`, literal(subject)),
+					resource.TestCheckNoResourceAttr("chainguard_identity.user", "static"),
 				),
 			},
 		},
@@ -581,456 +599,456 @@ func randString(n int) string {
 	return string(b)
 }
 
-//func TestAccResourceIdentityUsage(t *testing.T) {
-//	group := os.Getenv("TF_ACC_GROUP_ID")
-//
-//	issuer := "https://justtrustme.dev"
-//	subject := uidp.NewUID()
-//	audience := uidp.NewUID()
-//	customClaimID := "claim_" + randString(6)
-//	customClaimValue := uidp.NewUID().String() + "@chainguard.dev"
-//	resp, err := http.Get(fmt.Sprintf("%s/token?sub=%s&aud=%s&%s=%s", issuer, subject, audience, customClaimID, customClaimValue))
-//	if err != nil {
-//		t.Fatalf("NewRequest() = %v", err)
-//	}
-//	defer resp.Body.Close()
-//	b, err := io.ReadAll(resp.Body)
-//	if err != nil {
-//		t.Fatalf("ReadAll() = %v", err)
-//	}
-//
-//	var envelope struct {
-//		Token string `json:"token,omitempty"`
-//	}
-//	if err := json.Unmarshal(b, &envelope); err != nil {
-//		t.Fatalf("Unmarshal() = %v", err)
-//	}
-//
-//	// Create the exchanger for turning the "justtrustme" tokens into Chainguard
-//	// tokens.
-//	xchg := sts.New(os.Getenv("TF_ACC_ISSUER"), os.Getenv("TF_ACC_AUDIENCE"))
-//
-//	t.Run("issuer,subject,audience match", func(t *testing.T) {
-//		// Check changing claim_match to static_keys.
-//		resource.Test(t, resource.TestCase{
-//			PreCheck:          func() { testAccPreCheck(t) },
-//			ProviderFactories: providerFactories,
-//			Steps: []resource.TestStep{{
-//				Config: fmt.Sprintf(`
-//data "chainguard_roles" "owner" {
-//  name = "owner"
-//}
-//
-//resource "chainguard_identity" "user" {
-//  parent_id = %q
-//  name      = %q
-//  claim_match {
-//    issuer   = %q
-//    subject  = %q
-//	audience = %q
-//  }
-//}
-//
-//resource "chainguard_rolebinding" "binding" {
-//  identity = chainguard_identity.user.id
-//  group    = %q
-//  role     = data.chainguard_roles.owner.items[0].id
-//}
-//`, group, "test", issuer, subject, audience, group),
-//				Check: func(s *terraform.State) error {
-//					ctx := context.Background()
-//
-//					// Assume the resulting identity.
-//					rs := s.RootModule().Resources["chainguard_identity.user"]
-//					tok, err := xchg.Exchange(ctx, envelope.Token, sts.WithIdentity(rs.Primary.ID))
-//					if err != nil {
-//						return err
-//					}
-//
-//					// Use the token we get back to list groups.
-//					cred := apiauth.NewFromToken(ctx, fmt.Sprintf("Bearer %s", tok), false)
-//					clients, err := platform.NewPlatformClients(ctx, os.Getenv("TF_ACC_CONSOLE_API"), cred)
-//					if err != nil {
-//						return err
-//					}
-//					gl, err := clients.IAM().Groups().List(ctx, &iam.GroupFilter{})
-//					if err != nil {
-//						return err
-//					}
-//					if len(gl.Items) != 1 {
-//						return fmt.Errorf("got %d groups, wanted 1", len(gl.Items))
-//					}
-//					g := gl.Items[0]
-//					if g.Id != group {
-//						return fmt.Errorf("got %q, wanted %q", g.Id, group)
-//					}
-//					return nil
-//				},
-//			}, {
-//				Config: fmt.Sprintf(`
-//data "chainguard_roles" "owner" {
-//  name = "owner"
-//}
-//
-//resource "chainguard_identity" "user" {
-//  parent_id = %q
-//  name      = %q
-//  claim_match {
-//    issuer   = %q
-//    subject  = %q
-//    audience = %q
-//    claim_patterns = {
-//      %s: %q
-//    }
-//  }
-//}
-//
-//resource "chainguard_rolebinding" "binding" {
-//  identity = chainguard_identity.user.id
-//  group    = %q
-//  role     = data.chainguard_roles.owner.items[0].id
-//}
-//`, group, "test", issuer, subject, audience, customClaimID, pattern(customClaimValue), group),
-//				Check: func(s *terraform.State) error {
-//					ctx := context.Background()
-//
-//					// Assume the resulting identity.
-//					rs := s.RootModule().Resources["chainguard_identity.user"]
-//					tok, err := xchg.Exchange(ctx, envelope.Token, sts.WithIdentity(rs.Primary.ID))
-//					if err != nil {
-//						return err
-//					}
-//					verifier := gooidc.NewVerifier("https://issuer.oidc-system.svc", &gooidc.StaticKeySet{}, &gooidc.Config{
-//						/* We just want to parse the token, so skip almost all checks */
-//						SkipClientIDCheck:          true,
-//						InsecureSkipSignatureCheck: true,
-//						SkipIssuerCheck:            true,
-//					})
-//					t, err := verifier.Verify(ctx, tok)
-//					if err != nil {
-//						return err
-//					}
-//					act := struct {
-//						Act map[string]interface{}
-//					}{}
-//					if err = t.Claims(&act); err != nil {
-//						return err
-//					}
-//					if got := act.Act[customClaimID].(string); got != customClaimValue {
-//						return fmt.Errorf("got act[%q] = %q, wanted %q", customClaimID, got, customClaimValue)
-//					}
-//					// Use the token we get back to list groups.
-//					cred := apiauth.NewFromToken(ctx, fmt.Sprintf("Bearer %s", tok), false)
-//					clients, err := platform.NewPlatformClients(ctx, os.Getenv("TF_ACC_CONSOLE_API"), cred)
-//					if err != nil {
-//						return err
-//					}
-//					gl, err := clients.IAM().Groups().List(ctx, &iam.GroupFilter{})
-//					if err != nil {
-//						return err
-//					}
-//					if len(gl.Items) != 1 {
-//						return fmt.Errorf("got %d groups, wanted 1", len(gl.Items))
-//					}
-//					g := gl.Items[0]
-//					if g.Id != group {
-//						return fmt.Errorf("got %q, wanted %q", g.Id, group)
-//					}
-//					return nil
-//				},
-//			}, {
-//				Config: fmt.Sprintf(`
-//data "chainguard_roles" "owner" {
-//  name = "owner"
-//}
-//
-//resource "chainguard_identity" "user" {
-//  parent_id = %q
-//  name      = %q
-//  claim_match {
-//    issuer   = %q
-//    subject  = %q
-//	audience = %q
-//    claim_patterns = {
-//      %s: "^dlorenc@chainguard.dev$"
-//    }
-//  }
-//}
-//
-//resource "chainguard_rolebinding" "binding" {
-//  identity = chainguard_identity.user.id
-//  group    = %q
-//  role     = data.chainguard_roles.owner.items[0].id
-//}
-//`, group, "test", issuer, subject, audience, customClaimID, group),
-//				Check: func(s *terraform.State) error {
-//					ctx := context.Background()
-//
-//					// Assume the resulting identity.
-//					rs := s.RootModule().Resources["chainguard_identity.user"]
-//					_, err := xchg.Exchange(ctx, envelope.Token, sts.WithIdentity(rs.Primary.ID))
-//					if err == nil {
-//						return errors.New("expected err, saw none")
-//					}
-//					if code := status.Code(err); code != codes.PermissionDenied {
-//						return fmt.Errorf("expected error code %v, saw %v", codes.PermissionDenied, code)
-//					}
-//					expectMsg := fmt.Sprintf("invalid %q", customClaimID)
-//					if !strings.Contains(err.Error(), expectMsg) {
-//						return fmt.Errorf("expected error to contain %q, saw: %w", expectMsg, err)
-//					}
-//					return nil
-//				},
-//			}},
-//		})
-//	})
-//
-//	t.Run("claim_patterns match", func(t *testing.T) {
-//		resource.Test(t, resource.TestCase{
-//			PreCheck:          func() { testAccPreCheck(t) },
-//			ProviderFactories: providerFactories,
-//			Steps: []resource.TestStep{{
-//				Config: fmt.Sprintf(`
-//data "chainguard_roles" "owner" {
-//  name = "owner"
-//}
-//
-//resource "chainguard_identity" "user" {
-//  parent_id = %q
-//  name      = %q
-//  claim_match {
-//    issuer   = %q
-//    subject  = %q
-//    audience = %q
-//    claim_patterns = {
-//      %s: %q
-//    }
-//  }
-//}
-//
-//resource "chainguard_rolebinding" "binding" {
-//  identity = chainguard_identity.user.id
-//  group    = %q
-//  role     = data.chainguard_roles.owner.items[0].id
-//}
-//`, group, "test", issuer, subject, audience, customClaimID, pattern(customClaimValue), group),
-//				Check: func(s *terraform.State) error {
-//					ctx := context.Background()
-//
-//					// Assume the resulting identity.
-//					rs := s.RootModule().Resources["chainguard_identity.user"]
-//					tok, err := xchg.Exchange(ctx, envelope.Token, sts.WithIdentity(rs.Primary.ID))
-//					if err != nil {
-//						return err
-//					}
-//					verifier := gooidc.NewVerifier("https://issuer.oidc-system.svc", &gooidc.StaticKeySet{}, &gooidc.Config{
-//						/* We just want to parse the token, so skip almost all checks */
-//						SkipClientIDCheck:          true,
-//						InsecureSkipSignatureCheck: true,
-//						SkipIssuerCheck:            true,
-//					})
-//					t, err := verifier.Verify(ctx, tok)
-//					if err != nil {
-//						return err
-//					}
-//					act := struct {
-//						Act map[string]interface{}
-//					}{}
-//					if err = t.Claims(&act); err != nil {
-//						return err
-//					}
-//					if got := act.Act[customClaimID].(string); got != customClaimValue {
-//						return fmt.Errorf("got act[%q] = %q, wanted %q", customClaimID, got, customClaimValue)
-//					}
-//					// Use the token we get back to list groups.
-//					cred := apiauth.NewFromToken(ctx, fmt.Sprintf("Bearer %s", tok), false)
-//					clients, err := platform.NewPlatformClients(ctx, os.Getenv("TF_ACC_CONSOLE_API"), cred)
-//					if err != nil {
-//						return err
-//					}
-//					gl, err := clients.IAM().Groups().List(ctx, &iam.GroupFilter{})
-//					if err != nil {
-//						return err
-//					}
-//					if len(gl.Items) != 1 {
-//						return fmt.Errorf("got %d groups, wanted 1", len(gl.Items))
-//					}
-//					g := gl.Items[0]
-//					if g.Id != group {
-//						return fmt.Errorf("got %q, wanted %q", g.Id, group)
-//					}
-//					return nil
-//				},
-//			}, {
-//				Config: fmt.Sprintf(`
-//data "chainguard_roles" "owner" {
-//  name = "owner"
-//}
-//
-//resource "chainguard_identity" "user" {
-//  parent_id = %q
-//  name      = %q
-//  claim_match {
-//    issuer   = %q
-//    subject  = %q
-//	audience = %q
-//    claim_patterns = {
-//      %s: "^dlorenc@chainguard.dev$"
-//    }
-//  }
-//}
-//
-//resource "chainguard_rolebinding" "binding" {
-//  identity = chainguard_identity.user.id
-//  group    = %q
-//  role     = data.chainguard_roles.owner.items[0].id
-//}
-//`, group, "test", issuer, subject, audience, customClaimID, group),
-//				Check: func(s *terraform.State) error {
-//					ctx := context.Background()
-//
-//					// Assume the resulting identity.
-//					rs := s.RootModule().Resources["chainguard_identity.user"]
-//					_, err := xchg.Exchange(ctx, envelope.Token, sts.WithIdentity(rs.Primary.ID))
-//					if err == nil {
-//						return errors.New("expected err, saw none")
-//					}
-//					if code := status.Code(err); code != codes.PermissionDenied {
-//						return fmt.Errorf("expected error code %v, saw %v", codes.PermissionDenied, code)
-//					}
-//					expectMsg := fmt.Sprintf("invalid %q", customClaimID)
-//					if !strings.Contains(err.Error(), expectMsg) {
-//						return fmt.Errorf("expected error to contain %q, saw: %w", expectMsg, err)
-//					}
-//					return nil
-//				},
-//			}},
-//		})
-//	})
-//
-//	t.Run("claims match", func(t *testing.T) {
-//		resource.Test(t, resource.TestCase{
-//			PreCheck:          func() { testAccPreCheck(t) },
-//			ProviderFactories: providerFactories,
-//			Steps: []resource.TestStep{{
-//				Config: fmt.Sprintf(`
-//data "chainguard_roles" "owner" {
-//  name = "owner"
-//}
-//
-//resource "chainguard_identity" "user" {
-//  parent_id = %q
-//  name      = %q
-//  claim_match {
-//    issuer   = %q
-//    subject  = %q
-//    audience = %q
-//    claims = {
-//      %s: %q
-//    }
-//  }
-//}
-//
-//resource "chainguard_rolebinding" "binding" {
-//  identity = chainguard_identity.user.id
-//  group    = %q
-//  role     = data.chainguard_roles.owner.items[0].id
-//}
-//`, group, "test", issuer, subject, audience, customClaimID, customClaimValue, group),
-//				Check: func(s *terraform.State) error {
-//					ctx := context.Background()
-//
-//					// Assume the resulting identity.
-//					rs := s.RootModule().Resources["chainguard_identity.user"]
-//					tok, err := xchg.Exchange(ctx, envelope.Token, sts.WithIdentity(rs.Primary.ID))
-//					if err != nil {
-//						return err
-//					}
-//					verifier := gooidc.NewVerifier("https://issuer.oidc-system.svc", &gooidc.StaticKeySet{}, &gooidc.Config{
-//						/* We just want to parse the token, so skip almost all checks */
-//						SkipClientIDCheck:          true,
-//						InsecureSkipSignatureCheck: true,
-//						SkipIssuerCheck:            true,
-//					})
-//					t, err := verifier.Verify(ctx, tok)
-//					if err != nil {
-//						return err
-//					}
-//					act := struct {
-//						Act map[string]interface{}
-//					}{}
-//					if err = t.Claims(&act); err != nil {
-//						return err
-//					}
-//					if got := act.Act[customClaimID].(string); got != customClaimValue {
-//						return fmt.Errorf("got act[%q] = %q, wanted %q", customClaimID, got, customClaimValue)
-//					}
-//					// Use the token we get back to list groups.
-//					cred := apiauth.NewFromToken(ctx, fmt.Sprintf("Bearer %s", tok), false)
-//					clients, err := platform.NewPlatformClients(ctx, os.Getenv("TF_ACC_CONSOLE_API"), cred)
-//					if err != nil {
-//						return err
-//					}
-//					gl, err := clients.IAM().Groups().List(ctx, &iam.GroupFilter{})
-//					if err != nil {
-//						return err
-//					}
-//					if len(gl.Items) != 1 {
-//						return fmt.Errorf("got %d groups, wanted 1", len(gl.Items))
-//					}
-//					g := gl.Items[0]
-//					if g.Id != group {
-//						return fmt.Errorf("got %q, wanted %q", g.Id, group)
-//					}
-//					return nil
-//				},
-//			}, {
-//				Config: fmt.Sprintf(`
-//data "chainguard_roles" "owner" {
-//  name = "owner"
-//}
-//
-//resource "chainguard_identity" "user" {
-//  parent_id = %q
-//  name      = %q
-//  claim_match {
-//    issuer   = %q
-//    subject  = %q
-//	audience = %q
-//    claims = {
-//      %s: "dlorenc@chainguard.dev"
-//    }
-//  }
-//}
-//
-//resource "chainguard_rolebinding" "binding" {
-//  identity = chainguard_identity.user.id
-//  group    = %q
-//  role     = data.chainguard_roles.owner.items[0].id
-//}
-//`, group, "test", issuer, subject, audience, customClaimID, group),
-//				Check: func(s *terraform.State) error {
-//					ctx := context.Background()
-//
-//					// Assume the resulting identity.
-//					rs := s.RootModule().Resources["chainguard_identity.user"]
-//					_, err := xchg.Exchange(ctx, envelope.Token, sts.WithIdentity(rs.Primary.ID))
-//					if err == nil {
-//						return errors.New("expected err, saw none")
-//					}
-//					if code := status.Code(err); code != codes.PermissionDenied {
-//						return fmt.Errorf("expected error code %v, saw %v", codes.PermissionDenied, code)
-//					}
-//					expectMsg := fmt.Sprintf("invalid %q", customClaimID)
-//					if !strings.Contains(err.Error(), expectMsg) {
-//						return fmt.Errorf("expected error to contain %q, saw: %w", expectMsg, err)
-//					}
-//					return nil
-//				},
-//			}},
-//		})
-//	})
-//}
+func TestAccResourceIdentityUsage(t *testing.T) {
+	group := os.Getenv("TF_ACC_GROUP_ID")
+
+	issuer := "https://justtrustme.dev"
+	subject := uidp.NewUID()
+	audience := uidp.NewUID()
+	customClaimID := "claim_" + randString(6)
+	customClaimValue := uidp.NewUID().String() + "@chainguard.dev"
+	resp, err := http.Get(fmt.Sprintf("%s/token?sub=%s&aud=%s&%s=%s", issuer, subject, audience, customClaimID, customClaimValue))
+	if err != nil {
+		t.Fatalf("NewRequest() = %v", err)
+	}
+	defer resp.Body.Close()
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("ReadAll() = %v", err)
+	}
+
+	var envelope struct {
+		Token string `json:"token,omitempty"`
+	}
+	if err := json.Unmarshal(b, &envelope); err != nil {
+		t.Fatalf("Unmarshal() = %v", err)
+	}
+
+	// Create the exchanger for turning the "justtrustme" tokens into Chainguard
+	// tokens.
+	xchg := sts.New(os.Getenv("TF_ACC_ISSUER"), os.Getenv("TF_ACC_AUDIENCE"))
+
+	t.Run("issuer,subject,audience match", func(t *testing.T) {
+		// Check changing claim_match to static_keys.
+		resource.Test(t, resource.TestCase{
+			PreCheck:                 func() { testAccPreCheck(t) },
+			ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+			Steps: []resource.TestStep{{
+				Config: fmt.Sprintf(`
+data "chainguard_role" "owner" {
+ name = "owner"
+}
+
+resource "chainguard_identity" "user" {
+ parent_id = %q
+ name      = %q
+ claim_match {
+   issuer   = %q
+   subject  = %q
+	audience = %q
+ }
+}
+
+resource "chainguard_rolebinding" "binding" {
+ identity = chainguard_identity.user.id
+ group    = %q
+ role     = data.chainguard_role.owner.items[0].id
+}
+`, group, "test", issuer, subject, audience, group),
+				Check: func(s *terraform.State) error {
+					ctx := context.Background()
+
+					// Assume the resulting identity.
+					rs := s.RootModule().Resources["chainguard_identity.user"]
+					tok, err := xchg.Exchange(ctx, envelope.Token, sts.WithIdentity(rs.Primary.ID))
+					if err != nil {
+						return err
+					}
+
+					// Use the token we get back to list groups.
+					cred := sdkauth.NewFromToken(ctx, fmt.Sprintf("Bearer %s", tok), false)
+					clients, err := platform.NewPlatformClients(ctx, os.Getenv("TF_ACC_CONSOLE_API"), cred)
+					if err != nil {
+						return err
+					}
+					gl, err := clients.IAM().Groups().List(ctx, &iam.GroupFilter{})
+					if err != nil {
+						return err
+					}
+					if len(gl.Items) != 1 {
+						return fmt.Errorf("got %d groups, wanted 1", len(gl.Items))
+					}
+					g := gl.Items[0]
+					if g.Id != group {
+						return fmt.Errorf("got %q, wanted %q", g.Id, group)
+					}
+					return nil
+				},
+			}, {
+				Config: fmt.Sprintf(`
+data "chainguard_role" "owner" {
+ name = "owner"
+}
+
+resource "chainguard_identity" "user" {
+ parent_id = %q
+ name      = %q
+ claim_match {
+   issuer   = %q
+   subject  = %q
+   audience = %q
+   claim_patterns = {
+     %s: %q
+   }
+ }
+}
+
+resource "chainguard_rolebinding" "binding" {
+ identity = chainguard_identity.user.id
+ group    = %q
+ role     = data.chainguard_role.owner.items[0].id
+}
+`, group, "test", issuer, subject, audience, customClaimID, pattern(customClaimValue), group),
+				Check: func(s *terraform.State) error {
+					ctx := context.Background()
+
+					// Assume the resulting identity.
+					rs := s.RootModule().Resources["chainguard_identity.user"]
+					tok, err := xchg.Exchange(ctx, envelope.Token, sts.WithIdentity(rs.Primary.ID))
+					if err != nil {
+						return err
+					}
+					verifier := gooidc.NewVerifier("https://issuer.oidc-system.svc", &gooidc.StaticKeySet{}, &gooidc.Config{
+						/* We just want to parse the token, so skip almost all checks */
+						SkipClientIDCheck:          true,
+						InsecureSkipSignatureCheck: true,
+						SkipIssuerCheck:            true,
+					})
+					t, err := verifier.Verify(ctx, tok)
+					if err != nil {
+						return err
+					}
+					act := struct {
+						Act map[string]interface{}
+					}{}
+					if err = t.Claims(&act); err != nil {
+						return err
+					}
+					if got := act.Act[customClaimID].(string); got != customClaimValue {
+						return fmt.Errorf("got act[%q] = %q, wanted %q", customClaimID, got, customClaimValue)
+					}
+					// Use the token we get back to list groups.
+					cred := sdkauth.NewFromToken(ctx, fmt.Sprintf("Bearer %s", tok), false)
+					clients, err := platform.NewPlatformClients(ctx, os.Getenv("TF_ACC_CONSOLE_API"), cred)
+					if err != nil {
+						return err
+					}
+					gl, err := clients.IAM().Groups().List(ctx, &iam.GroupFilter{})
+					if err != nil {
+						return err
+					}
+					if len(gl.Items) != 1 {
+						return fmt.Errorf("got %d groups, wanted 1", len(gl.Items))
+					}
+					g := gl.Items[0]
+					if g.Id != group {
+						return fmt.Errorf("got %q, wanted %q", g.Id, group)
+					}
+					return nil
+				},
+			}, {
+				Config: fmt.Sprintf(`
+data "chainguard_role" "owner" {
+ name = "owner"
+}
+
+resource "chainguard_identity" "user" {
+ parent_id = %q
+ name      = %q
+ claim_match {
+   issuer   = %q
+   subject  = %q
+	audience = %q
+   claim_patterns = {
+     %s: "^dlorenc@chainguard.dev$"
+   }
+ }
+}
+
+resource "chainguard_rolebinding" "binding" {
+ identity = chainguard_identity.user.id
+ group    = %q
+ role     = data.chainguard_role.owner.items[0].id
+}
+`, group, "test", issuer, subject, audience, customClaimID, group),
+				Check: func(s *terraform.State) error {
+					ctx := context.Background()
+
+					// Assume the resulting identity.
+					rs := s.RootModule().Resources["chainguard_identity.user"]
+					_, err := xchg.Exchange(ctx, envelope.Token, sts.WithIdentity(rs.Primary.ID))
+					if err == nil {
+						return errors.New("expected err, saw none")
+					}
+					if code := status.Code(err); code != codes.PermissionDenied {
+						return fmt.Errorf("expected error code %v, saw %v", codes.PermissionDenied, code)
+					}
+					expectMsg := fmt.Sprintf("invalid %q", customClaimID)
+					if !strings.Contains(err.Error(), expectMsg) {
+						return fmt.Errorf("expected error to contain %q, saw: %w", expectMsg, err)
+					}
+					return nil
+				},
+			}},
+		})
+	})
+
+	t.Run("claim_patterns match", func(t *testing.T) {
+		resource.Test(t, resource.TestCase{
+			PreCheck:                 func() { testAccPreCheck(t) },
+			ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+			Steps: []resource.TestStep{{
+				Config: fmt.Sprintf(`
+data "chainguard_role" "owner" {
+ name = "owner"
+}
+
+resource "chainguard_identity" "user" {
+ parent_id = %q
+ name      = %q
+ claim_match {
+   issuer   = %q
+   subject  = %q
+   audience = %q
+   claim_patterns = {
+     %s: %q
+   }
+ }
+}
+
+resource "chainguard_rolebinding" "binding" {
+ identity = chainguard_identity.user.id
+ group    = %q
+ role     = data.chainguard_role.owner.items[0].id
+}
+`, group, "test", issuer, subject, audience, customClaimID, pattern(customClaimValue), group),
+				Check: func(s *terraform.State) error {
+					ctx := context.Background()
+
+					// Assume the resulting identity.
+					rs := s.RootModule().Resources["chainguard_identity.user"]
+					tok, err := xchg.Exchange(ctx, envelope.Token, sts.WithIdentity(rs.Primary.ID))
+					if err != nil {
+						return err
+					}
+					verifier := gooidc.NewVerifier("https://issuer.oidc-system.svc", &gooidc.StaticKeySet{}, &gooidc.Config{
+						/* We just want to parse the token, so skip almost all checks */
+						SkipClientIDCheck:          true,
+						InsecureSkipSignatureCheck: true,
+						SkipIssuerCheck:            true,
+					})
+					t, err := verifier.Verify(ctx, tok)
+					if err != nil {
+						return err
+					}
+					act := struct {
+						Act map[string]interface{}
+					}{}
+					if err = t.Claims(&act); err != nil {
+						return err
+					}
+					if got := act.Act[customClaimID].(string); got != customClaimValue {
+						return fmt.Errorf("got act[%q] = %q, wanted %q", customClaimID, got, customClaimValue)
+					}
+					// Use the token we get back to list groups.
+					cred := sdkauth.NewFromToken(ctx, fmt.Sprintf("Bearer %s", tok), false)
+					clients, err := platform.NewPlatformClients(ctx, os.Getenv("TF_ACC_CONSOLE_API"), cred)
+					if err != nil {
+						return err
+					}
+					gl, err := clients.IAM().Groups().List(ctx, &iam.GroupFilter{})
+					if err != nil {
+						return err
+					}
+					if len(gl.Items) != 1 {
+						return fmt.Errorf("got %d groups, wanted 1", len(gl.Items))
+					}
+					g := gl.Items[0]
+					if g.Id != group {
+						return fmt.Errorf("got %q, wanted %q", g.Id, group)
+					}
+					return nil
+				},
+			}, {
+				Config: fmt.Sprintf(`
+data "chainguard_role" "owner" {
+ name = "owner"
+}
+
+resource "chainguard_identity" "user" {
+ parent_id = %q
+ name      = %q
+ claim_match {
+   issuer   = %q
+   subject  = %q
+	audience = %q
+   claim_patterns = {
+     %s: "^dlorenc@chainguard.dev$"
+   }
+ }
+}
+
+resource "chainguard_rolebinding" "binding" {
+ identity = chainguard_identity.user.id
+ group    = %q
+ role     = data.chainguard_role.owner.items[0].id
+}
+`, group, "test", issuer, subject, audience, customClaimID, group),
+				Check: func(s *terraform.State) error {
+					ctx := context.Background()
+
+					// Assume the resulting identity.
+					rs := s.RootModule().Resources["chainguard_identity.user"]
+					_, err := xchg.Exchange(ctx, envelope.Token, sts.WithIdentity(rs.Primary.ID))
+					if err == nil {
+						return errors.New("expected err, saw none")
+					}
+					if code := status.Code(err); code != codes.PermissionDenied {
+						return fmt.Errorf("expected error code %v, saw %v", codes.PermissionDenied, code)
+					}
+					expectMsg := fmt.Sprintf("invalid %q", customClaimID)
+					if !strings.Contains(err.Error(), expectMsg) {
+						return fmt.Errorf("expected error to contain %q, saw: %w", expectMsg, err)
+					}
+					return nil
+				},
+			}},
+		})
+	})
+
+	t.Run("claims match", func(t *testing.T) {
+		resource.Test(t, resource.TestCase{
+			PreCheck:                 func() { testAccPreCheck(t) },
+			ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+			Steps: []resource.TestStep{{
+				Config: fmt.Sprintf(`
+data "chainguard_role" "owner" {
+ name = "owner"
+}
+
+resource "chainguard_identity" "user" {
+ parent_id = %q
+ name      = %q
+ claim_match {
+   issuer   = %q
+   subject  = %q
+   audience = %q
+   claims = {
+     %s: %q
+   }
+ }
+}
+
+resource "chainguard_rolebinding" "binding" {
+ identity = chainguard_identity.user.id
+ group    = %q
+ role     = data.chainguard_role.owner.items[0].id
+}
+`, group, "test", issuer, subject, audience, customClaimID, customClaimValue, group),
+				Check: func(s *terraform.State) error {
+					ctx := context.Background()
+
+					// Assume the resulting identity.
+					rs := s.RootModule().Resources["chainguard_identity.user"]
+					tok, err := xchg.Exchange(ctx, envelope.Token, sts.WithIdentity(rs.Primary.ID))
+					if err != nil {
+						return err
+					}
+					verifier := gooidc.NewVerifier("https://issuer.oidc-system.svc", &gooidc.StaticKeySet{}, &gooidc.Config{
+						/* We just want to parse the token, so skip almost all checks */
+						SkipClientIDCheck:          true,
+						InsecureSkipSignatureCheck: true,
+						SkipIssuerCheck:            true,
+					})
+					t, err := verifier.Verify(ctx, tok)
+					if err != nil {
+						return err
+					}
+					act := struct {
+						Act map[string]interface{}
+					}{}
+					if err = t.Claims(&act); err != nil {
+						return err
+					}
+					if got := act.Act[customClaimID].(string); got != customClaimValue {
+						return fmt.Errorf("got act[%q] = %q, wanted %q", customClaimID, got, customClaimValue)
+					}
+					// Use the token we get back to list groups.
+					cred := sdkauth.NewFromToken(ctx, fmt.Sprintf("Bearer %s", tok), false)
+					clients, err := platform.NewPlatformClients(ctx, os.Getenv("TF_ACC_CONSOLE_API"), cred)
+					if err != nil {
+						return err
+					}
+					gl, err := clients.IAM().Groups().List(ctx, &iam.GroupFilter{})
+					if err != nil {
+						return err
+					}
+					if len(gl.Items) != 1 {
+						return fmt.Errorf("got %d groups, wanted 1", len(gl.Items))
+					}
+					g := gl.Items[0]
+					if g.Id != group {
+						return fmt.Errorf("got %q, wanted %q", g.Id, group)
+					}
+					return nil
+				},
+			}, {
+				Config: fmt.Sprintf(`
+data "chainguard_role" "owner" {
+ name = "owner"
+}
+
+resource "chainguard_identity" "user" {
+ parent_id = %q
+ name      = %q
+ claim_match {
+   issuer   = %q
+   subject  = %q
+	audience = %q
+   claims = {
+     %s: "dlorenc@chainguard.dev"
+   }
+ }
+}
+
+resource "chainguard_rolebinding" "binding" {
+ identity = chainguard_identity.user.id
+ group    = %q
+ role     = data.chainguard_role.owner.items[0].id
+}
+`, group, "test", issuer, subject, audience, customClaimID, group),
+				Check: func(s *terraform.State) error {
+					ctx := context.Background()
+
+					// Assume the resulting identity.
+					rs := s.RootModule().Resources["chainguard_identity.user"]
+					_, err := xchg.Exchange(ctx, envelope.Token, sts.WithIdentity(rs.Primary.ID))
+					if err == nil {
+						return errors.New("expected err, saw none")
+					}
+					if code := status.Code(err); code != codes.PermissionDenied {
+						return fmt.Errorf("expected error code %v, saw %v", codes.PermissionDenied, code)
+					}
+					expectMsg := fmt.Sprintf("invalid %q", customClaimID)
+					if !strings.Contains(err.Error(), expectMsg) {
+						return fmt.Errorf("expected error to contain %q, saw: %w", expectMsg, err)
+					}
+					return nil
+				},
+			}},
+		})
+	})
+}
 
 func testAccResourceIdentityLiteral(group, name, issuer, subject string) string {
 	tmpl := `

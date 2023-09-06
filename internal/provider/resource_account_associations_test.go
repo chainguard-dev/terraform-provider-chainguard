@@ -10,7 +10,7 @@ import (
 	"os"
 	"testing"
 
-	"chainguard.dev/api/pkg/uidp"
+	"chainguard.dev/sdk/pkg/uidp"
 	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
