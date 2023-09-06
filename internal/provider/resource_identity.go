@@ -288,23 +288,27 @@ func (r *identityResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 				},
 				Attributes: map[string]schema.Attribute{
 					"issuer": schema.StringAttribute{
-						Description: "The exact issuer that must appear in tokens to assume this identity.",
-						Optional:    true, // This attribute is required, but only if the block is defined. See Validators.
+						Description:   "The exact issuer that must appear in tokens to assume this identity.",
+						Optional:      true, // This attribute is required, but only if the block is defined. See Validators.
+						PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 						Validators: []validator.String{
 							validators.IsURL(true /* requireHTTPS */),
 						},
 					},
 					"subject": schema.StringAttribute{
-						Description: "The exact subject that must appear in tokens to assume this identity.",
-						Optional:    true, // This attribute is required, but only if the block is defined. See Validators.
+						Description:   "The exact subject that must appear in tokens to assume this identity.",
+						PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
+						Optional:      true, // This attribute is required, but only if the block is defined. See Validators.
 					},
 					"issuer_keys": schema.StringAttribute{
-						Description: "The JSON web key set (JWKS) of the OIDC issuer that should be used to verify tokens.",
-						Optional:    true, // This attribute is required, but only if the block is defined. See Validators.
+						Description:   "The JSON web key set (JWKS) of the OIDC issuer that should be used to verify tokens.",
+						PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
+						Optional:      true, // This attribute is required, but only if the block is defined. See Validators.
 					},
 					"expiration": schema.StringAttribute{
-						Description: "The RFC3339 encoded date and time at which this identity will no longer be valid.",
-						Optional:    true, // This attribute is required, but only if the block is defined. See Validators.
+						Description:   "The RFC3339 encoded date and time at which this identity will no longer be valid.",
+						PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
+						Optional:      true, // This attribute is required, but only if the block is defined. See Validators.
 						Validators: []validator.String{
 							validators.RunFuncs(checkRFC3339),
 						},
@@ -729,6 +733,8 @@ func (r *identityResource) Update(ctx context.Context, req resource.UpdateReques
 		resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to update identity %q", plan.ID.ValueString())))
 		return
 	}
+
+	populateModel(ctx, &plan, ident)
 
 	tflog.Info(ctx, "after update")
 
