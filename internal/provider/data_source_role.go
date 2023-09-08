@@ -154,10 +154,9 @@ func (d *roleDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 	if len(all.GetItems()) == 0 {
 		resp.Diagnostics.Append(dataNotFound("role", "" /* extra */, data))
 		return
-	} else if d.prov.version == "acctest" {
+	} else if d.prov.testing {
 		// Set the ID on roleDataSourceModel for acceptance tests.
 		// https://developer.hashicorp.com/terraform/tutorials/providers-plugin-framework/providers-plugin-framework-acceptance-testing#implement-data-source-id-attribute
-		// TODO(colin): replace this?
 		data.ID = types.StringValue("placeholder")
 	}
 

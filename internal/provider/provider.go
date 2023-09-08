@@ -100,6 +100,7 @@ func (p *Provider) Resources(_ context.Context) []func() resource.Resource {
 		NewGroupInviteResource,
 		NewIdentityResource,
 		NewIdentityProviderResource,
+		NewImageRepoResource,
 		NewPolicyResource,
 		NewRoleResource,
 		NewRolebindingResource,
@@ -123,7 +124,7 @@ func (p *Provider) Schema(_ context.Context, _ provider.SchemaRequest, resp *pro
 
 type providerData struct {
 	client  platform.Clients
-	version string
+	testing bool
 }
 
 // Configure prepares a Chainguard API client for data sources and resources.
@@ -185,7 +186,7 @@ func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest,
 
 	d := &providerData{
 		client:  clients,
-		version: p.version,
+		testing: p.version == "acctest",
 	}
 
 	resp.DataSourceData = d

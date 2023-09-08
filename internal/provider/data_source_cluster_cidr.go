@@ -91,8 +91,7 @@ func (d *clusterCIDRDataSource) Read(ctx context.Context, req datasource.ReadReq
 
 	// Set the ID on clusterCIDRDataSourceModel for acceptance tests.
 	// https://developer.hashicorp.com/terraform/tutorials/providers-plugin-framework/providers-plugin-framework-acceptance-testing#implement-data-source-id-attribute
-	// TODO(colin): replace this?
-	if d.prov.version == "acctest" {
+	if d.prov.testing {
 		data.ID = types.StringValue("placeholder")
 	}
 	data.CIDRBlocks = blocks

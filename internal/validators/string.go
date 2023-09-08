@@ -21,11 +21,12 @@ import (
 
 var (
 	_ validator.String = &capability{}
-	_ validator.String = &name{}
 	_ validator.String = &ifParentDefined{}
 	_ validator.String = &isURL{}
-	_ validator.String = &runFuncs{}
+	_ validator.String = &name{}
 	_ validator.String = &uidpVal{}
+	_ validator.String = &validateStringFuncs{}
+	_ validator.String = &validRegExp{}
 )
 
 // Capability validates the string value is a valid role capability.
@@ -141,43 +142,6 @@ func (v isURL) ValidateString(_ context.Context, req validator.StringRequest, re
 	}
 }
 
-type ValidateStringFunc func(string) error
-
-type runFuncs struct {
-	funcs []ValidateStringFunc
-}
-
-// RunFuncs executes the given set of ValidateStringFunc. Useful for one-off string validation functions.
-func RunFuncs(fns ...ValidateStringFunc) validator.String {
-	return runFuncs{
-		funcs: fns,
-	}
-}
-
-func (v runFuncs) Description(_ context.Context) string {
-	return "Validate a string with an arbitrary number of functions that accept a string and return an error."
-}
-
-func (v runFuncs) MarkdownDescription(ctx context.Context) string {
-	// TODO(colin): look into this further
-	return v.Description(ctx)
-}
-
-func (v runFuncs) ValidateString(_ context.Context, req validator.StringRequest, resp *validator.StringResponse) {
-	// Attributes may be optional, and thus null, which should not fail validation.
-	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
-		return
-	}
-
-	s := req.ConfigValue.ValueString()
-
-	for _, fn := range v.funcs {
-		if err := fn(s); err != nil {
-			resp.Diagnostics.AddError("failed string validation", err.Error())
-		}
-	}
-}
-
 // Name validates the string value is a valid Chainguard name.
 func Name() validator.String {
 	return name{}
@@ -241,6 +205,44 @@ func (v uidpVal) ValidateString(_ context.Context, req validator.StringRequest, 
 		default:
 			resp.Diagnostics.AddError("failed uidp validation",
 				fmt.Sprintf("%s is not a valid UIDP", id))
+		}
+	}
+}
+
+type ValidateStringFunc func(string) error
+
+type validateStringFuncs struct {
+	funcs []ValidateStringFunc
+}
+
+// ValidateStringFuncs executes the given set of ValidateStringFunc. Useful for one-off string validation functions
+// that can accept a string and return an error.
+func ValidateStringFuncs(fns ...ValidateStringFunc) validator.String {
+	return validateStringFuncs{
+		funcs: fns,
+	}
+}
+
+func (v validateStringFuncs) Description(_ context.Context) string {
+	return "Validate a string with an arbitrary number of functions that accept a string and return an error."
+}
+
+func (v validateStringFuncs) MarkdownDescription(ctx context.Context) string {
+	// TODO(colin): look into this further
+	return v.Description(ctx)
+}
+
+func (v validateStringFuncs) ValidateString(_ context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+	// Attributes may be optional, and thus null, which should not fail validation.
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+
+	s := req.ConfigValue.ValueString()
+
+	for _, fn := range v.funcs {
+		if err := fn(s); err != nil {
+			resp.Diagnostics.AddError("failed string validation", err.Error())
 		}
 	}
 }
