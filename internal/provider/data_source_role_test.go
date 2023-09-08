@@ -11,7 +11,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 
-	"chainguard.dev/api/pkg/uidp"
+	"chainguard.dev/sdk/pkg/uidp"
 )
 
 const accDataRoleViewer = `

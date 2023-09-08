@@ -25,8 +25,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"chainguard.dev/api/pkg/auth"
-	"chainguard.dev/api/proto/platform"
+	"chainguard.dev/sdk/pkg/auth"
+	"chainguard.dev/sdk/proto/platform"
 )
 
 const (
