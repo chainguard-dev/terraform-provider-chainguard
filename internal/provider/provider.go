@@ -7,12 +7,9 @@ package provider
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"runtime"
-	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -20,13 +17,16 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"chainguard.dev/sdk/pkg/auth"
+	sdktoken "chainguard.dev/sdk/pkg/auth/token"
 	"chainguard.dev/sdk/proto/platform"
+	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
 )
 
 const (
@@ -117,6 +117,9 @@ func (p *Provider) Schema(_ context.Context, _ provider.SchemaRequest, resp *pro
 			"console_api": schema.StringAttribute{
 				Optional:    true,
 				Description: "URL of Chainguard console API. Ensure a valid token has been generated for this URL with `chainctl auth login`.",
+				Validators: []validator.String{
+					validators.IsURL(false /* requireHTTPS */),
+				},
 			},
 		},
 	}
@@ -131,7 +134,6 @@ type providerData struct {
 func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
 	var data ProviderModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-	// TODO(colin): data validation
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -162,7 +164,7 @@ func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest,
 	ctx = tflog.SetField(ctx, "chainguard.console_api", consoleAPI)
 	tflog.Info(ctx, "configuring chainguard client")
 
-	token, err := loadChainguardToken(audience)
+	token, err := sdktoken.Load(audience)
 	if err != nil {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("console_api"),
@@ -210,42 +212,4 @@ func errorToDiagnostic(err error, summary string) diag.Diagnostic {
 			fmt.Sprintf("%s: %s", stat.Code(), stat.Message()))
 	}
 	return d
-}
-
-// The following functions cacheFilePath, loadChainguardToken, latestChainguardToken,
-// and getChainguardTokenLocation are copied from commands.go in chainctl
-
-// expandJoin takes the Chainguard config root, expands the path, and returns
-// the expanded path joined with the passed in file name.
-// expandJoin takes the Chainguard config root, expands the path, and returns
-// the expanded path joined with the passed in file name.
-func cacheFilePath(file string) (string, error) {
-	path, err := os.UserCacheDir()
-	if err != nil {
-		return "", err
-	}
-	path = filepath.Join(path, "chainguard", file)
-	if _, err := os.Stat(filepath.Dir(path)); errors.Is(err, os.ErrNotExist) {
-		if err := os.MkdirAll(filepath.Dir(path), os.ModePerm); err != nil {
-			return "", err
-		}
-	}
-	return path, nil
-}
-
-// loadChainguardToken loads the chainguard token from the configured cache directory.
-func loadChainguardToken(audience string) ([]byte, error) {
-	path, err := getChainguardTokenLocation(audience)
-	if err != nil {
-		return nil, err
-	}
-
-	return os.ReadFile(path)
-}
-
-func getChainguardTokenLocation(audience string) (string, error) {
-	// first, try to get a token specific to the audience
-	a := strings.ReplaceAll(audience, "/", "-")
-	fp := filepath.Join(a, chainguardTokenFilename)
-	return cacheFilePath(fp)
 }
