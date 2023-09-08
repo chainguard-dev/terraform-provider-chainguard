@@ -21,8 +21,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
-	"chainguard.dev/api/pkg/validation"
-	iam "chainguard.dev/api/proto/platform/iam/v1"
+	"chainguard.dev/sdk/pkg/validation"
+	iam "chainguard.dev/sdk/proto/platform/iam/v1"
 	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
 	"github.com/hashicorp/terraform-plugin-framework-validators/objectvalidator"
 )
@@ -123,7 +123,7 @@ func (r *accountAssociationsResource) Schema(_ context.Context, _ resource.Schem
 						Description: "AWS account ID",
 						Optional:    true, // This attribute is required, but only if the block is defined. See Validators.
 						Validators: []validator.String{
-							validators.RunFuncs(validation.ValidateAWSAccount),
+							validators.ValidateStringFuncs(validation.ValidateAWSAccount),
 						},
 					},
 				},

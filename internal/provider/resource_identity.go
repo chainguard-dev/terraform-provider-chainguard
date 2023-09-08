@@ -157,7 +157,7 @@ func (r *identityResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 						Description: "AWS Account ID of AWS user",
 						Optional:    true, // This attribute is required, but only if the block is defined. See Validators.
 						Validators: []validator.String{
-							validators.RunFuncs(validation.ValidateAWSAccount),
+							validators.ValidateStringFuncs(validation.ValidateAWSAccount),
 						},
 					},
 					"aws_user_id": schema.StringAttribute{
@@ -306,7 +306,7 @@ func (r *identityResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 						Description: "The RFC3339 encoded date and time at which this identity will no longer be valid.",
 						Optional:    true, // This attribute is required, but only if the block is defined. See Validators.
 						Validators: []validator.String{
-							validators.RunFuncs(checkRFC3339),
+							validators.ValidateStringFuncs(checkRFC3339),
 						},
 					},
 				},

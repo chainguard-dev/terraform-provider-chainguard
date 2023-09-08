@@ -80,7 +80,7 @@ func (r *groupInviteResource) Schema(_ context.Context, _ resource.SchemaRequest
 				Required:      true,
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 				Validators: []validator.String{
-					validators.RunFuncs(checkRFC3339),
+					validators.ValidateStringFuncs(checkRFC3339),
 				},
 			},
 			"role": schema.StringAttribute{
