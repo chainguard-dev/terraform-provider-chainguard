@@ -100,6 +100,7 @@ func (p *Provider) Resources(_ context.Context) []func() resource.Resource {
 		NewIdentityResource,
 		NewIdentityProviderResource,
 		NewImageRepoResource,
+		NewImageTagResource,
 		NewPolicyResource,
 		NewRoleResource,
 		NewRolebindingResource,
