@@ -18,6 +18,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -275,6 +276,8 @@ func (r *identityResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 			},
 			"static": schema.SingleNestedBlock{
 				Description: "An identity that is verified by OIDC, with pre-registered verification keys.",
+				// TODO: remove once bug in Identity.Update between static <-> claim_match is resolved
+				PlanModifiers: []planmodifier.Object{objectplanmodifier.RequiresReplace()},
 				Validators: []validator.Object{
 					// This validator ensures that if this block is defined, all attributes are defined.
 					// `Required: true` couldn't be used on the attributes as this causes the undefined block to throw an error
@@ -338,20 +341,13 @@ func populateModel(ctx context.Context, model *identityResourceModel, id *iam.Id
 	staticTypes := model.Static.AttributeTypes(ctx)
 
 	if model == nil {
-		// Pre-null the relationship types with known object types to avoid
-		// "Provider produced inconsistent result after apply" errors.
-		model = &identityResourceModel{
-			//AWSIdentity:      types.ObjectNull(awsTypes),
-			//ClaimMatch:       types.ObjectNull(claimMatchTypes),
-			//Static:           types.ObjectNull(staticTypes),
-			//ServicePrincipal: types.StringNull(),
-		}
+		model = &identityResourceModel{}
 	}
 
 	model.ID = types.StringValue(id.Id)
 	model.ParentID = types.StringValue(uidp.Parent(id.Id))
 	model.Name = types.StringValue(id.Name)
-	if model.Description.IsUnknown() || model.Description.IsNull() && id.Description != "" {
+	if model.Description.IsNull() && id.Description != "" {
 		model.Description = types.StringValue(id.Description)
 	}
 
@@ -653,11 +649,8 @@ func (r *identityResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	diags := populateModel(ctx, &plan, ident)
-
 	// If any errors were encountered, exit before updating the state.
-	if diags.HasError() {
-		resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.Append(populateModel(ctx, &plan, ident)...); resp.Diagnostics.HasError() {
 		return
 	}
 
@@ -696,11 +689,9 @@ func (r *identityResource) Read(ctx context.Context, req resource.ReadRequest, r
 	}
 
 	ident := identityList.Items[0]
-	diags := populateModel(ctx, &state, ident)
 
 	// If any errors were encountered, exit before updating the state.
-	if diags.HasError() {
-		resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.Append(populateModel(ctx, &state, ident)...); resp.Diagnostics.HasError() {
 		return
 	}
 
@@ -723,14 +714,16 @@ func (r *identityResource) Update(ctx context.Context, req resource.UpdateReques
 		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to populate identity from plan"))
 		return
 	}
-	tflog.Info(ctx, fmt.Sprintf("%#v", ident))
 
 	if _, err = r.prov.client.IAM().Identities().Update(ctx, ident); err != nil {
 		resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to update identity %q", plan.ID.ValueString())))
 		return
 	}
 
-	tflog.Info(ctx, "after update")
+	resp.Diagnostics.Append(populateModel(ctx, &plan, ident)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	// Set state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)

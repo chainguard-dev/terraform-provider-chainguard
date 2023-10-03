@@ -45,8 +45,7 @@ var EnvAccVars = []string{
 	EnvAccAudience,
 	EnvAccConsoleAPI,
 	EnvAccGroupID,
-	// TODO(colin): uncomment after implementing identities
-	//EnvAccIssuer,
+	EnvAccIssuer,
 }
 
 // Ensure the implementation satisfies the expected interfaces.
