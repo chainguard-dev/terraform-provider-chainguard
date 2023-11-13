@@ -40,9 +40,7 @@ func TestAccRoleDataSource(t *testing.T) {
 						return nil
 					}),
 					resource.TestCheckResourceAttr("data.chainguard_role.viewer_test", "items.0.name", "viewer"),
-					// TODO: include the actual description here?
 					resource.TestCheckResourceAttrSet("data.chainguard_role.viewer_test", "items.0.description"),
-					// TODO: check for caps.
 				),
 			},
 		},

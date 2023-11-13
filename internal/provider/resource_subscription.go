@@ -153,18 +153,8 @@ func (r *subscriptionResource) Read(ctx context.Context, req resource.ReadReques
 }
 
 // Update updates the resource and sets the updated Terraform state on success.
-func (r *subscriptionResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	// Read the plan into the resource model.
-	var data subscriptionResourceModel
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-	tflog.Info(ctx, fmt.Sprintf("update subscriptioin request: %s", data.ID))
-
-	// TODO: do we throw an error? This should be unreachable.
-
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+func (r *subscriptionResource) Update(_ context.Context, _ resource.UpdateRequest, resp *resource.UpdateResponse) {
+	resp.Diagnostics.AddError("update unsupported", "Updating a subscription is not supported.")
 }
 
 // Delete deletes the resource and removes the Terraform state on success.

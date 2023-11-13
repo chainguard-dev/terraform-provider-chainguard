@@ -8,6 +8,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"net/mail"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -63,6 +64,8 @@ func (r *groupInviteResource) Metadata(_ context.Context, req resource.MetadataR
 func (r *groupInviteResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Description: "IAM group invite on the Chainguard platform.",
+		// NB: There is no group invite update method so all attributes must
+		// have a RequireReplace PlanModifier.
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description:   "The id of the group invite.",
@@ -93,7 +96,7 @@ func (r *groupInviteResource) Schema(_ context.Context, _ resource.SchemaRequest
 				Description:   "The email address of the identity that is allowed to accept this invite code.",
 				Optional:      true,
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
-				// TODO: Check valid email address
+				Validators:    []validator.String{validators.ValidateStringFuncs(validEmail)},
 			},
 			"code": schema.StringAttribute{
 				Description: "A time-bounded token that may be used at registration to obtain access to a prespecified group with a prespecified role.",
@@ -106,6 +109,19 @@ func (r *groupInviteResource) Schema(_ context.Context, _ resource.SchemaRequest
 			},
 		},
 	}
+}
+
+// validEmail checks if the given string is a valid email per RFC 5322,
+// with the added restriction that it must strictly be an address.
+func validEmail(email string) error {
+	e, err := mail.ParseAddress(email)
+	if err != nil {
+		return err
+	}
+	if e.Address != email {
+		return fmt.Errorf("email must only contain address: %s", email)
+	}
+	return nil
 }
 
 // ImportState imports resources by ID into the current Terraform state.
@@ -184,18 +200,8 @@ func (r *groupInviteResource) Read(ctx context.Context, req resource.ReadRequest
 }
 
 // Update updates the resource and sets the updated Terraform state on success.
-func (r *groupInviteResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	// Read the plan into the resource model.
-	var data groupInviteResourceModel
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-	tflog.Info(ctx, fmt.Sprintf("update group invite request: %s", data.ID))
-
-	// TODO: do we throw an error? This should be unreachable.
-
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+func (r *groupInviteResource) Update(_ context.Context, _ resource.UpdateRequest, resp *resource.UpdateResponse) {
+	resp.Diagnostics.AddError("update unsupported", "Updating a group invite is not supported.")
 }
 
 // Delete deletes the resource and removes the Terraform state on success.

@@ -138,7 +138,6 @@ func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest,
 		return
 	}
 
-	// TODO(colin): is this order of precedence correct?
 	// Load default values and environment variables
 	// Order of precedence for values:
 	//   1. Environment variable

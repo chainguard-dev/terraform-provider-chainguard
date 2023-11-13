@@ -81,8 +81,7 @@ func (d *roleDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, r
 			"parent": schema.StringAttribute{
 				Description: "The UIDP of the group in which to lookup the named role.",
 				Optional:    true,
-				// TODO(colin): default value
-				Validators: []validator.String{validators.UIDP(true /* allowRootSentinel */)},
+				Validators:  []validator.String{validators.UIDP(true /* allowRootSentinel */)},
 			},
 			"items": schema.ListNestedAttribute{
 				Description: "Roles matched by the data source's filter.",
