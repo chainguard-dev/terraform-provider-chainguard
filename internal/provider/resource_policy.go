@@ -18,6 +18,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
+	"chainguard.dev/sdk/pkg/policy"
 	"chainguard.dev/sdk/pkg/uidp"
 	iam "chainguard.dev/sdk/proto/platform/iam/v1"
 	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
@@ -84,10 +85,15 @@ func (r *policyResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 			"document": schema.StringAttribute{
 				Description: "Body of cluster image policy.",
 				Required:    true,
-				// TODO: validate document?
+				Validators:  []validator.String{validators.ValidateStringFuncs(validPolicyDocument)},
 			},
 		},
 	}
+}
+
+func validPolicyDocument(doc string) error {
+	_, err := policy.Validate(context.Background(), doc)
+	return err
 }
 
 // ImportState imports resources by ID into the current Terraform state.

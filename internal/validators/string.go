@@ -12,11 +12,12 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/types"
+
 	"chainguard.dev/sdk/pkg/uidp"
 	"chainguard.dev/sdk/pkg/validation"
 	"chainguard.dev/sdk/proto/capabilities"
-	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
-	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
 var (
@@ -41,7 +42,6 @@ func (v capability) Description(_ context.Context) string {
 }
 
 func (v capability) MarkdownDescription(ctx context.Context) string {
-	// TODO(colin): look into this further
 	return v.Description(ctx)
 }
 
@@ -118,7 +118,6 @@ func (v isURL) Description(_ context.Context) string {
 }
 
 func (v isURL) MarkdownDescription(ctx context.Context) string {
-	// TODO(colin): look into this further
 	return v.Description(ctx)
 }
 
@@ -154,7 +153,6 @@ func (v name) Description(_ context.Context) string {
 }
 
 func (v name) MarkdownDescription(ctx context.Context) string {
-	// TODO(colin): look into this further
 	return v.Description(ctx)
 }
 
@@ -186,7 +184,6 @@ func (v uidpVal) Description(_ context.Context) string {
 }
 
 func (v uidpVal) MarkdownDescription(ctx context.Context) string {
-	// TODO(colin): look into this further
 	return v.Description(ctx)
 }
 
@@ -228,7 +225,6 @@ func (v validateStringFuncs) Description(_ context.Context) string {
 }
 
 func (v validateStringFuncs) MarkdownDescription(ctx context.Context) string {
-	// TODO(colin): look into this further
 	return v.Description(ctx)
 }
 
@@ -259,7 +255,6 @@ func (v validRegExp) Description(_ context.Context) string {
 }
 
 func (v validRegExp) MarkdownDescription(ctx context.Context) string {
-	// TODO(colin): look into this further
 	return v.Description(ctx)
 }
 

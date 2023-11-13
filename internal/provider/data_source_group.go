@@ -9,7 +9,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -19,6 +18,7 @@ import (
 	"chainguard.dev/sdk/pkg/uidp"
 	common "chainguard.dev/sdk/proto/platform/common/v1"
 	iam "chainguard.dev/sdk/proto/platform/iam/v1"
+	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
 )
 
 // Ensure the implementation satisfies the expected interfaces.
@@ -78,8 +78,7 @@ func (d *groupDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 			"parent_id": schema.StringAttribute{
 				Description: "The UIDP of the group in which to lookup the named group.",
 				Optional:    true,
-				// TODO(colin): default value
-				Validators: []validator.String{validators.UIDP(true /* allowRootSentinel */)},
+				Validators:  []validator.String{validators.UIDP(true /* allowRootSentinel */)},
 			},
 		},
 	}
@@ -92,11 +91,10 @@ func (d *groupDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	tflog.Info(ctx, "read group data-source request", map[string]interface{}{"config": data})
+	tflog.Info(ctx, fmt.Sprintf("read group data-source request: name=%s, parent_id=%s", data.Name, data.ParentID))
 
-	// TODO(colin): what if parent_id == /
 	uf := &common.UIDPFilter{}
-	if data.ParentID.ValueString() != "" {
+	if data.ParentID.ValueString() != "" && data.ParentID.ValueString() != "/" {
 		uf.ChildrenOf = data.ParentID.ValueString()
 	}
 	f := &iam.GroupFilter{
@@ -108,6 +106,19 @@ func (d *groupDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 	if err != nil {
 		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to list groups"))
 		return
+	}
+
+	// Remove non-root groups if parent_id is root sentinel
+	if data.ParentID.ValueString() == "/" {
+		tflog.Info(ctx, "filtering by root")
+		groups := make([]*iam.Group, 0, len(groupList.GetItems()))
+		for _, g := range groupList.GetItems() {
+			if uidp.InRoot(g.Id) {
+				tflog.Info(ctx, fmt.Sprintf("found a root group: %s", g.Id))
+				groups = append(groups, g)
+			}
+		}
+		groupList.Items = groups
 	}
 
 	switch c := len(groupList.GetItems()); {
