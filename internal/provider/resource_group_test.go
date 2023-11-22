@@ -42,7 +42,7 @@ func TestAccGroupResource(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create and Read testing.
 			{
-				Config: providerConfig + testAccResourceGroup(parent, name, description),
+				Config: testAccResourceGroup(parent, name, description),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("chainguard_group.test", "parent_id", parent),
 					resource.TestCheckResourceAttr("chainguard_group.test", "name", name),
@@ -60,7 +60,7 @@ func TestAccGroupResource(t *testing.T) {
 
 			// Update and Read testing.
 			{
-				Config: providerConfig + testAccResourceGroup(parent, newName, newDescription),
+				Config: testAccResourceGroup(parent, newName, newDescription),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("chainguard_group.test", "parent_id", parent),
 					resource.TestCheckResourceAttr("chainguard_group.test", "name", newName),

@@ -652,7 +652,7 @@ resource "chainguard_identity" "user" {
 resource "chainguard_rolebinding" "binding" {
  identity = chainguard_identity.user.id
  group    = %q
- role     = data.chainguard_role.owner.items[0].id
+ role     = data.chainguard_role.owner.items.0.id
 }
 `, group, "test", issuer, subject, audience, group),
 				Check: func(s *terraform.State) error {
@@ -676,7 +676,11 @@ resource "chainguard_rolebinding" "binding" {
 						return err
 					}
 					if len(gl.Items) != 1 {
-						return fmt.Errorf("got %d groups, wanted 1", len(gl.Items))
+						ids := make([]string, 0, len(gl.Items))
+						for _, g := range gl.Items {
+							ids = append(ids, g.Id)
+						}
+						return fmt.Errorf("got %d groups, wanted 1: %s", len(gl.Items), strings.Join(ids, ", "))
 					}
 					g := gl.Items[0]
 					if g.Id != group {
@@ -706,7 +710,7 @@ resource "chainguard_identity" "user" {
 resource "chainguard_rolebinding" "binding" {
  identity = chainguard_identity.user.id
  group    = %q
- role     = data.chainguard_role.owner.items[0].id
+ role     = data.chainguard_role.owner.items.0.id
 }
 `, group, "test", issuer, subject, audience, customClaimID, pattern(customClaimValue), group),
 				Check: func(s *terraform.State) error {
@@ -748,7 +752,11 @@ resource "chainguard_rolebinding" "binding" {
 						return err
 					}
 					if len(gl.Items) != 1 {
-						return fmt.Errorf("got %d groups, wanted 1", len(gl.Items))
+						ids := make([]string, 0, len(gl.Items))
+						for _, g := range gl.Items {
+							ids = append(ids, g.Id)
+						}
+						return fmt.Errorf("got %d groups, wanted 1: %s", len(gl.Items), strings.Join(ids, ", "))
 					}
 					g := gl.Items[0]
 					if g.Id != group {
@@ -778,7 +786,7 @@ resource "chainguard_identity" "user" {
 resource "chainguard_rolebinding" "binding" {
  identity = chainguard_identity.user.id
  group    = %q
- role     = data.chainguard_role.owner.items[0].id
+ role     = data.chainguard_role.owner.items.0.id
 }
 `, group, "test", issuer, subject, audience, customClaimID, group),
 				Check: func(s *terraform.State) error {
@@ -829,7 +837,7 @@ resource "chainguard_identity" "user" {
 resource "chainguard_rolebinding" "binding" {
  identity = chainguard_identity.user.id
  group    = %q
- role     = data.chainguard_role.owner.items[0].id
+ role     = data.chainguard_role.owner.items.0.id
 }
 `, group, "test", issuer, subject, audience, customClaimID, pattern(customClaimValue), group),
 				Check: func(s *terraform.State) error {
@@ -871,7 +879,11 @@ resource "chainguard_rolebinding" "binding" {
 						return err
 					}
 					if len(gl.Items) != 1 {
-						return fmt.Errorf("got %d groups, wanted 1", len(gl.Items))
+						ids := make([]string, 0, len(gl.Items))
+						for _, g := range gl.Items {
+							ids = append(ids, g.Id)
+						}
+						return fmt.Errorf("got %d groups, wanted 1: %s", len(gl.Items), strings.Join(ids, ", "))
 					}
 					g := gl.Items[0]
 					if g.Id != group {
@@ -901,7 +913,7 @@ resource "chainguard_identity" "user" {
 resource "chainguard_rolebinding" "binding" {
  identity = chainguard_identity.user.id
  group    = %q
- role     = data.chainguard_role.owner.items[0].id
+ role     = data.chainguard_role.owner.items.0.id
 }
 `, group, "test", issuer, subject, audience, customClaimID, group),
 				Check: func(s *terraform.State) error {
@@ -952,7 +964,7 @@ resource "chainguard_identity" "user" {
 resource "chainguard_rolebinding" "binding" {
  identity = chainguard_identity.user.id
  group    = %q
- role     = data.chainguard_role.owner.items[0].id
+ role     = data.chainguard_role.owner.items.0.id
 }
 `, group, "test", issuer, subject, audience, customClaimID, customClaimValue, group),
 				Check: func(s *terraform.State) error {
@@ -994,7 +1006,11 @@ resource "chainguard_rolebinding" "binding" {
 						return err
 					}
 					if len(gl.Items) != 1 {
-						return fmt.Errorf("got %d groups, wanted 1", len(gl.Items))
+						ids := make([]string, 0, len(gl.Items))
+						for _, g := range gl.Items {
+							ids = append(ids, g.Id)
+						}
+						return fmt.Errorf("got %d groups, wanted 1: %s", len(gl.Items), strings.Join(ids, ", "))
 					}
 					g := gl.Items[0]
 					if g.Id != group {
@@ -1024,7 +1040,7 @@ resource "chainguard_identity" "user" {
 resource "chainguard_rolebinding" "binding" {
  identity = chainguard_identity.user.id
  group    = %q
- role     = data.chainguard_role.owner.items[0].id
+ role     = data.chainguard_role.owner.items.0.id
 }
 `, group, "test", issuer, subject, audience, customClaimID, group),
 				Check: func(s *terraform.State) error {
