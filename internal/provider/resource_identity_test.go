@@ -734,7 +734,7 @@ resource "chainguard_rolebinding" "binding" {
 					if err = t.Claims(&act); err != nil {
 						return err
 					}
-					if got := act.Act[customClaimID].(string); got != customClaimValue {
+					if got, ok := act.Act[customClaimID].(string); !ok || got != customClaimValue {
 						return fmt.Errorf("got act[%q] = %q, wanted %q", customClaimID, got, customClaimValue)
 					}
 					// Use the token we get back to list groups.
@@ -857,7 +857,7 @@ resource "chainguard_rolebinding" "binding" {
 					if err = t.Claims(&act); err != nil {
 						return err
 					}
-					if got := act.Act[customClaimID].(string); got != customClaimValue {
+					if got, ok := act.Act[customClaimID].(string); !ok || got != customClaimValue {
 						return fmt.Errorf("got act[%q] = %q, wanted %q", customClaimID, got, customClaimValue)
 					}
 					// Use the token we get back to list groups.
@@ -980,7 +980,7 @@ resource "chainguard_rolebinding" "binding" {
 					if err = t.Claims(&act); err != nil {
 						return err
 					}
-					if got := act.Act[customClaimID].(string); got != customClaimValue {
+					if got, ok := act.Act[customClaimID].(string); !ok || got != customClaimValue {
 						return fmt.Errorf("got act[%q] = %q, wanted %q", customClaimID, got, customClaimValue)
 					}
 					// Use the token we get back to list groups.

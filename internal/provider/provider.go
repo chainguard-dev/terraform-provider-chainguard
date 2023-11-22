@@ -30,8 +30,6 @@ import (
 )
 
 const (
-	chainguardTokenFilename = "oidc-token"
-
 	EnvChainguardConsoleAPI = "CHAINGUARD_CONSOLE_API"
 	DefaultConsoleAPI       = "https://console-api.enforce.dev"
 
@@ -84,7 +82,6 @@ func (p *Provider) Metadata(_ context.Context, _ provider.MetadataRequest, resp 
 func (p *Provider) DataSources(_ context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
 		NewClusterCIDRDataSource,
-		NewClusterDiscoveryDataSource,
 		NewGroupDataSource,
 		NewIdentityDataSource,
 		NewRoleDataSource,
@@ -104,7 +101,6 @@ func (p *Provider) Resources(_ context.Context) []func() resource.Resource {
 		NewPolicyResource,
 		NewRoleResource,
 		NewRolebindingResource,
-		NewSigstoreResource,
 		NewSubscriptionResource,
 	}
 }

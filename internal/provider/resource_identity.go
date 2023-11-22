@@ -321,7 +321,7 @@ func (r *identityResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 // For testing.
 var timeNow = time.Now
 
-// checkRFC3339 implements validators.ValidateStringFunc
+// checkRFC3339 implements validators.ValidateStringFunc.
 func checkRFC3339(raw string) error {
 	t, err := time.Parse(time.RFC3339, raw)
 	if err != nil {
@@ -336,13 +336,13 @@ func checkRFC3339(raw string) error {
 func populateModel(ctx context.Context, model *identityResourceModel, id *iam.Identity) diag.Diagnostics {
 	var allDiags diag.Diagnostics
 
-	awsTypes := model.AWSIdentity.AttributeTypes(ctx)
-	claimMatchTypes := model.ClaimMatch.AttributeTypes(ctx)
-	staticTypes := model.Static.AttributeTypes(ctx)
-
 	if model == nil {
 		model = &identityResourceModel{}
 	}
+
+	awsTypes := model.AWSIdentity.AttributeTypes(ctx)
+	claimMatchTypes := model.ClaimMatch.AttributeTypes(ctx)
+	staticTypes := model.Static.AttributeTypes(ctx)
 
 	model.ID = types.StringValue(id.Id)
 	model.ParentID = types.StringValue(uidp.Parent(id.Id))

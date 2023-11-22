@@ -93,7 +93,7 @@ func (r *imageRepoResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 	}
 }
 
-// validBundlesValue implements validators.ValidateStringFunc
+// validBundlesValue implements validators.ValidateStringFunc.
 func validBundlesValue(s string) error {
 	if err := validation.ValidateBundles([]string{s}); err != nil {
 		return fmt.Errorf("bundle item %q is invalid: %w", s, err)
@@ -223,8 +223,8 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// Delete is purposefully a no-op so we don't accidentally delete repos with terraform
-// instead, we can delete them with "chainctl img rm"
+// Delete is purposefully a no-op so we don't accidentally delete repos with terraform.
+// Instead, delete them with "chainctl img rm".
 func (r *imageRepoResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	// When not running acceptance tests, add an error to resp so Terraform does not automatically remove this resource from state.
 	// See https://developer.hashicorp.com/terraform/plugin/framework/resources/delete#caveats for details.
