@@ -14,6 +14,7 @@ terraform {
 provider "chainguard" {
   console_api = "https://console-api.enforce.dev"
 }
+
 data "chainguard_role" "viewer" {
   name   = "viewer"
   parent = "/"

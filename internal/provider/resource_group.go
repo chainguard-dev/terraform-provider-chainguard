@@ -155,7 +155,10 @@ func (r *groupResource) Read(ctx context.Context, req resource.ReadRequest, resp
 		g := groupList.GetItems()[0]
 		state.ID = types.StringValue(g.Id)
 		state.Name = types.StringValue(g.Name)
-		state.Description = types.StringValue(g.Description)
+		// Only update the state description if it started as non-null or we receive a description.
+		if !(state.Description.IsNull() && g.Description == "") {
+			state.Description = types.StringValue(g.Description)
+		}
 		state.ParentID = types.StringValue(uidp.Parent(g.Id))
 
 		// Set state
@@ -190,7 +193,9 @@ func (r *groupResource) Update(ctx context.Context, req resource.UpdateRequest, 
 	// Set state.
 	data.ID = types.StringValue(g.Id)
 	data.Name = types.StringValue(g.GetName())
-	data.Description = types.StringValue(g.GetDescription())
+	if !(data.Description.IsNull() && g.Description != "") {
+		data.Description = types.StringValue(g.GetDescription())
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 

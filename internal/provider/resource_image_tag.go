@@ -215,7 +215,7 @@ func (r *imageTagResource) Update(ctx context.Context, req resource.UpdateReques
 }
 
 // Delete is purposefully a no-op so tags aren't accidentally deleted with terraform.
-// Instead, delete them with normal OCI calls (e.g. "crane delete")
+// Instead, delete them with normal OCI calls (e.g. "crane delete").
 func (r *imageTagResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	// When not running acceptance tests, add an error to resp so Terraform does not automatically remove this resource from state.
 	// See https://developer.hashicorp.com/terraform/plugin/framework/resources/delete#caveats for details.

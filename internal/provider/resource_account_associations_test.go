@@ -8,6 +8,7 @@ package provider
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"testing"
 
 	"chainguard.dev/sdk/pkg/uidp"
@@ -25,15 +26,17 @@ func TestAccResourceAccountAssociations(t *testing.T) {
 	newGoogleProjectNumber := acctest.RandString(10)
 
 	group := os.Getenv("TF_ACC_GROUP_ID")
+	subgroup := acctest.RandString(10)
+	childpattern := regexp.MustCompile(fmt.Sprintf(`%s\/[a-z0-9]{16}`, group))
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccResourceAccountAssociations("example", group, awsAccount, googleProjectID, googleProjectNumber),
+				Config: testAccResourceAccountAssociations("example", group, subgroup, awsAccount, googleProjectID, googleProjectNumber),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr(`chainguard_account_associations.example`, `group`, group),
+					resource.TestMatchResourceAttr(`chainguard_account_associations.example`, `group`, childpattern),
 					resource.TestCheckResourceAttr(`chainguard_account_associations.example`, `amazon.account`, awsAccount),
 					resource.TestCheckResourceAttr(`chainguard_account_associations.example`, `google.project_id`, googleProjectID),
 					resource.TestCheckResourceAttr(`chainguard_account_associations.example`, `google.project_number`, googleProjectNumber),
@@ -61,9 +64,9 @@ func TestAccResourceAccountAssociations(t *testing.T) {
 
 			// Update and Read testing.
 			{
-				Config: testAccResourceAccountAssociations("example", group, newAwsAccount, newGoogleProjectID, newGoogleProjectNumber),
+				Config: testAccResourceAccountAssociations("example", group, subgroup, newAwsAccount, newGoogleProjectID, newGoogleProjectNumber),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr(`chainguard_account_associations.example`, `group`, group),
+					resource.TestMatchResourceAttr(`chainguard_account_associations.example`, `group`, childpattern),
 					resource.TestCheckResourceAttr(`chainguard_account_associations.example`, `amazon.account`, newAwsAccount),
 					resource.TestCheckResourceAttr(`chainguard_account_associations.example`, `google.project_id`, newGoogleProjectID),
 					resource.TestCheckResourceAttr(`chainguard_account_associations.example`, `google.project_number`, newGoogleProjectNumber),
@@ -91,15 +94,17 @@ func TestAccResourceAccountAssociationsProviderChange(t *testing.T) {
 	googleProjectNumber := acctest.RandString(10)
 
 	group := os.Getenv("TF_ACC_GROUP_ID")
+	subgroup := acctest.RandString(10)
+	childpattern := regexp.MustCompile(fmt.Sprintf(`%s\/[a-z0-9]{16}`, group))
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccResourceAWSAccountAssociation("example", group, awsAccount),
+				Config: testAccResourceAWSAccountAssociation("example", group, subgroup, awsAccount),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr(`chainguard_account_associations.example`, `group`, group),
+					resource.TestMatchResourceAttr(`chainguard_account_associations.example`, `group`, childpattern),
 					resource.TestCheckResourceAttr(`chainguard_account_associations.example`, `amazon.account`, awsAccount),
 					resource.TestCheckNoResourceAttr(`chainguard_account_associations.example`, `google`),
 					resource.TestCheckNoResourceAttr(`chainguard_account_associations.example`, `chainguard`),
@@ -115,9 +120,9 @@ func TestAccResourceAccountAssociationsProviderChange(t *testing.T) {
 
 			// Update and Read testing.
 			{
-				Config: testAccResourceGCPAccountAssociation("example", group, googleProjectID, googleProjectNumber),
+				Config: testAccResourceGCPAccountAssociation("example", group, subgroup, googleProjectID, googleProjectNumber),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr(`chainguard_account_associations.example`, `group`, group),
+					resource.TestMatchResourceAttr(`chainguard_account_associations.example`, `group`, childpattern),
 					resource.TestCheckResourceAttr(`chainguard_account_associations.example`, `google.project_id`, googleProjectID),
 					resource.TestCheckResourceAttr(`chainguard_account_associations.example`, `google.project_number`, googleProjectNumber),
 					resource.TestCheckNoResourceAttr(`chainguard_account_associations.example`, `amazon`),
@@ -128,23 +133,28 @@ func TestAccResourceAccountAssociationsProviderChange(t *testing.T) {
 	})
 }
 
-func testAccResourceAccountAssociations(name, group, awsAccount, googleProjectID, googleProjectNumber string) string {
+func testAccResourceAccountAssociations(name, group, subgroup, awsAccount, googleProjectID, googleProjectNumber string) string {
 	const tmpl = `
+resource "chainguard_group" "subgroup" {
+  parent_id = %q
+  name = %q
+}
+
 resource "chainguard_identity" "ingester" {
-  parent_id         = %q
+  parent_id         = chainguard_group.subgroup.id
   name              = "ingester"
   service_principal = "INGESTER"
 }
 
 resource "chainguard_identity" "cosigned" {
-  parent_id         = %q
+  parent_id         = chainguard_group.subgroup.id
   name              = "cosigned"
   service_principal = "COSIGNED"
 }
 
 resource "chainguard_account_associations" "example" {
   name = %q
-  group = %q
+  group = chainguard_group.subgroup.id
 
   amazon {
     account = %q
@@ -163,14 +173,19 @@ resource "chainguard_account_associations" "example" {
   }
 }
 `
-	return fmt.Sprintf(tmpl, group, group, name, group, awsAccount, googleProjectID, googleProjectNumber)
+	return fmt.Sprintf(tmpl, group, subgroup, name, awsAccount, googleProjectID, googleProjectNumber)
 }
 
-func testAccResourceGCPAccountAssociation(name, group, googleProjectID, googleProjectNumber string) string {
+func testAccResourceGCPAccountAssociation(name, group, subgroup, googleProjectID, googleProjectNumber string) string {
 	const tmpl = `
+resource "chainguard_group" "subgroup" {
+  parent_id = %q
+  name = %q
+}
+
 resource "chainguard_account_associations" "example" {
   name = %q
-  group = %q
+  group = chainguard_group.subgroup.id
 
   google {
     project_id     = %q
@@ -178,19 +193,24 @@ resource "chainguard_account_associations" "example" {
   }
 }
 `
-	return fmt.Sprintf(tmpl, name, group, googleProjectID, googleProjectNumber)
+	return fmt.Sprintf(tmpl, group, subgroup, name, googleProjectID, googleProjectNumber)
 }
 
-func testAccResourceAWSAccountAssociation(name, group, awsAccount string) string {
+func testAccResourceAWSAccountAssociation(name, group, subgroup, awsAccount string) string {
 	const tmpl = `
+resource "chainguard_group" "subgroup" {
+  parent_id = %q
+  name = %q
+}
+
 resource "chainguard_account_associations" "example" {
   name = %q
-  group = %q
+  group = chainguard_group.subgroup.id
 
   amazon {
     account = %q
   }
 }
 `
-	return fmt.Sprintf(tmpl, name, group, awsAccount)
+	return fmt.Sprintf(tmpl, group, subgroup, name, awsAccount)
 }

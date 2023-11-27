@@ -11,18 +11,22 @@ import (
 	"regexp"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
 func TestAccRolebindingResource(t *testing.T) {
 	group := os.Getenv(EnvAccGroupID)
+	subgroup := acctest.RandString(10)
+
 	childpattern := regexp.MustCompile(fmt.Sprintf(`%s\/[a-z0-9]{16}`, group))
+	grandchildpattern := regexp.MustCompile(fmt.Sprintf(`%s\/[a-z0-9]{16}\/[a-z0-9]{16}`, group))
 	rootpattern := regexp.MustCompile(`[a-z0-9]{40}`)
 
-	role := testAccResourceRole(group, "role", "", []string{"groups.list"})
+	role := testAccResourceRole(group, subgroup, "role", "", []string{"groups.list"})
 	viewer := accDataRoleViewer
-	customRoleBinding := testAccResourceRoleBinding(group, "chainguard_role.test.id")
-	viewerRoleBinding := testAccResourceRoleBinding(group, "data.chainguard_role.viewer_test.items.0.id")
+	customRoleBinding := testAccResourceRoleBinding(group, "chainguard_group.subgroup.id", "chainguard_role.test.id")
+	viewerRoleBinding := testAccResourceRoleBinding(group, "chainguard_group.subgroup.id", "data.chainguard_role.viewer_test.items.0.id")
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -32,10 +36,10 @@ func TestAccRolebindingResource(t *testing.T) {
 			{
 				Config: role + customRoleBinding,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("chainguard_rolebinding.test", "group", group),
+					resource.TestMatchResourceAttr("chainguard_rolebinding.test", "group", childpattern),
 					resource.TestMatchResourceAttr("chainguard_rolebinding.test", "identity", childpattern),
 					resource.TestMatchResourceAttr("chainguard_rolebinding.test", "role", childpattern),
-					resource.TestMatchResourceAttr("chainguard_rolebinding.test", "id", childpattern),
+					resource.TestMatchResourceAttr("chainguard_rolebinding.test", "id", grandchildpattern),
 				),
 			},
 
@@ -50,10 +54,10 @@ func TestAccRolebindingResource(t *testing.T) {
 			{
 				Config: viewer + role + viewerRoleBinding,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("chainguard_rolebinding.test", "group", group),
+					resource.TestMatchResourceAttr("chainguard_rolebinding.test", "group", childpattern),
 					resource.TestMatchResourceAttr("chainguard_rolebinding.test", "identity", childpattern),
 					resource.TestMatchResourceAttr("chainguard_rolebinding.test", "role", rootpattern),
-					resource.TestMatchResourceAttr("chainguard_rolebinding.test", "id", childpattern),
+					resource.TestMatchResourceAttr("chainguard_rolebinding.test", "id", grandchildpattern),
 				),
 			},
 
@@ -63,7 +67,7 @@ func TestAccRolebindingResource(t *testing.T) {
 
 }
 
-func testAccResourceRoleBinding(groupID, roleID string) string {
+func testAccResourceRoleBinding(groupID, subgroup, roleID string) string {
 	tmpl := `
 resource "chainguard_identity" "user" {
   parent_id = %q
@@ -76,9 +80,9 @@ resource "chainguard_identity" "user" {
 
 resource "chainguard_rolebinding" "test" {
  identity = chainguard_identity.user.id
- group    = %q
+ group    = %s
  role     = %s
 }
 `
-	return fmt.Sprintf(tmpl, groupID, groupID, roleID)
+	return fmt.Sprintf(tmpl, groupID, subgroup, roleID)
 }
