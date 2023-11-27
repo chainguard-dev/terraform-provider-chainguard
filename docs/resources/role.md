@@ -30,7 +30,7 @@ resource "chainguard_role" "my-role" {
 
 ### Required
 
-- `capabilities` (List of String) The list of capabilities to grant this role
+- `capabilities` (Set of String) The list of capabilities to grant this role
 - `name` (String) The name of this role.
 - `parent_id` (String) The group containing this role
 
