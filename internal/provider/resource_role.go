@@ -9,9 +9,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
-	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
-
+	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -24,6 +22,7 @@ import (
 
 	"chainguard.dev/sdk/pkg/uidp"
 	iam "chainguard.dev/sdk/proto/platform/iam/v1"
+	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
 )
 
 // Ensure the implementation satisfies the expected interfaces.
@@ -48,7 +47,7 @@ type roleResourceModel struct {
 	Name         types.String `tfsdk:"name"`
 	Description  types.String `tfsdk:"description"`
 	ParentID     types.String `tfsdk:"parent_id"`
-	Capabilities types.List   `tfsdk:"capabilities"`
+	Capabilities types.Set    `tfsdk:"capabilities"`
 }
 
 func (r *roleResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -83,13 +82,13 @@ func (r *roleResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 				Required:      true,
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
-			"capabilities": schema.ListAttribute{
+			"capabilities": schema.SetAttribute{
 				Description: "The list of capabilities to grant this role",
 				Required:    true,
 				ElementType: types.StringType,
-				Validators: []validator.List{
-					listvalidator.SizeAtLeast(1),
-					listvalidator.ValueStringsAre(validators.Capability()),
+				Validators: []validator.Set{
+					setvalidator.SizeAtLeast(1),
+					setvalidator.ValueStringsAre(validators.Capability()),
 				},
 			},
 		},
@@ -169,7 +168,7 @@ func (r *roleResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		state.ParentID = types.StringValue(uidp.Parent(r.Id))
 
 		var diags diag.Diagnostics
-		state.Capabilities, diags = types.ListValueFrom(ctx, types.StringType, r.Capabilities)
+		state.Capabilities, diags = types.SetValueFrom(ctx, types.StringType, r.Capabilities)
 		if diags.HasError() {
 			resp.Diagnostics.Append(diags...)
 			return
@@ -216,7 +215,7 @@ func (r *roleResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	data.ID = types.StringValue(role.Id)
 	data.Name = types.StringValue(role.GetName())
 	data.Description = types.StringValue(role.GetDescription())
-	data.Capabilities, diags = types.ListValueFrom(ctx, types.StringType, role.Capabilities)
+	data.Capabilities, diags = types.SetValueFrom(ctx, types.StringType, role.Capabilities)
 	if diags.HasError() {
 		resp.Diagnostics.Append(diags...)
 		return
