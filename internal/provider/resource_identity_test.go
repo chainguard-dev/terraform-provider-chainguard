@@ -25,11 +25,11 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	sdkauth "chainguard.dev/sdk/pkg/auth"
-	"chainguard.dev/sdk/pkg/sts"
-	"chainguard.dev/sdk/pkg/uidp"
+	sdkauth "chainguard.dev/sdk/auth"
 	"chainguard.dev/sdk/proto/platform"
 	iam "chainguard.dev/sdk/proto/platform/iam/v1"
+	"chainguard.dev/sdk/sts"
+	"chainguard.dev/sdk/uidp"
 )
 
 func pattern(s string) string {
