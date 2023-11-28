@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -24,6 +25,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"chainguard.dev/sdk/pkg/auth"
+	"chainguard.dev/sdk/pkg/auth/login"
 	sdktoken "chainguard.dev/sdk/pkg/auth/token"
 	"chainguard.dev/sdk/proto/platform"
 	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
@@ -69,7 +71,8 @@ type Provider struct {
 }
 
 type ProviderModel struct {
-	ConsoleAPI types.String `tfsdk:"console_api"`
+	ConsoleAPI       types.String `tfsdk:"console_api"`
+	IdentityProvider types.String `tfsdk:"identity_provider"`
 }
 
 // Metadata returns the provider type name.
@@ -117,6 +120,10 @@ func (p *Provider) Schema(_ context.Context, _ provider.SchemaRequest, resp *pro
 					validators.IsURL(false /* requireHTTPS */),
 				},
 			},
+			"identity_provider": schema.StringAttribute{
+				Optional:    true,
+				Description: "Identity provider to use for authentication.",
+			},
 		},
 	}
 }
@@ -159,14 +166,29 @@ func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest,
 	ctx = tflog.SetField(ctx, "chainguard.console_api", consoleAPI)
 	tflog.Info(ctx, "configuring chainguard client")
 
+	if sdktoken.RemainingLife(audience, time.Minute) < 0 {
+		tokstr, err := login.Login(ctx,
+			login.WithAudience([]string{audience}),
+			login.WithIdentityProvider(data.IdentityProvider.ValueString()),
+		)
+		if err != nil {
+			resp.Diagnostics.AddError("Error getting token", err.Error())
+			return
+		}
+		tflog.Info(ctx, "logged in to get token")
+		if err := sdktoken.Save([]byte(tokstr), audience); err != nil {
+			resp.Diagnostics.AddError("Error saving token", err.Error())
+			return
+		}
+	}
+
 	token, err := sdktoken.Load(audience)
 	if err != nil {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("console_api"),
 			"failed to retrieve Chainguard token",
 			fmt.Sprintf("Either no token was found for audience %q or there was an error reading it.\n"+
-				"Please check the value of \"chainguard.console_api\" in your Terraform provider configuration, "+
-				"and log in to the Chainguard platform with `chainctl auth login` to generate a valid token.", audience))
+				"Please check the value of \"console_api\" in your Terraform provider configuration.", audience))
 		return
 	}
 
