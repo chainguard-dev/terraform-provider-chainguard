@@ -37,9 +37,7 @@ provider "chainguard" {
 Optional:
 
 - `auth0_connection` (String) Auth0 social connection to use by default for OIDC token. Must be one of: google-oauth2, gitlab, github
-- `client_id` (String) ClientID of oauth2 provider to authenticate with for OIDC token.
 - `enabled` (Boolean) Enabled automatic login when Chainguard token is expired.
 - `identity_id` (String) UIDP of the identity to assume when exchanging OIDC token for Chainguard token.
 - `identity_provider_id` (String) UIDP of the identity provider authenticate with for OIDC token.
-- `invite_code` (String) Invite code to register with an existing group.
 - `organization_name` (String) Verified organization name for determining identity provider to obtain OIDC token.
