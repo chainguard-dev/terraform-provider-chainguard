@@ -1,14 +1,14 @@
 # Terraform Provider Chainguard
 
 The Chainguard Terraform provider manages Chainguard resources (IAM groups,
-clusters, policy etc) using Terraform.
+clusters, policy, etc) using Terraform.
 
 The provider is written to be compatible with the [Terraform Plugin Framework](https://developer.hashicorp.com/terraform/tutorials/providers-plugin-framework/providers-plugin-framework-provider)
 
 ## Requirements
 
 -	[Terraform](https://www.terraform.io/downloads.html) >= 0.13.x
--	[Go](https://golang.org/doc/install) >= 1.17
+-	[Go](https://golang.org/doc/install) >= 1.21
 
 ## Building The Provider
 
@@ -46,9 +46,7 @@ the following to `~/.terraformrc` (or `%APPDATA/terraform.rc` on Windows):
 # ~/.terraformrc
 provider_installation {
   network_mirror {
-    url = "https://storage.googleapis.com/us.artifacts.prod-enforce-fabc.appspot.com/terraform-provider/"
-    # For staging, uncomment below
-    # url = "https://storage.googleapis.com/us.artifacts.staging-enforce-cd1e.appspot.com/terraform-provider/"
+    url = "https://dl.enforce.dev/terraform-provider/"
 
     include = [
       "registry.terraform.io/chainguard-dev/chainguard",
@@ -63,9 +61,7 @@ provider_installation {
 }
 ```
 
-Once configured to use the mirror, configure the provider to use your
-environment of choice by setting the `console_api` parameter (defaults to
-`https://console-api.enforce.dev`).
+Once configured to use the mirror, use and configure the provider in your Terraform config:
 
 ```terraform
 terraform {
@@ -76,11 +72,7 @@ terraform {
   }
 }
 
-provider "chainguard" {
-  console_api = "https://console-api.enforce.dev"
-  # For staging, uncomment below
-  # console_api = "https://console-api.chainops.dev"
-}
+provider "chainguard" {}
 ```
 
 Detailed documentation on all available resources can be found under
