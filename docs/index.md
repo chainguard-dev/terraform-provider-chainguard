@@ -29,3 +29,4 @@ provider "chainguard" {
 ### Optional
 
 - `console_api` (String) URL of Chainguard console API. Ensure a valid token has been generated for this URL with `chainctl auth login`.
+- `identity_provider` (String) Identity provider to use for authentication.
