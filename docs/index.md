@@ -29,3 +29,17 @@ provider "chainguard" {
 ### Optional
 
 - `console_api` (String) URL of Chainguard console API. Ensure a valid token has been generated for this URL with `chainctl auth login`.
+- `login_options` (Block, Optional) Options to configure automatic login when Chainguard token is expired. (see [below for nested schema](#nestedblock--login_options))
+
+<a id="nestedblock--login_options"></a>
+### Nested Schema for `login_options`
+
+Optional:
+
+- `auth0_connection` (String) Auth0 social connection to use by default for OIDC token. Must be one of: google-oauth2, gitlab, github
+- `client_id` (String) ClientID of oauth2 provider to authenticate with for OIDC token.
+- `enabled` (Boolean) Enabled automatic login when Chainguard token is expired.
+- `identity_id` (String) UIDP of the identity to assume when exchanging OIDC token for Chainguard token.
+- `identity_provider_id` (String) UIDP of the identity provider authenticate with for OIDC token.
+- `invite_code` (String) Invite code to register with an existing group.
+- `organization_name` (String) Verified organization name for determining identity provider to obtain OIDC token.

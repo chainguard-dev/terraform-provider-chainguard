@@ -28,7 +28,7 @@ func TestAccRoleDataSource(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Read testing
 			{
-				Config: providerConfig + accDataRoleViewer,
+				Config: accDataRoleViewer,
 				Check: resource.ComposeAggregateTestCheckFunc(
 					// Verify number of roles returned is 1.
 					resource.TestCheckResourceAttr("data.chainguard_role.viewer_test", "items.#", "1"),
