@@ -27,9 +27,10 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"chainguard.dev/sdk/pkg/auth"
-	"chainguard.dev/sdk/pkg/auth/login"
 	sdktoken "chainguard.dev/sdk/pkg/auth/token"
+	"chainguard.dev/sdk/auth"
+	"chainguard.dev/sdk/auth/login"
+	sdktoken "chainguard.dev/sdk/auth/token"
 	"chainguard.dev/sdk/proto/platform"
 	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
 )
