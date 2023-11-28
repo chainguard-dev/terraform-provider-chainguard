@@ -10,7 +10,10 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strings"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -19,11 +22,14 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	sdktoken "chainguard.dev/sdk/pkg/auth/token"
 	"chainguard.dev/sdk/auth"
+	"chainguard.dev/sdk/auth/login"
 	sdktoken "chainguard.dev/sdk/auth/token"
 	"chainguard.dev/sdk/proto/platform"
 	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
@@ -70,6 +76,18 @@ type Provider struct {
 
 type ProviderModel struct {
 	ConsoleAPI types.String `tfsdk:"console_api"`
+
+	LoginOptions types.Object `tfsdk:"login_options"`
+}
+
+type loginModel struct {
+	Enabled          types.Bool   `tfsdk:"enabled"`
+	ClientID         types.String `tfsdk:"client_id"`
+	Identity         types.String `tfsdk:"identity_id"`
+	IdentityProvider types.String `tfsdk:"identity_provider_id"`
+	InviteCode       types.String `tfsdk:"invite_code"`
+	Auth0Connection  types.String `tfsdk:"auth0_connection"`
+	OrgName          types.String `tfsdk:"organization_name"`
 }
 
 // Metadata returns the provider type name.
@@ -107,6 +125,8 @@ func (p *Provider) Resources(_ context.Context) []func() resource.Resource {
 
 // Schema defines the provider-level schema for configuration data.
 func (p *Provider) Schema(_ context.Context, _ provider.SchemaRequest, resp *provider.SchemaResponse) {
+	auth0Connections := []string{"google-oauth2", "gitlab", "github"}
+
 	resp.Schema = schema.Schema{
 		Description: "Manage resources on the Chainguard platform.",
 		Attributes: map[string]schema.Attribute{
@@ -115,6 +135,45 @@ func (p *Provider) Schema(_ context.Context, _ provider.SchemaRequest, resp *pro
 				Description: "URL of Chainguard console API. Ensure a valid token has been generated for this URL with `chainctl auth login`.",
 				Validators: []validator.String{
 					validators.IsURL(false /* requireHTTPS */),
+				},
+			},
+		},
+		Blocks: map[string]schema.Block{
+			"login_options": schema.SingleNestedBlock{
+				Description: "Options to configure automatic login when Chainguard token is expired.",
+				Attributes: map[string]schema.Attribute{
+					"enabled": schema.BoolAttribute{
+						Description: "Enabled automatic login when Chainguard token is expired.",
+						Optional:    true,
+					},
+					"client_id": schema.StringAttribute{
+						Description: "ClientID of oauth2 provider to authenticate with for OIDC token.",
+						Optional:    true,
+					},
+					"identity_id": schema.StringAttribute{
+						Description: "UIDP of the identity to assume when exchanging OIDC token for Chainguard token.",
+						Optional:    true,
+						Validators:  []validator.String{validators.UIDP(false /* allowRootSentinel */)},
+					},
+					"identity_provider_id": schema.StringAttribute{
+						Description: "UIDP of the identity provider authenticate with for OIDC token.",
+						Optional:    true,
+						Validators:  []validator.String{validators.UIDP(false /* allowRootSentinel */)},
+					},
+					"invite_code": schema.StringAttribute{
+						Description: "Invite code to register with an existing group.",
+						Optional:    true,
+					},
+					"auth0_connection": schema.StringAttribute{
+						Description: fmt.Sprintf("Auth0 social connection to use by default for OIDC token. Must be one of: %s", strings.Join(auth0Connections, ", ")),
+						Optional:    true,
+						Validators:  []validator.String{stringvalidator.OneOf(auth0Connections...)},
+					},
+					"organization_name": schema.StringAttribute{
+						Description: "Verified organization name for determining identity provider to obtain OIDC token.",
+						Optional:    true,
+						// TODO(colin): validate with OrgCheck()
+					},
 				},
 			},
 		},
@@ -140,15 +199,9 @@ func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest,
 	//   2. Value from config
 	//   3. Default value
 
-	consoleAPI := DefaultConsoleAPI
-	if data.ConsoleAPI.ValueString() != "" {
-		consoleAPI = data.ConsoleAPI.ValueString()
-	}
-	if v, ok := os.LookupEnv(EnvChainguardConsoleAPI); ok {
-		consoleAPI = v
-	}
-
+	consoleAPI := firstNonEmpty(os.Getenv(EnvChainguardConsoleAPI), data.ConsoleAPI.ValueString(), DefaultConsoleAPI)
 	audience := consoleAPI
+
 	if p.version == "acctest" {
 		// In acceptance tests override the console api and audience from env var
 		tflog.Info(ctx, "** Running Acceptance Tests **")
@@ -158,6 +211,43 @@ func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest,
 
 	ctx = tflog.SetField(ctx, "chainguard.console_api", consoleAPI)
 	tflog.Info(ctx, "configuring chainguard client")
+
+	// If token is expired or not found, login and save a new one.
+	var lm loginModel
+	if !data.LoginOptions.IsNull() {
+		if resp.Diagnostics.Append(data.LoginOptions.As(ctx, &lm, basetypes.ObjectAsOptions{})...); resp.Diagnostics.HasError() {
+			return
+		}
+		tflog.Info(ctx, fmt.Sprintf("login options parsed: enabled: %t, %#v", lm.Enabled.ValueBool(), lm))
+	}
+
+	if (os.Getenv("TF_CHAINGUARD_LOGIN") != "" || lm.Enabled.ValueBool()) && sdktoken.RemainingLife(audience, time.Minute) <= 0 {
+		tflog.Info(ctx, "launching login browser")
+		// Construct the issuer URL from the console API.
+		issuer := strings.Replace(consoleAPI, "console-api", "issuer", 1)
+		loginCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+		defer cancel()
+
+		// For each option, prefer the environment var, if set.
+		tokstr, err := login.Login(loginCtx,
+			login.WithIssuer(issuer),
+			login.WithAudience([]string{audience}),
+			login.WithClientID(firstNonEmpty(os.Getenv("TF_CHAINGUARD_CLIENT_ID"), lm.ClientID.ValueString(), "auth0")),
+			login.WithIdentity(firstNonEmpty(os.Getenv("TF_CHAINGUARD_IDENTITY"), lm.Identity.ValueString())),
+			login.WithIdentityProvider(firstNonEmpty(os.Getenv("TF_CHAINGUARD_IDP"), lm.IdentityProvider.ValueString())),
+			login.WithInviteCode(firstNonEmpty(os.Getenv("TF_CHAINGUARD_INVITE_CODE"), lm.InviteCode.ValueString())),
+			login.WithAuth0Connection(firstNonEmpty(os.Getenv("TF_CHAINGUARD_AUTH0_CONNECTION"), lm.Auth0Connection.ValueString())),
+			login.WithOrgName(firstNonEmpty(os.Getenv("TF_CHAINGUARD_ORG_NAME"), lm.OrgName.ValueString())),
+		)
+		if err != nil {
+			resp.Diagnostics.Append(errorToDiagnostic(err, "failed to obtain Chainguard token"))
+			return
+		}
+		if err = sdktoken.Save([]byte(tokstr), audience); err != nil {
+			resp.Diagnostics.Append(errorToDiagnostic(err, "failed to save Chainguard token"))
+			return
+		}
+	}
 
 	token, err := sdktoken.Load(audience)
 	if err != nil {
@@ -170,8 +260,9 @@ func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest,
 		return
 	}
 
+	useragent := fmt.Sprintf("terraform-provider-chainguard/%s %s/%s", p.version, runtime.GOOS, runtime.GOARCH)
 	cred := auth.NewFromToken(ctx, fmt.Sprintf("Bearer %s", token), false)
-	ctx = platform.WithUserAgent(ctx, fmt.Sprintf("terraform-provider-chainguard/%s %s/%s", p.version, runtime.GOOS, runtime.GOARCH))
+	ctx = platform.WithUserAgent(ctx, useragent)
 	clients, err := platform.NewPlatformClients(ctx, consoleAPI, cred)
 	if err != nil {
 		resp.Diagnostics.AddAttributeError(

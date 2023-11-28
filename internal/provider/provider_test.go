@@ -13,17 +13,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 )
 
-const (
-	// providerConfig is a shared configuration to combine with the actual
-	// test configuration so the Chainguard client is properly configured.
-	// console_api is replaced by TF_ACC_CONSOLE_API during testing.
-	providerConfig = `
-provider "chainguard" {
-  console_api = "https://console-api.acceptance.test"
-}
-`
-)
-
 var (
 	// testAccProtoV6ProviderFactories are used to instantiate a provider during
 	// acceptance testing. The factory function will be invoked for every Terraform
