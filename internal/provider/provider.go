@@ -27,7 +27,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	sdktoken "chainguard.dev/sdk/pkg/auth/token"
 	"chainguard.dev/sdk/auth"
 	"chainguard.dev/sdk/auth/login"
 	sdktoken "chainguard.dev/sdk/auth/token"
