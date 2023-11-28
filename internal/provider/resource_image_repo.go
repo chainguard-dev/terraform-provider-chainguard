@@ -20,9 +20,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
-	"chainguard.dev/sdk/pkg/uidp"
-	"chainguard.dev/sdk/pkg/validation"
 	registry "chainguard.dev/sdk/proto/platform/registry/v1"
+	"chainguard.dev/sdk/uidp"
+	"chainguard.dev/sdk/validation"
 	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
 )
 

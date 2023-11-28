@@ -15,9 +15,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
-	"chainguard.dev/sdk/pkg/uidp"
-	"chainguard.dev/sdk/pkg/validation"
 	"chainguard.dev/sdk/proto/capabilities"
+	"chainguard.dev/sdk/uidp"
+	"chainguard.dev/sdk/validation"
 )
 
 var (
