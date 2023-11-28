@@ -27,7 +27,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	sdktoken "chainguard.dev/sdk/pkg/auth/token"
 	"chainguard.dev/sdk/auth"
 	"chainguard.dev/sdk/auth/login"
 	sdktoken "chainguard.dev/sdk/auth/token"
@@ -43,6 +42,9 @@ const (
 	EnvAccConsoleAPI = "TF_ACC_CONSOLE_API"
 	EnvAccGroupID    = "TF_ACC_GROUP_ID"
 	EnvAccIssuer     = "TF_ACC_ISSUER"
+
+	// auth0ClientID is the oauth2 clientID to use the Auth0 instance.
+	auth0ClientID = "auth0"
 )
 
 var EnvAccVars = []string{
@@ -82,10 +84,8 @@ type ProviderModel struct {
 
 type loginModel struct {
 	Enabled          types.Bool   `tfsdk:"enabled"`
-	ClientID         types.String `tfsdk:"client_id"`
 	Identity         types.String `tfsdk:"identity_id"`
 	IdentityProvider types.String `tfsdk:"identity_provider_id"`
-	InviteCode       types.String `tfsdk:"invite_code"`
 	Auth0Connection  types.String `tfsdk:"auth0_connection"`
 	OrgName          types.String `tfsdk:"organization_name"`
 }
@@ -146,10 +146,6 @@ func (p *Provider) Schema(_ context.Context, _ provider.SchemaRequest, resp *pro
 						Description: "Enabled automatic login when Chainguard token is expired.",
 						Optional:    true,
 					},
-					"client_id": schema.StringAttribute{
-						Description: "ClientID of oauth2 provider to authenticate with for OIDC token.",
-						Optional:    true,
-					},
 					"identity_id": schema.StringAttribute{
 						Description: "UIDP of the identity to assume when exchanging OIDC token for Chainguard token.",
 						Optional:    true,
@@ -159,10 +155,6 @@ func (p *Provider) Schema(_ context.Context, _ provider.SchemaRequest, resp *pro
 						Description: "UIDP of the identity provider authenticate with for OIDC token.",
 						Optional:    true,
 						Validators:  []validator.String{validators.UIDP(false /* allowRootSentinel */)},
-					},
-					"invite_code": schema.StringAttribute{
-						Description: "Invite code to register with an existing group.",
-						Optional:    true,
 					},
 					"auth0_connection": schema.StringAttribute{
 						Description: fmt.Sprintf("Auth0 social connection to use by default for OIDC token. Must be one of: %s", strings.Join(auth0Connections, ", ")),
@@ -218,7 +210,7 @@ func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest,
 		if resp.Diagnostics.Append(data.LoginOptions.As(ctx, &lm, basetypes.ObjectAsOptions{})...); resp.Diagnostics.HasError() {
 			return
 		}
-		tflog.Info(ctx, fmt.Sprintf("login options parsed: enabled: %t, %#v", lm.Enabled.ValueBool(), lm))
+		tflog.Info(ctx, fmt.Sprintf("login options parsed: %#v", lm))
 	}
 
 	if (os.Getenv("TF_CHAINGUARD_LOGIN") != "" || lm.Enabled.ValueBool()) && sdktoken.RemainingLife(audience, time.Minute) <= 0 {
@@ -232,10 +224,9 @@ func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest,
 		tokstr, err := login.Login(loginCtx,
 			login.WithIssuer(issuer),
 			login.WithAudience([]string{audience}),
-			login.WithClientID(firstNonEmpty(os.Getenv("TF_CHAINGUARD_CLIENT_ID"), lm.ClientID.ValueString(), "auth0")),
+			login.WithClientID(auth0ClientID),
 			login.WithIdentity(firstNonEmpty(os.Getenv("TF_CHAINGUARD_IDENTITY"), lm.Identity.ValueString())),
 			login.WithIdentityProvider(firstNonEmpty(os.Getenv("TF_CHAINGUARD_IDP"), lm.IdentityProvider.ValueString())),
-			login.WithInviteCode(firstNonEmpty(os.Getenv("TF_CHAINGUARD_INVITE_CODE"), lm.InviteCode.ValueString())),
 			login.WithAuth0Connection(firstNonEmpty(os.Getenv("TF_CHAINGUARD_AUTH0_CONNECTION"), lm.Auth0Connection.ValueString())),
 			login.WithOrgName(firstNonEmpty(os.Getenv("TF_CHAINGUARD_ORG_NAME"), lm.OrgName.ValueString())),
 		)
@@ -255,8 +246,7 @@ func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest,
 			path.Root("console_api"),
 			"failed to retrieve Chainguard token",
 			fmt.Sprintf("Either no token was found for audience %q or there was an error reading it.\n"+
-				"Please check the value of \"chainguard.console_api\" in your Terraform provider configuration, "+
-				"and log in to the Chainguard platform with `chainctl auth login` to generate a valid token.", audience))
+				"Please check the value of \"chainguard.console_api\" in your Terraform provider configuration.", audience))
 		return
 	}
 
