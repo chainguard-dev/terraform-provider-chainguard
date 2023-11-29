@@ -31,6 +31,7 @@ import (
 	"chainguard.dev/sdk/auth/login"
 	sdktoken "chainguard.dev/sdk/auth/token"
 	"chainguard.dev/sdk/proto/platform"
+	"chainguard.dev/sdk/sts"
 	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
 )
 
@@ -85,9 +86,13 @@ type ProviderModel struct {
 type loginModel struct {
 	Enabled          types.Bool   `tfsdk:"enabled"`
 	Identity         types.String `tfsdk:"identity_id"`
+	IdentityToken    types.String `tfsdk:"identity_token"`
 	IdentityProvider types.String `tfsdk:"identity_provider_id"`
 	Auth0Connection  types.String `tfsdk:"auth0_connection"`
 	OrgName          types.String `tfsdk:"organization_name"`
+
+	audience string
+	issuer   string
 }
 
 // Metadata returns the provider type name.
@@ -151,6 +156,17 @@ func (p *Provider) Schema(_ context.Context, _ provider.SchemaRequest, resp *pro
 						Optional:    true,
 						Validators:  []validator.String{validators.UIDP(false /* allowRootSentinel */)},
 					},
+					"identity_token": schema.StringAttribute{
+						Description: "A path to an OIDC identity token, or explicit identity token.",
+						Optional:    true,
+						Validators: []validator.String{
+							stringvalidator.ConflictsWith(
+								path.Root("login_options").AtName("identity_provider_id").Expression(),
+								path.Root("login_options").AtName("auth0_connection").Expression(),
+								path.Root("login_options").AtName("organization_name").Expression(),
+							),
+						},
+					},
 					"identity_provider_id": schema.StringAttribute{
 						Description: "UIDP of the identity provider authenticate with for OIDC token.",
 						Optional:    true,
@@ -179,10 +195,19 @@ type providerData struct {
 
 // Configure prepares a Chainguard API client for data sources and resources.
 func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
-	var data ProviderModel
-	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() {
+	// Parse provider configs
+	var (
+		pm ProviderModel
+		lm loginModel
+	)
+	if resp.Diagnostics.Append(req.Config.Get(ctx, &pm)...); resp.Diagnostics.HasError() {
 		return
+	}
+	if !pm.LoginOptions.IsNull() {
+		if resp.Diagnostics.Append(pm.LoginOptions.As(ctx, &lm, basetypes.ObjectAsOptions{})...); resp.Diagnostics.HasError() {
+			return
+		}
+		tflog.Info(ctx, fmt.Sprintf("login options parsed: %#v", lm))
 	}
 
 	// Load default values and environment variables
@@ -191,8 +216,9 @@ func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest,
 	//   2. Value from config
 	//   3. Default value
 
-	consoleAPI := firstNonEmpty(os.Getenv(EnvChainguardConsoleAPI), data.ConsoleAPI.ValueString(), DefaultConsoleAPI)
+	consoleAPI := firstNonEmpty(os.Getenv(EnvChainguardConsoleAPI), pm.ConsoleAPI.ValueString(), DefaultConsoleAPI)
 	audience := consoleAPI
+	userAgent := fmt.Sprintf("terraform-provider-chainguard/%s %s/%s", p.version, runtime.GOOS, runtime.GOARCH)
 
 	if p.version == "acctest" {
 		// In acceptance tests override the console api and audience from env var
@@ -205,36 +231,29 @@ func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest,
 	tflog.Info(ctx, "configuring chainguard client")
 
 	// If token is expired or not found, login and save a new one.
-	var lm loginModel
-	if !data.LoginOptions.IsNull() {
-		if resp.Diagnostics.Append(data.LoginOptions.As(ctx, &lm, basetypes.ObjectAsOptions{})...); resp.Diagnostics.HasError() {
-			return
-		}
-		tflog.Info(ctx, fmt.Sprintf("login options parsed: %#v", lm))
-	}
-
 	if (os.Getenv("TF_CHAINGUARD_LOGIN") != "" || lm.Enabled.ValueBool()) && sdktoken.RemainingLife(audience, time.Minute) <= 0 {
-		tflog.Info(ctx, "launching login browser")
+		tflog.Info(ctx, "refreshing Chainguard token")
 		// Construct the issuer URL from the console API.
-		issuer := strings.Replace(consoleAPI, "console-api", "issuer", 1)
-		loginCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-		defer cancel()
+		lm.issuer = strings.Replace(consoleAPI, "console-api", "issuer", 1)
+		lm.audience = audience
 
-		// For each option, prefer the environment var, if set.
-		tokstr, err := login.Login(loginCtx,
-			login.WithIssuer(issuer),
-			login.WithAudience([]string{audience}),
-			login.WithClientID(auth0ClientID),
-			login.WithIdentity(firstNonEmpty(os.Getenv("TF_CHAINGUARD_IDENTITY"), lm.Identity.ValueString())),
-			login.WithIdentityProvider(firstNonEmpty(os.Getenv("TF_CHAINGUARD_IDP"), lm.IdentityProvider.ValueString())),
-			login.WithAuth0Connection(firstNonEmpty(os.Getenv("TF_CHAINGUARD_AUTH0_CONNECTION"), lm.Auth0Connection.ValueString())),
-			login.WithOrgName(firstNonEmpty(os.Getenv("TF_CHAINGUARD_ORG_NAME"), lm.OrgName.ValueString())),
+		var (
+			err     error
+			cgToken string
 		)
+		// If the env var TF_CHAINGUARD_IDENTITY_TOKEN is set, it takes precedence over any conflicting
+		// login_options that are set.
+		if lm.IdentityToken.ValueString() != "" || os.Getenv("TF_CHAINGUARD_IDENTITY_TOKEN") != "" {
+			cgToken, err = exchangeToken(ctx, lm, userAgent)
+		} else {
+			cgToken, err = getToken(ctx, lm)
+		}
 		if err != nil {
-			resp.Diagnostics.Append(errorToDiagnostic(err, "failed to obtain Chainguard token"))
+			resp.Diagnostics.Append(errorToDiagnostic(err, "failed to get Chainguard token"))
 			return
 		}
-		if err = sdktoken.Save([]byte(tokstr), audience); err != nil {
+
+		if err = sdktoken.Save([]byte(cgToken), audience); err != nil {
 			resp.Diagnostics.Append(errorToDiagnostic(err, "failed to save Chainguard token"))
 			return
 		}
@@ -250,9 +269,8 @@ func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest,
 		return
 	}
 
-	useragent := fmt.Sprintf("terraform-provider-chainguard/%s %s/%s", p.version, runtime.GOOS, runtime.GOARCH)
 	cred := auth.NewFromToken(ctx, fmt.Sprintf("Bearer %s", token), false)
-	ctx = platform.WithUserAgent(ctx, useragent)
+	ctx = platform.WithUserAgent(ctx, userAgent)
 	clients, err := platform.NewPlatformClients(ctx, consoleAPI, cred)
 	if err != nil {
 		resp.Diagnostics.AddAttributeError(
@@ -269,6 +287,50 @@ func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest,
 
 	resp.DataSourceData = d
 	resp.ResourceData = d
+}
+
+// getToken gets a Chainguard token by launching a browser and having the user authenticate
+// through the configured OIDC identity provider.
+func getToken(ctx context.Context, lm loginModel) (string, error) {
+	tflog.Info(ctx, "launching browser login flow")
+	loginCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+
+	// For each option, prefer the environment var, if set.
+	return login.Login(loginCtx,
+		login.WithIssuer(lm.issuer),
+		login.WithAudience([]string{lm.audience}),
+		login.WithClientID(auth0ClientID),
+		login.WithIdentity(firstNonEmpty(os.Getenv("TF_CHAINGUARD_IDENTITY"), lm.Identity.ValueString())),
+		login.WithIdentityProvider(firstNonEmpty(os.Getenv("TF_CHAINGUARD_IDP"), lm.IdentityProvider.ValueString())),
+		login.WithAuth0Connection(firstNonEmpty(os.Getenv("TF_CHAINGUARD_AUTH0_CONNECTION"), lm.Auth0Connection.ValueString())),
+		login.WithOrgName(firstNonEmpty(os.Getenv("TF_CHAINGUARD_ORG_NAME"), lm.OrgName.ValueString())),
+	)
+}
+
+// exchangeToken gets a Chainguard token by exchanging the given OIDC token or path to a token.
+// No user interaction is required.
+func exchangeToken(ctx context.Context, lm loginModel, userAgent string) (string, error) {
+	tflog.Info(ctx, "exchanging oidc token for chainguard token")
+
+	// Test to see if identity token is a path or not.
+	idToken := firstNonEmpty(os.Getenv("TF_CHAINGUARD_IDENTITY_TOKEN"), lm.IdentityToken.ValueString())
+	if _, err := os.Stat(idToken); err == nil {
+		// Token was specified, and it is a path. Read the token in from that file.
+		b, err := os.ReadFile(idToken)
+		if err != nil {
+			return "", err
+		}
+		idToken = string(b)
+	}
+
+	opts := []sts.ExchangerOption{
+		sts.WithUserAgent(userAgent),
+	}
+	if lm.Identity.ValueString() != "" {
+		opts = append(opts, sts.WithIdentity(lm.Identity.ValueString()))
+	}
+	return sts.Exchange(ctx, lm.issuer, lm.audience, idToken, opts...)
 }
 
 // errorToDiagnostic converts an error into a diag.Diagnostic.

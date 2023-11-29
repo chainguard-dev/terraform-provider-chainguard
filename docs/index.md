@@ -40,4 +40,5 @@ Optional:
 - `enabled` (Boolean) Enabled automatic login when Chainguard token is expired.
 - `identity_id` (String) UIDP of the identity to assume when exchanging OIDC token for Chainguard token.
 - `identity_provider_id` (String) UIDP of the identity provider authenticate with for OIDC token.
+- `identity_token` (String) A path to an OIDC identity token, or explicit identity token.
 - `organization_name` (String) Verified organization name for determining identity provider to obtain OIDC token.
