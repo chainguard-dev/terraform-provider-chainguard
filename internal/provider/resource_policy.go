@@ -75,8 +75,9 @@ func (r *policyResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 				Validators:    []validator.String{validators.UIDP(false /* allowRootSentinel */)},
 			},
 			"name": schema.StringAttribute{
-				Description: "Name of the policy",
-				Computed:    true,
+				Description:   "Name of the policy",
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"description": schema.StringAttribute{
 				Description: "Description of the policy",
@@ -157,7 +158,9 @@ func (r *policyResource) Read(ctx context.Context, req resource.ReadRequest, res
 		pol := polList.Items[0]
 		state.ID = types.StringValue(pol.Id)
 		state.Name = types.StringValue(pol.Name)
-		state.Description = types.StringValue(pol.Description)
+		if !(state.Description.IsNull() && pol.Description == "") {
+			state.Description = types.StringValue(pol.Description)
+		}
 		state.ParentID = types.StringValue(uidp.Parent(pol.Id))
 		state.Document = types.StringValue(pol.Document)
 
