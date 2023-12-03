@@ -83,7 +83,7 @@ type ProviderModel struct {
 }
 
 type loginModel struct {
-	Enabled          types.Bool   `tfsdk:"enabled"`
+	Disabled         types.Bool   `tfsdk:"disabled"`
 	Identity         types.String `tfsdk:"identity_id"`
 	IdentityProvider types.String `tfsdk:"identity_provider_id"`
 	Auth0Connection  types.String `tfsdk:"auth0_connection"`
@@ -142,8 +142,8 @@ func (p *Provider) Schema(_ context.Context, _ provider.SchemaRequest, resp *pro
 			"login_options": schema.SingleNestedBlock{
 				Description: "Options to configure automatic login when Chainguard token is expired.",
 				Attributes: map[string]schema.Attribute{
-					"enabled": schema.BoolAttribute{
-						Description: "Enabled automatic login when Chainguard token is expired.",
+					"disabled": schema.BoolAttribute{
+						Description: "Disable automatic login when Chainguard token is expired.",
 						Optional:    true,
 					},
 					"identity_id": schema.StringAttribute{
@@ -213,7 +213,7 @@ func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest,
 		tflog.Info(ctx, fmt.Sprintf("login options parsed: %#v", lm))
 	}
 
-	if (os.Getenv("TF_CHAINGUARD_LOGIN") != "" || lm.Enabled.ValueBool()) && sdktoken.RemainingLife(audience, time.Minute) <= 0 {
+	if (os.Getenv("TF_CHAINGUARD_LOGIN") != "" || !lm.Disabled.ValueBool()) && sdktoken.RemainingLife(audience, time.Minute) <= 0 {
 		tflog.Info(ctx, "launching login browser")
 		// Construct the issuer URL from the console API.
 		issuer := strings.Replace(consoleAPI, "console-api", "issuer", 1)
