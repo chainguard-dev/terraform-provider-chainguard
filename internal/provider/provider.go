@@ -132,7 +132,7 @@ func (p *Provider) Schema(_ context.Context, _ provider.SchemaRequest, resp *pro
 		Attributes: map[string]schema.Attribute{
 			"console_api": schema.StringAttribute{
 				Optional:    true,
-				Description: "URL of Chainguard console API. Ensure a valid token has been generated for this URL with `chainctl auth login`.",
+				Description: "URL of Chainguard console API.",
 				Validators: []validator.String{
 					validators.IsURL(false /* requireHTTPS */),
 				},
