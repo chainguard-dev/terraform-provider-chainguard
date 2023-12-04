@@ -12,31 +12,25 @@ Configure the provider in your Terraform config:
 ```terraform
 terraform {
   required_providers {
-    chainguard = {
-      source = "chainguard-dev/chainguard"
-    }
+    chainguard = { source = "chainguard-dev/chainguard" }
   }
 }
-
-provider "chainguard" {}
 ```
 
-You can specify login options to enable automatic token refreshes if your Chainguard token is expired or missing.
+By default, the provider will attempt to refresh your Chainguard token when it's expired. You can disable this with:
 
 ```terraform
 provider "chainguard" {
   login_options {
-    enabled = true
+    disabled = true
   }
 }
 ```
 
 Additional options include specifying an identity to assume when authenticating and a verified organization name
-to use a custom identity provider rather than the Auth0 defaults (GitHub, GitLab, and Google). See `/examples/provider-login-options`
-for additional information.
+to use a custom identity provider rather than the Auth0 defaults (GitHub, GitLab, and Google).
 
-Detailed documentation on all available resources can be found under
-`/docs`.
+Detailed documentation on all available resources can be found under `/docs`.
 
 ## Developing the Provider
 
