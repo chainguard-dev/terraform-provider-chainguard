@@ -12,23 +12,21 @@ terraform {
 }
 
 provider "chainguard" {
-  console_api = "https://console-api.enforce.dev"
-
   login_options {
-    # Enable browser flow for authentication.
-    # This should only be enabled for humans.
-    # Workflows should authenticate with chainctl auth login
-    # or https://github.com/chainguard-dev/actions/tree/main/setup-chainctl
-    enabled = true
-
     # Auth0 social connection names must be one of:
     # google-oauth2, github, gitlab
     auth0_connection = "google-oauth2"
 
+    # Exact id of an identity to assume when authenticating.
+    # Get this ID with chainctl iam identities list
+    identity_id = "foo/bar"
+
     # Other supported options:
     #
-    # Exact id of an identity to assume when authenticating
-    # identity_id = "foo/bar"
+    # Disable browser flow for authentication for workflows.
+    # Authenticate with chainctl auth login
+    # or https://github.com/chainguard-dev/actions/tree/main/setup-chainctl
+    # disabled = true
     #
     # Exact id of an identity provider to user for authenticating
     # when using a custom configured identity provider
