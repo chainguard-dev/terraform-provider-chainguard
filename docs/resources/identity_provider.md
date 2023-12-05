@@ -17,6 +17,9 @@ resource "chainguard_identity_provider" "example" {
   parent_id   = "foo/bar"
   name        = "my customer idp"
   description = "for my team"
+  # The default role must be a built in role,
+  # or belong to the parent group or one of its ancestors.
+  default_role = "foo/bar/role-id"
   oidc {
     issuer            = "https://issuer.example.com"
     cliend_id         = "client id"
@@ -31,6 +34,7 @@ resource "chainguard_identity_provider" "example" {
 
 ### Required
 
+- `default_role` (String) The id of the role new users are bound to on first login.
 - `name` (String) The name of this identity provider.
 - `parent_id` (String) The group containing this identity provider.
 

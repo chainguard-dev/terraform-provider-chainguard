@@ -48,6 +48,7 @@ type identityProviderResourceModel struct {
 	ParentID    types.String `tfsdk:"parent_id"`
 	Name        types.String `tfsdk:"name"`
 	Description types.String `tfsdk:"description"`
+	DefaultRole types.String `tfsdk:"default_role"`
 	OIDC        types.Object `tfsdk:"oidc"`
 }
 
@@ -90,6 +91,11 @@ func (r *identityProviderResource) Schema(_ context.Context, _ resource.SchemaRe
 			"description": schema.StringAttribute{
 				Description: "A longer description of the purpose of this identity provider.",
 				Optional:    true,
+			},
+			"default_role": schema.StringAttribute{
+				Description: "The id of the role new users are bound to on first login.",
+				Required:    true,
+				Validators:  []validator.String{validators.UIDP(false /* allowRootSentinel */)},
 			},
 		},
 		Blocks: map[string]schema.Block{
@@ -148,6 +154,7 @@ func populateIDP(ctx context.Context, model *identityProviderResourceModel) (*ia
 		Id:          model.ID.ValueString(),
 		Name:        model.Name.ValueString(),
 		Description: model.Description.ValueString(),
+		DefaultRole: model.DefaultRole.ValueString(),
 	}
 
 	if !model.OIDC.IsNull() {
@@ -243,6 +250,7 @@ func (r *identityProviderResource) Read(ctx context.Context, req resource.ReadRe
 	state.ID = types.StringValue(idp.Id)
 	state.Name = types.StringValue(idp.Name)
 	state.Description = types.StringValue(idp.Description)
+	state.DefaultRole = types.StringValue(idp.DefaultRole)
 	state.ParentID = types.StringValue(uidp.Parent(idp.Id))
 
 	switch conf := idp.Configuration.(type) {
