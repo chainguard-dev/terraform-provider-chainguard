@@ -26,6 +26,7 @@ type testIDP struct {
 	parentID    string
 	name        string
 	description string
+	defaultRole string
 	oidc        oidc
 }
 
@@ -34,6 +35,7 @@ func TestAccResourceIdentityProvider(t *testing.T) {
 		parentID:    os.Getenv("TF_ACC_GROUP_ID"),
 		name:        acctest.RandString(10),
 		description: acctest.RandString(10),
+		defaultRole: "data.chainguard_role.viewer_test.items[0].id",
 		oidc: oidc{
 			issuer:           "https://example.com",
 			clientID:         acctest.RandString(10),
@@ -46,6 +48,7 @@ func TestAccResourceIdentityProvider(t *testing.T) {
 		parentID:    os.Getenv("TF_ACC_GROUP_ID"),
 		name:        acctest.RandString(10),
 		description: acctest.RandString(10),
+		defaultRole: "data.chainguard_role.viewer_test.items[0].id",
 		oidc: oidc{
 			issuer:           "https://new.example.com",
 			clientID:         acctest.RandString(10),
@@ -61,7 +64,7 @@ func TestAccResourceIdentityProvider(t *testing.T) {
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccResourceIdentityProvider(original),
+				Config: accDataRoleViewer + testAccResourceIdentityProvider(original),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(`chainguard_identity_provider.example`, `parent_id`, original.parentID),
 					resource.TestCheckResourceAttr(`chainguard_identity_provider.example`, `name`, original.name),
@@ -79,7 +82,7 @@ func TestAccResourceIdentityProvider(t *testing.T) {
 				ImportStateVerify: true,
 			},
 			{
-				Config: testAccResourceIdentityProvider(update),
+				Config: accDataRoleViewer + testAccResourceIdentityProvider(update),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(`chainguard_identity_provider.example`, `parent_id`, update.parentID),
 					resource.TestCheckResourceAttr(`chainguard_identity_provider.example`, `name`, update.name),
@@ -97,9 +100,10 @@ func TestAccResourceIdentityProvider(t *testing.T) {
 func testAccResourceIdentityProvider(idp testIDP) string {
 	const tmpl = `	
 resource "chainguard_identity_provider" "example" {
-  parent_id   = %q
-  name        = %q
-  description = %q
+  parent_id    = %q
+  name         = %q
+  description  = %q
+  default_role = %s
   oidc {
     issuer            = %q
     client_id         = %q
@@ -108,5 +112,5 @@ resource "chainguard_identity_provider" "example" {
   }
 }
 `
-	return fmt.Sprintf(tmpl, idp.parentID, idp.name, idp.description, idp.oidc.issuer, idp.oidc.clientID, idp.oidc.clientSecret, idp.oidc.additionalScopes)
+	return fmt.Sprintf(tmpl, idp.parentID, idp.name, idp.description, idp.defaultRole, idp.oidc.issuer, idp.oidc.clientID, idp.oidc.clientSecret, idp.oidc.additionalScopes)
 }
