@@ -32,6 +32,7 @@ import (
 	sdktoken "chainguard.dev/sdk/auth/token"
 	"chainguard.dev/sdk/proto/platform"
 	"chainguard.dev/sdk/sts"
+	util "github.com/chainguard-dev/terraform-provider-chainguard/internal/protoutil"
 	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
 )
 
@@ -107,6 +108,8 @@ func (p *Provider) DataSources(_ context.Context) []func() datasource.DataSource
 		NewClusterCIDRDataSource,
 		NewGroupDataSource,
 		NewIdentityDataSource,
+		NewImageRepoDataSource,
+		NewImageTagDataSource,
 		NewRoleDataSource,
 	}
 }
@@ -216,7 +219,7 @@ func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest,
 	//   2. Value from config
 	//   3. Default value
 
-	consoleAPI := firstNonEmpty(os.Getenv(EnvChainguardConsoleAPI), pm.ConsoleAPI.ValueString(), DefaultConsoleAPI)
+	consoleAPI := util.FirstNonEmpty(os.Getenv(EnvChainguardConsoleAPI), pm.ConsoleAPI.ValueString(), DefaultConsoleAPI)
 	audience := consoleAPI
 	userAgent := fmt.Sprintf("terraform-provider-chainguard/%s %s/%s", p.version, runtime.GOOS, runtime.GOARCH)
 
@@ -301,10 +304,10 @@ func getToken(ctx context.Context, lm loginModel) (string, error) {
 		login.WithIssuer(lm.issuer),
 		login.WithAudience([]string{lm.audience}),
 		login.WithClientID(auth0ClientID),
-		login.WithIdentity(firstNonEmpty(os.Getenv("TF_CHAINGUARD_IDENTITY"), lm.Identity.ValueString())),
-		login.WithIdentityProvider(firstNonEmpty(os.Getenv("TF_CHAINGUARD_IDP"), lm.IdentityProvider.ValueString())),
-		login.WithAuth0Connection(firstNonEmpty(os.Getenv("TF_CHAINGUARD_AUTH0_CONNECTION"), lm.Auth0Connection.ValueString())),
-		login.WithOrgName(firstNonEmpty(os.Getenv("TF_CHAINGUARD_ORG_NAME"), lm.OrgName.ValueString())),
+		login.WithIdentity(util.FirstNonEmpty(os.Getenv("TF_CHAINGUARD_IDENTITY"), lm.Identity.ValueString())),
+		login.WithIdentityProvider(util.FirstNonEmpty(os.Getenv("TF_CHAINGUARD_IDP"), lm.IdentityProvider.ValueString())),
+		login.WithAuth0Connection(util.FirstNonEmpty(os.Getenv("TF_CHAINGUARD_AUTH0_CONNECTION"), lm.Auth0Connection.ValueString())),
+		login.WithOrgName(util.FirstNonEmpty(os.Getenv("TF_CHAINGUARD_ORG_NAME"), lm.OrgName.ValueString())),
 	)
 }
 
@@ -314,7 +317,7 @@ func exchangeToken(ctx context.Context, lm loginModel, userAgent string) (string
 	tflog.Info(ctx, "exchanging oidc token for chainguard token")
 
 	// Test to see if identity token is a path or not.
-	idToken := firstNonEmpty(os.Getenv("TF_CHAINGUARD_IDENTITY_TOKEN"), lm.IdentityToken.ValueString())
+	idToken := util.FirstNonEmpty(os.Getenv("TF_CHAINGUARD_IDENTITY_TOKEN"), lm.IdentityToken.ValueString())
 	if _, err := os.Stat(idToken); err == nil {
 		// Token was specified, and it is a path. Read the token in from that file.
 		b, err := os.ReadFile(idToken)

@@ -18,6 +18,7 @@ type dataModel interface {
 	InputParams() string
 }
 
+//nolint:unparam
 func dataNotFound(n, extra string, m dataModel) diag.Diagnostic {
 	detail := fmt.Sprintf("Input parameters: %s", m.InputParams())
 	if extra != "" {
