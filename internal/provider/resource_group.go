@@ -123,6 +123,23 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 	// Save group details in the state.
 	plan.ID = types.StringValue(g.Id)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
+
+	// Attempt to reauthenticate if root group was created so token
+	// has new root group in scope.
+	if uidp.InRoot(g.Id) {
+		lo := r.prov.loginOptions
+		err = refreshChainguardToken(ctx, lo)
+		if err != nil {
+			resp.Diagnostics.Append(errorToDiagnostic(err, "failed to refresh Chainguard token"))
+			return
+		}
+		clients, err := newPlatformClients(ctx, lo.audience, lo.consoleAPI)
+		if err != nil {
+			resp.Diagnostics.Append(errorToDiagnostic(err, "failed to create new platform clients"))
+			return
+		}
+		r.prov.client = clients
+	}
 }
 
 // Read refreshes the Terraform state with the latest data.
