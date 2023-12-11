@@ -71,7 +71,7 @@ func (r *groupResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 			"parent_id": schema.StringAttribute{
 				Description:   "Parent IAM group of this group. If not set, this group is assumed to be a root group.",
 				Optional:      true,
-				Validators:    []validator.String{validators.UIDP(false /* allowRootSentinel */)},
+				Validators:    []validator.String{validators.UIDP(true /* allowRootSentinel */)},
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"name": schema.StringAttribute{
@@ -103,12 +103,17 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 
 	// Create the group.
 	cr := &iam.CreateGroupRequest{
-		Parent: plan.ParentID.ValueString(),
 		Group: &iam.Group{
 			Name:        plan.Name.ValueString(),
 			Description: plan.Description.ValueString(),
 		},
 	}
+	// Only include Parent UIDP for non-root groups.
+	// Due to validation, we are guaranteed ParentID is either a valid UIDP or "/".
+	if uidp.Valid(plan.ParentID.ValueString()) {
+		cr.Parent = plan.ParentID.ValueString()
+	}
+
 	g, err := r.prov.client.IAM().Groups().Create(ctx, cr)
 	if err != nil {
 		resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to create group %q", cr.Group.Name)))
@@ -132,7 +137,7 @@ func (r *groupResource) Read(ctx context.Context, req resource.ReadRequest, resp
 
 	// Query for the group to update state
 	uf := &common.UIDPFilter{}
-	if state.ParentID.ValueString() != "" {
+	if uidp.Valid(state.ParentID.ValueString()) {
 		uf.ChildrenOf = state.ParentID.ValueString()
 	}
 	f := &iam.GroupFilter{
@@ -159,7 +164,10 @@ func (r *groupResource) Read(ctx context.Context, req resource.ReadRequest, resp
 		if !(state.Description.IsNull() && g.Description == "") {
 			state.Description = types.StringValue(g.Description)
 		}
-		state.ParentID = types.StringValue(uidp.Parent(g.Id))
+		// Allow ParentID to remain null for root groups.
+		if !state.ParentID.IsNull() {
+			state.ParentID = types.StringValue(uidp.Parent(g.Id))
+		}
 
 		// Set state
 		resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
