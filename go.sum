@@ -2,8 +2,8 @@ chainguard.dev/go-grpc-kit v0.17.2 h1:WVYmCjDncj1MkEiU4qq7nIgzyqlCU+qyk0lJvTJ09b
 chainguard.dev/go-grpc-kit v0.17.2/go.mod h1:uZTFtFzAGyVFHhJexiHbna4N5rHQU7aUXPwytlGhqz4=
 chainguard.dev/go-oidctest v0.2.0 h1:03EuCjzAjbCvIOpSA+135g51Wdefz3UgQ8OtfSFQKCI=
 chainguard.dev/go-oidctest v0.2.0/go.mod h1:1qO3asevouDqgMw4sgaVSzXqgDZQN7B6PtxLoUTzndo=
-chainguard.dev/sdk v0.1.2-0.20231128194243-a19be8a56967 h1:eqCb8F+Vml7MburLkc8riYEG7mx3zn+ByUXs+at48Hs=
-chainguard.dev/sdk v0.1.2-0.20231128194243-a19be8a56967/go.mod h1:NFvaaO906DG+WIgMqWb47tECJbcMns9UFw4e47kQX10=
+chainguard.dev/sdk v0.1.4 h1:LJS7NP4XzqrVY8nmR5N1HpBUd637B+BZNcEIUNuxTd0=
+chainguard.dev/sdk v0.1.4/go.mod h1:LWOowm39eqL5DfZtz9AJBa/IUHKOdcUoZyjyhp96540=
 cloud.google.com/go v0.26.0/go.mod h1:aQUYkXzVsufM+DwF1aE+0xfcU+56JwCaLick0ClmMTw=
 cloud.google.com/go v0.110.9 h1:e7ITSqGFFk4rbz/JFIqZh3G4VEHguhAL4BQcFlWtU68=
 cloud.google.com/go v0.110.9/go.mod h1:rpxevX/0Lqvlbc88b7Sc1SPNdyK1riNBTUU6JXhYNpM=
@@ -78,8 +78,8 @@ github.com/aws/aws-sdk-go-v2/service/ssooidc v1.17.3/go.mod h1:a7bHA82fyUXOm+ZSW
 github.com/aws/aws-sdk-go-v2/service/sts v1.23.2 h1:0BkLfgeDjfZnZ+MhB3ONb01u9pwFYTCZVhlsSSBvlbU=
 github.com/aws/aws-sdk-go-v2/service/sts v1.23.2/go.mod h1:Eows6e1uQEsc4ZaHANmsPRzAKcVDrcmjjWiih2+HUUQ=
 github.com/aws/smithy-go v1.15.0/go.mod h1:Tg+OJXh4MB2R/uN61Ko2f6hTZwB/ZYGOtib8J3gBHzA=
-github.com/aws/smithy-go v1.17.0 h1:wWJD7LX6PBV6etBUwO0zElG0nWN9rUhp0WdYeHSHAaI=
-github.com/aws/smithy-go v1.17.0/go.mod h1:NukqUGpCZIILqqiV0NIjeFh24kd/FAa4beRb6nbIUPE=
+github.com/aws/smithy-go v1.18.1 h1:pOdBTUfXNazOlxLrgeYalVnuTpKreACHtc62xLwIB3c=
+github.com/aws/smithy-go v1.18.1/go.mod h1:NukqUGpCZIILqqiV0NIjeFh24kd/FAa4beRb6nbIUPE=
 github.com/benbjohnson/clock v1.1.0/go.mod h1:J11/hYXuz8f4ySSvYwY0FKfm+ezbsZBKZxNJlLklBHA=
 github.com/beorn7/perks v0.0.0-20180321164747-3a771d992973/go.mod h1:Dwedo/Wpr24TaqPxmxbtue+5NUziq4I4S80YR8gNf3Q=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
