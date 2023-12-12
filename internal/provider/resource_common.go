@@ -31,14 +31,3 @@ func (mr *managedResource) configure(_ context.Context, req resource.ConfigureRe
 
 	mr.prov = pd
 }
-
-// firstNonEmpty returns the first string that is non-empty.
-// If all strings are empty, the empty string is returned.
-func firstNonEmpty(sl ...string) string {
-	for _, s := range sl {
-		if s != "" {
-			return s
-		}
-	}
-	return ""
-}

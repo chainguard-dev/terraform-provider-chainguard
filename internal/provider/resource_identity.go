@@ -309,7 +309,7 @@ func (r *identityResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 						Description: "The RFC3339 encoded date and time at which this identity will no longer be valid.",
 						Optional:    true, // This attribute is required, but only if the block is defined. See Validators.
 						Validators: []validator.String{
-							validators.ValidateStringFuncs(checkRFC3339),
+							validators.ValidateStringFuncs(checkRFC3339Expiration),
 						},
 					},
 				},
@@ -321,8 +321,8 @@ func (r *identityResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 // For testing.
 var timeNow = time.Now
 
-// checkRFC3339 implements validators.ValidateStringFunc.
-func checkRFC3339(raw string) error {
+// checkRFC3339Expiration implements validators.ValidateStringFunc.
+func checkRFC3339Expiration(raw string) error {
 	t, err := time.Parse(time.RFC3339, raw)
 	if err != nil {
 		return fmt.Errorf("failed to parse %s: %w", raw, err)
