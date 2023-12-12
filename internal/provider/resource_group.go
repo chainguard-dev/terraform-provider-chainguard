@@ -181,8 +181,9 @@ func (r *groupResource) Read(ctx context.Context, req resource.ReadRequest, resp
 		if !(state.Description.IsNull() && g.Description == "") {
 			state.Description = types.StringValue(g.Description)
 		}
-		// Allow ParentID to remain null for root groups.
-		if !state.ParentID.IsNull() {
+		// Allow ParentID to remain null for root groups, but ensure it is populated
+		// for when importing non-root groups.
+		if !state.ParentID.IsNull() && !uidp.InRoot(g.Id) {
 			state.ParentID = types.StringValue(uidp.Parent(g.Id))
 		}
 
