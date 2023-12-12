@@ -47,7 +47,7 @@ const (
 	EnvAccGroupID    = "TF_ACC_GROUP_ID"
 	EnvAccIssuer     = "TF_ACC_ISSUER"
 
-	// EnvAccAmbient signals acceptance tests are being executed by GHA with ambient credentials
+	// EnvAccAmbient signals acceptance tests are being executed by GHA with ambient credentials.
 	EnvAccAmbient = "TF_ACC_AMBIENT"
 
 	// auth0ClientID is the oauth2 clientID to use the Auth0 instance.

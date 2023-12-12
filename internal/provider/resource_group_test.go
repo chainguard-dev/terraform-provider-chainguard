@@ -94,7 +94,7 @@ func TestAccRootGroupResource(t *testing.T) {
 	newName := acctest.RandString(10)
 	newDescription := acctest.RandString(10)
 
-	rootPattern := regexp.MustCompile(fmt.Sprintf(`[a-z0-9]{40}`))
+	rootPattern := regexp.MustCompile(`[a-z0-9]{40}`)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -145,7 +145,7 @@ func TestAccRootGroupResourceWithSentinel(t *testing.T) {
 	newName := acctest.RandString(10)
 	newDescription := acctest.RandString(10)
 
-	rootPattern := regexp.MustCompile(fmt.Sprintf(`[a-z0-9]{40}`))
+	rootPattern := regexp.MustCompile(`[a-z0-9]{40}`)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
