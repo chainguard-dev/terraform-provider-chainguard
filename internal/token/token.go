@@ -27,34 +27,45 @@ const (
 	auth0ClientID = "auth0"
 )
 
-var lock sync.Mutex
+var lock sync.RWMutex
 
 // Get retrieves a Chainguard token, refreshing it if expired/non-existent or forceRefresh == true.
 // If automatic authentication is disabled, returns an unauthenticated error.
 func Get(ctx context.Context, cfg LoginConfig, forceRefresh bool) ([]byte, error) {
-	// Lock access to the token so no other process attempts to read or refresh
-	// while refreshing the token.
-	lock.Lock()
-	defer lock.Unlock()
+	// Get the remaining life of the current token.
+	lock.RLock()
+	life := sdktoken.RemainingLife(cfg.Audience, time.Minute)
+	lock.RUnlock()
 
-	// If token is expired or not found, login and save a new one.
-	if sdktoken.RemainingLife(cfg.Audience, time.Minute) <= 0 || forceRefresh {
-		err := refreshChainguardToken(ctx, cfg)
+	// If token is expired or not found, or we're forcing a refresh, login and save a new one.
+	if life <= 0 || forceRefresh {
+		err := refreshChainguardToken(ctx, cfg, life)
 		if err != nil {
 			return nil, err
 		}
 	}
 
+	lock.RLock()
+	defer lock.RUnlock()
 	return sdktoken.Load(cfg.Audience)
 }
 
 // refreshChainguardToken attempts to get a new Chainguard token either through user browser flow,
 // or by exchanging a given OIDC token, unless auto-login is disabled.
-func refreshChainguardToken(ctx context.Context, cfg LoginConfig) error {
+func refreshChainguardToken(ctx context.Context, cfg LoginConfig, life time.Duration) error {
 	// Bail if auto-login is disabled.
 	if cfg.Disabled {
 		tflog.Info(ctx, "automatic authentication disabled")
 		return status.Error(codes.Unauthenticated, "automatic auth disabled")
+	}
+
+	// Obtain a write lock since we may be updating the token
+	lock.Lock()
+	defer lock.Unlock()
+
+	// Check that the token wasn't refreshed by another thread
+	if sdktoken.RemainingLife(cfg.Audience, time.Minute) > life {
+		return nil
 	}
 
 	tflog.Info(ctx, "refreshing Chainguard token")
