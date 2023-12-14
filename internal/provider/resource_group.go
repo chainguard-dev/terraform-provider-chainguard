@@ -21,6 +21,7 @@ import (
 	common "chainguard.dev/sdk/proto/platform/common/v1"
 	iam "chainguard.dev/sdk/proto/platform/iam/v1"
 	"chainguard.dev/sdk/uidp"
+	"github.com/chainguard-dev/terraform-provider-chainguard/internal/token"
 	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
 )
 
@@ -127,13 +128,13 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 	// Attempt to reauthenticate if root group was created so token
 	// has new root group in scope.
 	if uidp.InRoot(g.Id) {
-		lo := r.prov.loginOptions
-		err = refreshChainguardToken(ctx, lo)
+		cfg := r.prov.loginConfig
+		cgToken, err := token.Get(ctx, cfg, true /* forceRefresh */)
 		if err != nil {
 			resp.Diagnostics.Append(errorToDiagnostic(err, "failed to refresh Chainguard token"))
 			return
 		}
-		clients, err := newPlatformClients(ctx, lo.audience, lo.consoleAPI)
+		clients, err := newPlatformClients(ctx, string(cgToken), r.prov.consoleAPI)
 		if err != nil {
 			resp.Diagnostics.Append(errorToDiagnostic(err, "failed to create new platform clients"))
 			return
@@ -183,7 +184,7 @@ func (r *groupResource) Read(ctx context.Context, req resource.ReadRequest, resp
 		}
 		// Allow ParentID to remain null for root groups, but ensure it is populated
 		// for when importing non-root groups.
-		if !state.ParentID.IsNull() && !uidp.InRoot(g.Id) {
+		if !state.ParentID.IsNull() || !uidp.InRoot(g.Id) {
 			state.ParentID = types.StringValue(uidp.Parent(g.Id))
 		}
 

@@ -47,6 +47,6 @@ jobs:
           TF_ACC_CONSOLE_API: "https://console-api.enforce.dev"
           TF_ACC_AUDIENCE: "https://console-api.enforce.dev"
           TF_ACC_ISSUER: "https://issuer.enforce.dev"
-          TF_ACC_AMBIENT: "1""
+          TF_ACC_AMBIENT: "1"
         run: go test -v -cover ./internal/...
         timeout-minutes: 10
