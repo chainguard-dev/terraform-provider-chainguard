@@ -249,7 +249,9 @@ func (r *identityProviderResource) Read(ctx context.Context, req resource.ReadRe
 	idp := idpList.Items[0]
 	state.ID = types.StringValue(idp.Id)
 	state.Name = types.StringValue(idp.Name)
-	state.Description = types.StringValue(idp.Description)
+	if !(state.Description.IsNull() && idp.Description == "") {
+		state.Description = types.StringValue(idp.Description)
+	}
 	state.DefaultRole = types.StringValue(idp.DefaultRole)
 	state.ParentID = types.StringValue(uidp.Parent(idp.Id))
 
@@ -261,14 +263,29 @@ func (r *identityProviderResource) Read(ctx context.Context, req resource.ReadRe
 			return
 		}
 
-		oidc := &oidcResourceModel{
-			Issuer:           types.StringValue(conf.Oidc.Issuer),
-			ClientID:         types.StringValue(conf.Oidc.ClientId),
-			ClientSecret:     types.StringValue(conf.Oidc.ClientSecret),
-			AdditionalScopes: scopes,
+		var oidc oidcResourceModel
+		update := true
+		if !state.OIDC.IsNull() {
+			if diags = state.OIDC.As(ctx, &oidc, basetypes.ObjectAsOptions{}); diags.HasError() {
+				resp.Diagnostics.Append(diags...)
+				return
+			}
+
+			update = (oidc.ClientID.ValueString() != conf.Oidc.ClientId) ||
+				(oidc.ClientSecret.ValueString() != conf.Oidc.ClientSecret) ||
+				(oidc.Issuer.ValueString() != conf.Oidc.Issuer) ||
+				(!oidc.AdditionalScopes.Equal(scopes))
 		}
-		state.OIDC, diags = types.ObjectValueFrom(ctx, state.OIDC.AttributeTypes(ctx), oidc)
-		resp.Diagnostics.Append(diags...)
+		// Only update values if different to prevent Terraform reporting state drift
+		if update {
+			oidc.Issuer = types.StringValue(conf.Oidc.Issuer)
+			oidc.ClientID = types.StringValue(conf.Oidc.ClientId)
+			oidc.ClientSecret = types.StringValue(conf.Oidc.ClientSecret)
+			oidc.AdditionalScopes = scopes
+			state.OIDC, diags = types.ObjectValueFrom(ctx, state.OIDC.AttributeTypes(ctx), oidc)
+			resp.Diagnostics.Append(diags...)
+		}
+
 	default:
 		resp.Diagnostics.AddError("failed to save idp response in state", fmt.Sprintf("unknown configuration type: %T", conf))
 	}
