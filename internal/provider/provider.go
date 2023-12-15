@@ -11,7 +11,6 @@ import (
 	"os"
 	"runtime"
 	"strings"
-	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -24,15 +23,17 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
+	"github.com/sigstore/cosign/v2/pkg/providers"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"chainguard.dev/sdk/auth"
-	"chainguard.dev/sdk/auth/login"
-	sdktoken "chainguard.dev/sdk/auth/token"
 	"chainguard.dev/sdk/proto/platform"
-	"chainguard.dev/sdk/sts"
+	"github.com/chainguard-dev/terraform-provider-chainguard/internal/protoutil"
+	"github.com/chainguard-dev/terraform-provider-chainguard/internal/token"
 	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
+
+	_ "github.com/sigstore/cosign/v2/pkg/providers/github"
 )
 
 const (
@@ -44,8 +45,8 @@ const (
 	EnvAccGroupID    = "TF_ACC_GROUP_ID"
 	EnvAccIssuer     = "TF_ACC_ISSUER"
 
-	// auth0ClientID is the oauth2 clientID to use the Auth0 instance.
-	auth0ClientID = "auth0"
+	// EnvAccAmbient signals acceptance tests are being executed by GHA with ambient credentials.
+	EnvAccAmbient = "TF_ACC_AMBIENT"
 )
 
 var EnvAccVars = []string{
@@ -55,9 +56,11 @@ var EnvAccVars = []string{
 	EnvAccIssuer,
 }
 
-// Ensure the implementation satisfies the expected interfaces.
 var (
+	// Ensure the implementation satisfies the expected interfaces.
 	_ provider.Provider = &Provider{}
+
+	UserAgent = "terraform-provider-chainguard"
 )
 
 // New is a helper function to simplify provider server and testing implementation.
@@ -78,21 +81,17 @@ type Provider struct {
 }
 
 type ProviderModel struct {
-	ConsoleAPI types.String `tfsdk:"console_api"`
-
+	ConsoleAPI   types.String `tfsdk:"console_api"`
 	LoginOptions types.Object `tfsdk:"login_options"`
 }
 
-type loginModel struct {
+type LoginOptionsModel struct {
 	Disabled         types.Bool   `tfsdk:"disabled"`
 	Identity         types.String `tfsdk:"identity_id"`
 	IdentityToken    types.String `tfsdk:"identity_token"`
 	IdentityProvider types.String `tfsdk:"identity_provider_id"`
 	Auth0Connection  types.String `tfsdk:"auth0_connection"`
 	OrgName          types.String `tfsdk:"organization_name"`
-
-	audience string
-	issuer   string
 }
 
 // Metadata returns the provider type name.
@@ -189,8 +188,10 @@ func (p *Provider) Schema(_ context.Context, _ provider.SchemaRequest, resp *pro
 }
 
 type providerData struct {
-	client  platform.Clients
-	testing bool
+	client      platform.Clients
+	consoleAPI  string
+	loginConfig token.LoginConfig
+	testing     bool
 }
 
 // Configure prepares a Chainguard API client for data sources and resources.
@@ -198,16 +199,16 @@ func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest,
 	// Parse provider configs
 	var (
 		pm ProviderModel
-		lm loginModel
+		lo LoginOptionsModel
 	)
 	if resp.Diagnostics.Append(req.Config.Get(ctx, &pm)...); resp.Diagnostics.HasError() {
 		return
 	}
 	if !pm.LoginOptions.IsNull() {
-		if resp.Diagnostics.Append(pm.LoginOptions.As(ctx, &lm, basetypes.ObjectAsOptions{})...); resp.Diagnostics.HasError() {
+		if resp.Diagnostics.Append(pm.LoginOptions.As(ctx, &lo, basetypes.ObjectAsOptions{})...); resp.Diagnostics.HasError() {
 			return
 		}
-		tflog.Info(ctx, fmt.Sprintf("login options parsed: %#v", lm))
+		tflog.Info(ctx, fmt.Sprintf("login options parsed: %#v", lo))
 	}
 
 	// Load default values and environment variables
@@ -216,9 +217,10 @@ func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest,
 	//   2. Value from config
 	//   3. Default value
 
-	consoleAPI := firstNonEmpty(os.Getenv(EnvChainguardConsoleAPI), pm.ConsoleAPI.ValueString(), DefaultConsoleAPI)
+	consoleAPI := protoutil.FirstNonEmpty(os.Getenv(EnvChainguardConsoleAPI), pm.ConsoleAPI.ValueString(), DefaultConsoleAPI)
 	audience := consoleAPI
-	userAgent := fmt.Sprintf("terraform-provider-chainguard/%s %s/%s", p.version, runtime.GOOS, runtime.GOARCH)
+	// Decorate the UserAgent with version and runtime info.
+	UserAgent = fmt.Sprintf("%s/%s %s/%s", UserAgent, p.version, runtime.GOOS, runtime.GOARCH)
 
 	if p.version == "acctest" {
 		// In acceptance tests override the console api and audience from env var
@@ -227,110 +229,88 @@ func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest,
 		audience = os.Getenv(EnvAccAudience)
 	}
 
+	// Save login parameters.
+	var cfg token.LoginConfig
+	{
+		cfg = token.LoginConfig{
+			Disabled:         lo.Disabled.ValueBool(),
+			Issuer:           strings.Replace(consoleAPI, "console-api", "issuer", 1),
+			Audience:         audience,
+			Auth0Connection:  protoutil.FirstNonEmpty(os.Getenv("TF_CHAINGUARD_AUTH0_CONNECTION"), lo.Auth0Connection.ValueString()),
+			IdentityID:       protoutil.FirstNonEmpty(os.Getenv("TF_CHAINGUARD_IDENTITY"), lo.Identity.ValueString()),
+			IdentityProvider: protoutil.FirstNonEmpty(os.Getenv("TF_CHAINGUARD_IDP"), lo.IdentityProvider.ValueString()),
+			OrgName:          protoutil.FirstNonEmpty(os.Getenv("TF_CHAINGUARD_ORG_NAME"), lo.OrgName.ValueString()),
+			UserAgent:        UserAgent,
+		}
+
+		// Look for an OIDC token in the following places (in order of precedence)
+		// 1. TF_CHAINGUARD_IDENTITY_TOKEN env var
+		// 2. Ambient GitHub credentials
+		// 3. login_options.identity_token, which is allowed to be empty
+		switch {
+		case os.Getenv("TF_CHAINGUARD_IDENTITY_TOKEN") != "":
+			cfg.IdentityToken = os.Getenv("TF_CHAINGUARD_IDENTITY_TOKEN")
+		case providers.Enabled(ctx):
+			var err error
+			cfg.IdentityToken, err = providers.Provide(ctx, cfg.Issuer)
+			if err != nil {
+				tflog.Error(ctx, fmt.Sprintf("failed to get identity token from ambient credentials: %s", err.Error()))
+			}
+		default:
+			cfg.IdentityToken = lo.IdentityToken.ValueString()
+		}
+	}
+
 	ctx = tflog.SetField(ctx, "chainguard.console_api", consoleAPI)
 	tflog.Info(ctx, "configuring chainguard client")
 
-	// If token is expired or not found, login and save a new one.
-	if (os.Getenv("TF_CHAINGUARD_LOGIN") != "" || !lm.Disabled.ValueBool()) && sdktoken.RemainingLife(audience, time.Minute) <= 0 {
-		tflog.Info(ctx, "refreshing Chainguard token")
-		// Construct the issuer URL from the console API.
-		lm.issuer = strings.Replace(consoleAPI, "console-api", "issuer", 1)
-		lm.audience = audience
-
-		var (
-			err     error
-			cgToken string
-		)
-		// If the env var TF_CHAINGUARD_IDENTITY_TOKEN is set, it takes precedence over any conflicting
-		// login_options that are set.
-		if lm.IdentityToken.ValueString() != "" || os.Getenv("TF_CHAINGUARD_IDENTITY_TOKEN") != "" {
-			cgToken, err = exchangeToken(ctx, lm, userAgent)
-		} else {
-			cgToken, err = getToken(ctx, lm)
-		}
+	// Configure API clients
+	var clients platform.Clients
+	{
+		// Get the Chainguard token
+		// If it doesn't exist or is expired, attempt to get a new one, depending on login_options
+		cgToken, err := token.Get(ctx, cfg, false /* forceRefresh */)
 		if err != nil {
-			resp.Diagnostics.Append(errorToDiagnostic(err, "failed to get Chainguard token"))
+			resp.Diagnostics.AddAttributeError(
+				path.Root("console_api"),
+				"failed to retrieve Chainguard token",
+				fmt.Sprintf("Failed to retrieve token. Either no token was found for audience %q or there was an error reading it.\n"+
+					"Please check the value of \"chainguard.console_api\" in your Terraform provider configuration: %s", audience, err.Error()),
+			)
 			return
 		}
 
-		if err = sdktoken.Save([]byte(cgToken), audience); err != nil {
-			resp.Diagnostics.Append(errorToDiagnostic(err, "failed to save Chainguard token"))
+		// Generate platform clients.
+		clients, err = newPlatformClients(ctx, string(cgToken), consoleAPI)
+		if err != nil {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("console_api"),
+				"failed to create API clients",
+				err.Error())
 			return
 		}
-	}
-
-	token, err := sdktoken.Load(audience)
-	if err != nil {
-		resp.Diagnostics.AddAttributeError(
-			path.Root("console_api"),
-			"failed to retrieve Chainguard token",
-			fmt.Sprintf("Either no token was found for audience %q or there was an error reading it.\n"+
-				"Please check the value of \"chainguard.console_api\" in your Terraform provider configuration.", audience))
-		return
-	}
-
-	cred := auth.NewFromToken(ctx, fmt.Sprintf("Bearer %s", token), false)
-	ctx = platform.WithUserAgent(ctx, userAgent)
-	clients, err := platform.NewPlatformClients(ctx, consoleAPI, cred)
-	if err != nil {
-		resp.Diagnostics.AddAttributeError(
-			path.Root("console_api"),
-			fmt.Sprintf("failed to create api client with %s", consoleAPI),
-			err.Error())
-		return
 	}
 
 	d := &providerData{
-		client:  clients,
-		testing: p.version == "acctest",
+		client:      clients,
+		loginConfig: cfg,
+		consoleAPI:  consoleAPI,
+		testing:     p.version == "acctest",
 	}
 
 	resp.DataSourceData = d
 	resp.ResourceData = d
 }
 
-// getToken gets a Chainguard token by launching a browser and having the user authenticate
-// through the configured OIDC identity provider.
-func getToken(ctx context.Context, lm loginModel) (string, error) {
-	tflog.Info(ctx, "launching browser login flow")
-	loginCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-	defer cancel()
-
-	// For each option, prefer the environment var, if set.
-	return login.Login(loginCtx,
-		login.WithIssuer(lm.issuer),
-		login.WithAudience([]string{lm.audience}),
-		login.WithClientID(auth0ClientID),
-		login.WithIdentity(firstNonEmpty(os.Getenv("TF_CHAINGUARD_IDENTITY"), lm.Identity.ValueString())),
-		login.WithIdentityProvider(firstNonEmpty(os.Getenv("TF_CHAINGUARD_IDP"), lm.IdentityProvider.ValueString())),
-		login.WithAuth0Connection(firstNonEmpty(os.Getenv("TF_CHAINGUARD_AUTH0_CONNECTION"), lm.Auth0Connection.ValueString())),
-		login.WithOrgName(firstNonEmpty(os.Getenv("TF_CHAINGUARD_ORG_NAME"), lm.OrgName.ValueString())),
-	)
-}
-
-// exchangeToken gets a Chainguard token by exchanging the given OIDC token or path to a token.
-// No user interaction is required.
-func exchangeToken(ctx context.Context, lm loginModel, userAgent string) (string, error) {
-	tflog.Info(ctx, "exchanging oidc token for chainguard token")
-
-	// Test to see if identity token is a path or not.
-	idToken := firstNonEmpty(os.Getenv("TF_CHAINGUARD_IDENTITY_TOKEN"), lm.IdentityToken.ValueString())
-	if _, err := os.Stat(idToken); err == nil {
-		// Token was specified, and it is a path. Read the token in from that file.
-		b, err := os.ReadFile(idToken)
-		if err != nil {
-			return "", err
-		}
-		idToken = string(b)
+// newPlatformClients fetches a Chainguard token for the given audience and creates new platform gRPC clients.
+func newPlatformClients(ctx context.Context, token, consoleAPI string) (platform.Clients, error) {
+	cred := auth.NewFromToken(ctx, fmt.Sprintf("Bearer %s", token), false)
+	ctx = platform.WithUserAgent(ctx, UserAgent)
+	clients, err := platform.NewPlatformClients(ctx, consoleAPI, cred)
+	if err != nil {
+		return nil, err
 	}
-
-	opts := []sts.ExchangerOption{
-		sts.WithUserAgent(userAgent),
-	}
-	if lm.Identity.ValueString() != "" {
-		opts = append(opts, sts.WithIdentity(lm.Identity.ValueString()))
-	}
-	return sts.Exchange(ctx, lm.issuer, lm.audience, idToken, opts...)
+	return clients, nil
 }
 
 // errorToDiagnostic converts an error into a diag.Diagnostic.
@@ -344,7 +324,7 @@ func errorToDiagnostic(err error, summary string) diag.Diagnostic {
 		d = diag.NewErrorDiagnostic(summary, err.Error())
 	case stat.Code() == codes.Unauthenticated:
 		d = diag.NewErrorDiagnostic(summary,
-			"Unauthenticated. Please log in to generate a valid token: `chainctl auth login`.")
+			"Unauthenticated. Please log in to generate a valid token (chainctl auth login) or set provider login_options.disabled = false.")
 	default:
 		d = diag.NewErrorDiagnostic(summary,
 			fmt.Sprintf("%s: %s", stat.Code(), stat.Message()))
