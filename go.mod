@@ -13,7 +13,7 @@ require (
 	github.com/hashicorp/terraform-plugin-testing v1.6.0
 	github.com/sigstore/cosign/v2 v2.2.2
 	golang.org/x/exp v0.0.0-20231108232855-2478ac86f678
-	google.golang.org/grpc v1.59.0
+	google.golang.org/grpc v1.60.0
 	google.golang.org/protobuf v1.31.0
 )
 
