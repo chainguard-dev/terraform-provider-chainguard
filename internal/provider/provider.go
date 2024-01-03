@@ -40,6 +40,8 @@ const (
 	EnvChainguardConsoleAPI = "CHAINGUARD_CONSOLE_API"
 	DefaultConsoleAPI       = "https://console-api.enforce.dev"
 
+	EnvChainguardAudience = "CHAINGUARD_AUDIENCE"
+
 	EnvAccAudience   = "TF_ACC_AUDIENCE"
 	EnvAccConsoleAPI = "TF_ACC_CONSOLE_API"
 	EnvAccGroupID    = "TF_ACC_GROUP_ID"
@@ -218,7 +220,7 @@ func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest,
 	//   3. Default value
 
 	consoleAPI := protoutil.FirstNonEmpty(os.Getenv(EnvChainguardConsoleAPI), pm.ConsoleAPI.ValueString(), DefaultConsoleAPI)
-	audience := consoleAPI
+	audience := protoutil.FirstNonEmpty(os.Getenv(EnvChainguardAudience), consoleAPI)
 	// Decorate the UserAgent with version and runtime info.
 	UserAgent = fmt.Sprintf("%s/%s %s/%s", UserAgent, p.version, runtime.GOOS, runtime.GOARCH)
 
