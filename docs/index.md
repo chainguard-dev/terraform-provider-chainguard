@@ -38,6 +38,7 @@ Optional:
 
 - `auth0_connection` (String) Auth0 social connection to use by default for OIDC token. Must be one of: google-oauth2, gitlab, github
 - `disabled` (Boolean) Disable automatic login when Chainguard token is expired.
+- `enable_refresh_tokens` (Boolean) Enable to use of refresh tokens when authenticating with an IdP (not compatible with identity_token authentication).
 - `identity_id` (String) UIDP of the identity to assume when exchanging OIDC token for Chainguard token.
 - `identity_provider_id` (String) UIDP of the identity provider authenticate with for OIDC token.
 - `identity_token` (String) A path to an OIDC identity token, or explicit identity token.

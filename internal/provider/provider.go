@@ -88,12 +88,13 @@ type ProviderModel struct {
 }
 
 type LoginOptionsModel struct {
-	Disabled         types.Bool   `tfsdk:"disabled"`
-	Identity         types.String `tfsdk:"identity_id"`
-	IdentityToken    types.String `tfsdk:"identity_token"`
-	IdentityProvider types.String `tfsdk:"identity_provider_id"`
-	Auth0Connection  types.String `tfsdk:"auth0_connection"`
-	OrgName          types.String `tfsdk:"organization_name"`
+	Disabled            types.Bool   `tfsdk:"disabled"`
+	Identity            types.String `tfsdk:"identity_id"`
+	IdentityToken       types.String `tfsdk:"identity_token"`
+	IdentityProvider    types.String `tfsdk:"identity_provider_id"`
+	Auth0Connection     types.String `tfsdk:"auth0_connection"`
+	OrgName             types.String `tfsdk:"organization_name"`
+	EnableRefreshTokens types.Bool   `tfsdk:"enable_refresh_tokens"`
 }
 
 // Metadata returns the provider type name.
@@ -165,6 +166,7 @@ func (p *Provider) Schema(_ context.Context, _ provider.SchemaRequest, resp *pro
 								path.Root("login_options").AtName("identity_provider_id").Expression(),
 								path.Root("login_options").AtName("auth0_connection").Expression(),
 								path.Root("login_options").AtName("organization_name").Expression(),
+								path.Root("login_options").AtName("enable_refresh_tokens").Expression(),
 							),
 						},
 					},
@@ -182,6 +184,10 @@ func (p *Provider) Schema(_ context.Context, _ provider.SchemaRequest, resp *pro
 						Description: "Verified organization name for determining identity provider to obtain OIDC token.",
 						Optional:    true,
 						// TODO(colin): validate with OrgCheck()
+					},
+					"enable_refresh_tokens": schema.BoolAttribute{
+						Description: "Enable to use of refresh tokens when authenticating with an IdP (not compatible with identity_token authentication).",
+						Optional:    true,
 					},
 				},
 			},
@@ -243,6 +249,7 @@ func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest,
 			IdentityProvider: protoutil.FirstNonEmpty(os.Getenv("TF_CHAINGUARD_IDP"), lo.IdentityProvider.ValueString()),
 			OrgName:          protoutil.FirstNonEmpty(os.Getenv("TF_CHAINGUARD_ORG_NAME"), lo.OrgName.ValueString()),
 			UserAgent:        UserAgent,
+			UseRefreshTokens: protoutil.DefaultBool(lo.EnableRefreshTokens, false),
 		}
 
 		// Look for an OIDC token in the following places (in order of precedence)

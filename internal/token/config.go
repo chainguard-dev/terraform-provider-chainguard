@@ -21,12 +21,12 @@ type LoginConfig struct {
 	// IdentityID is the exact UIDP of a Chainguard identity to assume.
 	IdentityID string
 
-	// IdentityToken is a path to an OIDC token, or literal identity token.
-	IdentityToken string
-
 	// IdentityProvider is the exact UIDP of a custom identity provider
 	// to use for authentication. If empty, Auth0 is assumed.
 	IdentityProvider string
+
+	// IdentityToken is a path to an OIDC token, or literal identity token.
+	IdentityToken string
 
 	// Issuer is the URL of the Chainguard token issuer.
 	Issuer string
@@ -37,4 +37,8 @@ type LoginConfig struct {
 
 	// UserAgent is the user-agent to set during token exchange.
 	UserAgent string
+
+	// UseRefreshTokens indicates if refresh tokens should be created
+	// and exchanged for access tokens.
+	UseRefreshTokens bool
 }
