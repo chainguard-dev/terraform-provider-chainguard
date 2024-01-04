@@ -18,8 +18,13 @@ provider "chainguard" {
     auth0_connection = "google-oauth2"
 
     # Exact id of an identity to assume when authenticating.
-    # Get this ID with chainctl iam identities list
+    # Get this ID with chainctl iam identities list.
     identity_id = "foo/bar"
+
+    # Enable the use of refresh tokens.
+    # Refresh tokens are only supported for browser login flow, this
+    # option is not compatible with identity_token.
+    enable_refresh_tokens = true
 
     # Other supported options:
     #
@@ -29,13 +34,22 @@ provider "chainguard" {
     # disabled = true
     #
     # Exact id of an identity provider to user for authenticating
-    # when using a custom configured identity provider
+    # when using a custom configured identity provider.
     # identity_provider_id = "foo/bar"
     #
     # Verified organization name to determine the configured
     # identity provider to use when authenticating, if different
     # from the default Auth0 IdPs.
     # organization_name = "my-company.org"
+    #
+    # Pass the path to an OIDC identity token, or the explicit token string,
+    # to use for authentication. Helpful for workflows that are able to
+    # generate their own OIDC tokens. Use in conjunction with an assumable
+    # identity and the identity_id option.
+    # This option is not compatible with any browser flow login options:
+    # auth0_connection, identity_provider_id, organization_name, or
+    # use_refresh_tokens.
+    # identity_token = "path/to/oidc/token"
   }
 }
 

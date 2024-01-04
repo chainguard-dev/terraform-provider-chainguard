@@ -25,6 +25,10 @@ const (
 	// auth0ClientID is the oauth2 clientID to indicate to the issuer to
 	// authenticate with Auth0.
 	auth0ClientID = "auth0"
+
+	// tokenLifeBuffer is the amount of remaining life required to use
+	// a token before attempting to generate a new one.
+	tokenLifeBuffer = time.Minute
 )
 
 var lock sync.RWMutex
@@ -34,7 +38,7 @@ var lock sync.RWMutex
 func Get(ctx context.Context, cfg LoginConfig, forceRefresh bool) ([]byte, error) {
 	// Get the remaining life of the current token.
 	lock.RLock()
-	life := sdktoken.RemainingLife(cfg.Audience, time.Minute)
+	life := sdktoken.RemainingLife(sdktoken.KindAccess, cfg.Audience, tokenLifeBuffer)
 	lock.RUnlock()
 
 	// If token is expired or not found, or we're forcing a refresh, login and save a new one.
@@ -47,7 +51,7 @@ func Get(ctx context.Context, cfg LoginConfig, forceRefresh bool) ([]byte, error
 
 	lock.RLock()
 	defer lock.RUnlock()
-	return sdktoken.Load(cfg.Audience)
+	return sdktoken.Load(sdktoken.KindAccess, cfg.Audience)
 }
 
 // refreshChainguardToken attempts to get a new Chainguard token either through user browser flow,
@@ -64,40 +68,60 @@ func refreshChainguardToken(ctx context.Context, cfg LoginConfig, life time.Dura
 	defer lock.Unlock()
 
 	// Check that the token wasn't refreshed by another thread
-	if sdktoken.RemainingLife(cfg.Audience, time.Minute) > life {
+	if sdktoken.RemainingLife(sdktoken.KindAccess, cfg.Audience, tokenLifeBuffer) > life {
 		return nil
 	}
 
-	tflog.Info(ctx, "refreshing Chainguard token")
+	tflog.Info(ctx, "refreshing Chainguard token", map[string]interface{}{
+		"UseRefreshTokens": cfg.UseRefreshTokens,
+	})
 	var (
-		err     error
-		cgToken string
+		accessToken, refreshToken string
+		err                       error
 	)
 
+	// If configured to use refresh tokens, attempt to exchange it for a new access token.
+	if cfg.UseRefreshTokens {
+		accessToken, refreshToken, err = exchangeRefreshToken(ctx, cfg)
+		if err == nil && accessToken != "" && refreshToken != "" {
+			return saveTokens(accessToken, refreshToken, cfg.Audience)
+		}
+		// If refresh token exchange failed, fall through to login flow
+		tflog.Warn(ctx, fmt.Sprintf("failed to exchange refresh token: %s", err.Error()))
+	}
+
 	if cfg.IdentityToken != "" {
-		cgToken, err = exchangeToken(ctx, cfg.IdentityToken, cfg)
+		accessToken, err = exchangeToken(ctx, cfg.IdentityToken, cfg)
 	} else {
-		cgToken, err = getChainguardToken(ctx, cfg)
+		accessToken, refreshToken, err = getChainguardToken(ctx, cfg)
 	}
 	if err != nil {
 		return fmt.Errorf("failed to get Chainguard token: %w", err)
 	}
 
-	if err = sdktoken.Save([]byte(cgToken), cfg.Audience); err != nil {
+	return saveTokens(accessToken, refreshToken, cfg.Audience)
+}
+
+func saveTokens(accessToken, refreshToken, audience string) error {
+	if err := sdktoken.Save([]byte(accessToken), sdktoken.KindAccess, audience); err != nil {
 		return fmt.Errorf("failed to save Chainguard token: %w", err)
+	}
+	if refreshToken != "" {
+		if err := sdktoken.Save([]byte(refreshToken), sdktoken.KindRefresh, audience); err != nil {
+			return fmt.Errorf("failed to save refresh token: %w", err)
+		}
 	}
 	return nil
 }
 
 // getChainguardToken gets a Chainguard token by launching a browser and having the user authenticate
 // through the configured OIDC identity provider.
-func getChainguardToken(ctx context.Context, cfg LoginConfig) (string, error) {
+func getChainguardToken(ctx context.Context, cfg LoginConfig) (accessToken string, refreshToken string, err error) {
 	tflog.Info(ctx, "launching browser login flow")
 	loginCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 
-	// For each option, prefer the environment var, if set.
-	return login.Login(loginCtx,
+	opts := []login.Option{
 		login.WithIssuer(cfg.Issuer),
 		login.WithAudience([]string{cfg.Audience}),
 		login.WithClientID(auth0ClientID),
@@ -105,11 +129,26 @@ func getChainguardToken(ctx context.Context, cfg LoginConfig) (string, error) {
 		login.WithIdentityProvider(cfg.IdentityProvider),
 		login.WithAuth0Connection(cfg.Auth0Connection),
 		login.WithOrgName(cfg.OrgName),
-	)
+	}
+	if cfg.UseRefreshTokens {
+		opts = append(opts, login.WithCreateRefreshToken())
+	}
+	return login.Login(loginCtx, opts...)
+}
+
+func exchangeRefreshToken(ctx context.Context, cfg LoginConfig) (cgToken string, refreshToken string, err error) {
+	tflog.Info(ctx, "exchanging refresh token for access token")
+	refreshTokenBytes, err := sdktoken.Load(sdktoken.KindRefresh, cfg.Audience)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to load refresh token: %w", err)
+	}
+
+	e := sts.New(cfg.Issuer, cfg.Audience, sts.WithUserAgent(cfg.UserAgent))
+	return e.Refresh(ctx, string(refreshTokenBytes))
 }
 
 // exchangeToken gets a Chainguard token by exchanging the given OIDC token or path to a token.
-// No user interaction is required.
+// No user interaction is required. Refresh tokens are not supported in this login flow.
 func exchangeToken(ctx context.Context, idToken string, cfg LoginConfig) (string, error) {
 	tflog.Info(ctx, "exchanging oidc token for chainguard token")
 
