@@ -17,6 +17,7 @@ type testRepo struct {
 	parentID string
 	name     string
 	bundles  string
+	readme   string
 }
 
 func TestImageRepo(t *testing.T) {
@@ -27,12 +28,14 @@ func TestImageRepo(t *testing.T) {
 		parentID: parentID,
 		name:     name,
 		bundles:  `["a", "b", "c"]`,
+		readme:   "# hello",
 	}
 
 	update := testRepo{
 		parentID: parentID,
 		name:     name,
 		bundles:  `["x", "y", "z"]`,
+		readme:   "# goodbye",
 	}
 
 	resource.Test(t, resource.TestCase{
@@ -48,6 +51,7 @@ func TestImageRepo(t *testing.T) {
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `bundles.0`, "a"),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `bundles.1`, "b"),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `bundles.2`, "c"),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `readme`, "# hello"),
 				),
 			},
 
@@ -67,6 +71,7 @@ func TestImageRepo(t *testing.T) {
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `bundles.0`, "x"),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `bundles.1`, "y"),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `bundles.2`, "z"),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `readme`, "# goodbye"),
 				),
 			},
 		},
@@ -79,7 +84,8 @@ resource "chainguard_image_repo" "example" {
   parent_id   = %q
   name        = %q
   bundles     = %s
+  readme      = %q
 }
 `
-	return fmt.Sprintf(tmpl, repo.parentID, repo.name, repo.bundles)
+	return fmt.Sprintf(tmpl, repo.parentID, repo.name, repo.bundles, repo.readme)
 }

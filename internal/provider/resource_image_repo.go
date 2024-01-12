@@ -48,6 +48,7 @@ type imageRepoResourceModel struct {
 	Name     types.String `tfsdk:"name"`
 	ParentID types.String `tfsdk:"parent_id"`
 	Bundles  types.List   `tfsdk:"bundles"`
+	Readme   types.String `tfsdk:"readme"`
 }
 
 func (r *imageRepoResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -89,6 +90,10 @@ func (r *imageRepoResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 					listvalidator.ValueStringsAre(validators.ValidateStringFuncs(validBundlesValue)),
 				},
 			},
+			"readme": schema.StringAttribute{
+				Description: "The README for this repo.",
+				Optional:    true,
+			},
 		},
 	}
 }
@@ -126,6 +131,7 @@ func (r *imageRepoResource) Create(ctx context.Context, req resource.CreateReque
 		Repo: &registry.Repo{
 			Name:    plan.Name.ValueString(),
 			Bundles: bundles,
+			Readme:  plan.Readme.ValueString(),
 		},
 	})
 	if err != nil {
@@ -173,6 +179,7 @@ func (r *imageRepoResource) Read(ctx context.Context, req resource.ReadRequest, 
 	state.ID = types.StringValue(repo.Id)
 	state.ParentID = types.StringValue(uidp.Parent(repo.Id))
 	state.Name = types.StringValue(repo.Name)
+	state.Readme = types.StringValue(repo.Readme)
 
 	var diags diag.Diagnostics
 	state.Bundles, diags = types.ListValueFrom(ctx, types.StringType, repo.Bundles)
@@ -204,6 +211,7 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 		Id:      data.ID.ValueString(),
 		Name:    data.Name.ValueString(),
 		Bundles: bundles,
+		Readme:  data.Readme.ValueString(),
 	})
 	if err != nil {
 		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to update image repo"))
@@ -213,6 +221,7 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 	// Update the state with values returned from the API.
 	data.ID = types.StringValue(repo.Id)
 	data.Name = types.StringValue(repo.Name)
+	data.Readme = types.StringValue(repo.Readme)
 
 	var diags diag.Diagnostics
 	data.Bundles, diags = types.ListValueFrom(ctx, types.StringType, repo.Bundles)
