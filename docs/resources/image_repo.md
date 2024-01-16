@@ -31,6 +31,7 @@ resource "chainguard_image_repo" "example" {
 ### Optional
 
 - `bundles` (List of String) List of bundles associated with this repo (a-z freeform keywords for sales purposes).
+- `readme` (String) The README for this repo.
 
 ### Read-Only
 
