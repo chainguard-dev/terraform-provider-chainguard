@@ -179,7 +179,11 @@ func (r *imageRepoResource) Read(ctx context.Context, req resource.ReadRequest, 
 	state.ID = types.StringValue(repo.Id)
 	state.ParentID = types.StringValue(uidp.Parent(repo.Id))
 	state.Name = types.StringValue(repo.Name)
-	state.Readme = types.StringValue(repo.Readme)
+
+	// Only update the state readme if it started as non-null or we receive a description.
+	if !(state.Readme.IsNull() && repo.Readme == "") {
+		state.Readme = types.StringValue(repo.Readme)
+	}
 
 	var diags diag.Diagnostics
 	state.Bundles, diags = types.ListValueFrom(ctx, types.StringType, repo.Bundles)
@@ -221,7 +225,11 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 	// Update the state with values returned from the API.
 	data.ID = types.StringValue(repo.Id)
 	data.Name = types.StringValue(repo.Name)
-	data.Readme = types.StringValue(repo.Readme)
+
+	// Treat empty readme as nil
+	if repo.Readme != "" {
+		data.Readme = types.StringValue(repo.Readme)
+	}
 
 	var diags diag.Diagnostics
 	data.Bundles, diags = types.ListValueFrom(ctx, types.StringType, repo.Bundles)
