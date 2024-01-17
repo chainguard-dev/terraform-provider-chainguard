@@ -270,38 +270,14 @@ func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest,
 		}
 	}
 
-	ctx = tflog.SetField(ctx, "chainguard.console_api", consoleAPI)
-	tflog.Info(ctx, "configuring chainguard client")
+	tflog.SetField(ctx, "chainguard.console_api", consoleAPI)
 
-	// Configure API clients
-	var clients platform.Clients
-	{
-		// Get the Chainguard token
-		// If it doesn't exist or is expired, attempt to get a new one, depending on login_options
-		cgToken, err := token.Get(ctx, cfg, false /* forceRefresh */)
-		if err != nil {
-			resp.Diagnostics.AddAttributeError(
-				path.Root("console_api"),
-				"failed to retrieve Chainguard token",
-				fmt.Sprintf("Failed to retrieve token. Either no token was found for audience %q or there was an error reading it.\n"+
-					"Please check the value of \"chainguard.console_api\" in your Terraform provider configuration: %s", audience, err.Error()),
-			)
-			return
-		}
-
-		// Generate platform clients.
-		clients, err = newPlatformClients(ctx, string(cgToken), consoleAPI)
-		if err != nil {
-			resp.Diagnostics.AddAttributeError(
-				path.Root("console_api"),
-				"failed to create API clients",
-				err.Error())
-			return
-		}
-	}
-
+	// Client is intentionally set to nil here in case this
+	// provider is used in an environment which does not have
+	// access to the Chainguard API. Instead, client is set by
+	// setupClient() only as needed.
 	d := &providerData{
-		client:      clients,
+		client:      nil,
 		loginConfig: cfg,
 		consoleAPI:  consoleAPI,
 		testing:     p.version == "acctest",
@@ -339,4 +315,30 @@ func errorToDiagnostic(err error, summary string) diag.Diagnostic {
 			fmt.Sprintf("%s: %s", stat.Code(), stat.Message()))
 	}
 	return d
+}
+
+func (pd *providerData) setupClient(ctx context.Context) error {
+	tflog.Info(ctx, "configuring chainguard client")
+
+	// Configure API clients
+	var clients platform.Clients
+	{
+		// Get the Chainguard token
+		// If it doesn't exist or is expired, attempt to get a new one, depending on login_options
+		cgToken, err := token.Get(ctx, pd.loginConfig, false /* forceRefresh */)
+		if err != nil {
+			return fmt.Errorf("Failed to retrieve token. Either no token was found for audience %q or there was an error reading it.\n"+
+				"Please check the value of \"chainguard.console_api\" in your Terraform provider configuration: %s", pd.loginConfig.Audience, err.Error())
+		}
+
+		// Generate platform clients.
+		clients, err = newPlatformClients(ctx, string(cgToken), pd.consoleAPI)
+		if err != nil {
+			return fmt.Errorf("failed to create API clients: %s", err.Error())
+		}
+	}
+
+	// Finally, set client on providerData struct
+	pd.client = clients
+	return nil
 }
