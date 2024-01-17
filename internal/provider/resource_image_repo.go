@@ -93,6 +93,9 @@ func (r *imageRepoResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 			"readme": schema.StringAttribute{
 				Description: "The README for this repo.",
 				Optional:    true,
+				Validators: []validator.String{
+					validators.ValidateStringFuncs(validReadmeValue),
+				},
 			},
 		},
 	}
@@ -102,6 +105,14 @@ func (r *imageRepoResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 func validBundlesValue(s string) error {
 	if err := validation.ValidateBundles([]string{s}); err != nil {
 		return fmt.Errorf("bundle item %q is invalid: %w", s, err)
+	}
+	return nil
+}
+
+// validReadmeValue implements validators.ValidateStringFunc.
+func validReadmeValue(s string) error {
+	if diff, err := validation.ValidateReadme(s); err != nil {
+		return fmt.Errorf("readme is invalid: %w. diff: %s", err, diff)
 	}
 	return nil
 }
