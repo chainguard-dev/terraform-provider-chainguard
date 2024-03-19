@@ -10,6 +10,7 @@ import (
 	"os"
 	"testing"
 
+	"chainguard.dev/sdk/uidp"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
@@ -18,6 +19,8 @@ type testRepo struct {
 	name     string
 	bundles  string
 	readme   string
+	synced   bool
+	unique   bool
 }
 
 func TestImageRepo(t *testing.T) {
@@ -45,10 +48,19 @@ func TestImageRepo(t *testing.T) {
 		readme:   "# goodbye",
 	}
 
-	// Delete readme and bundles
+	// Delete readme and bundles, add syncing
 	update3 := testRepo{
 		parentID: parentID,
 		name:     name,
+		synced:   true,
+	}
+
+	// Add unique tags
+	update4 := testRepo{
+		parentID: parentID,
+		name:     name,
+		synced:   true,
+		unique:   true,
 	}
 
 	resource.Test(t, resource.TestCase{
@@ -107,6 +119,35 @@ func TestImageRepo(t *testing.T) {
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `name`, name),
 					resource.TestCheckNoResourceAttr(`chainguard_image_repo.example`, `bundles`),
 					resource.TestCheckNoResourceAttr(`chainguard_image_repo.example`, `readme`),
+					resource.TestCheckResourceAttrWith(`chainguard_image_repo.example`, `sync_config.source`, func(value string) error {
+						if !uidp.Valid(value) {
+							return fmt.Errorf("not a UIDP: %q", value)
+						}
+						if uidp.Parent(value) != parentID {
+							return fmt.Errorf("unexpected parent: %q, wanted %q", uidp.Parent(value), parentID)
+						}
+						return nil
+					}),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `sync_config.unique_tags`, "false"),
+				),
+			},
+
+			// Update and Read testing. (4)
+			{
+				Config: testImageRepo(update4),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `parent_id`, parentID),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `name`, name),
+					resource.TestCheckResourceAttrWith(`chainguard_image_repo.example`, `sync_config.source`, func(value string) error {
+						if !uidp.Valid(value) {
+							return fmt.Errorf("not a UIDP: %q", value)
+						}
+						if uidp.Parent(value) != parentID {
+							return fmt.Errorf("unexpected parent: %q, wanted %q", uidp.Parent(value), parentID)
+						}
+						return nil
+					}),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `sync_config.unique_tags`, "true"),
 				),
 			},
 		},
@@ -115,9 +156,15 @@ func TestImageRepo(t *testing.T) {
 
 func testImageRepo(repo testRepo) string {
 	const tmpl = `
+resource "chainguard_image_repo" "source" {
+  parent_id = %q
+  name      = "source-repo"
+}
+
 resource "chainguard_image_repo" "example" {
   parent_id = %q
   name      = %q
+  %s
   %s
   %s
 }
@@ -132,5 +179,13 @@ resource "chainguard_image_repo" "example" {
 		readmeLine = fmt.Sprintf("readme = %q", repo.readme)
 	}
 
-	return fmt.Sprintf(tmpl, repo.parentID, repo.name, bundlesLine, readmeLine)
+	var syncLine string
+	if repo.synced {
+		syncLine = fmt.Sprintf(`sync_config {
+  source      = chainguard_image_repo.source.id
+  unique_tags = %t
+}`, repo.unique)
+	}
+
+	return fmt.Sprintf(tmpl, repo.parentID, repo.parentID, repo.name, bundlesLine, readmeLine, syncLine)
 }
