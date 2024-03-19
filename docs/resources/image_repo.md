@@ -32,7 +32,16 @@ resource "chainguard_image_repo" "example" {
 
 - `bundles` (List of String) List of bundles associated with this repo (a-z freeform keywords for sales purposes).
 - `readme` (String) The README for this repo.
+- `sync_config` (Block, Optional) Configuration for catalog syncing. (see [below for nested schema](#nestedblock--sync_config))
 
 ### Read-Only
 
 - `id` (String) The UIDP of this repo.
+
+<a id="nestedblock--sync_config"></a>
+### Nested Schema for `sync_config`
+
+Optional:
+
+- `source` (String) The UIDP of the repository to sync images from.
+- `unique_tags` (Boolean) Whether each synchronized tag should be suffixed with the image timestamp.

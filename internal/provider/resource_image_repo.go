@@ -10,6 +10,7 @@ import (
 	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/objectvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -18,6 +19,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	registry "chainguard.dev/sdk/proto/platform/registry/v1"
@@ -44,11 +46,17 @@ type imageRepoResource struct {
 }
 
 type imageRepoResourceModel struct {
-	ID       types.String `tfsdk:"id"`
-	Name     types.String `tfsdk:"name"`
-	ParentID types.String `tfsdk:"parent_id"`
-	Bundles  types.List   `tfsdk:"bundles"`
-	Readme   types.String `tfsdk:"readme"`
+	ID         types.String `tfsdk:"id"`
+	Name       types.String `tfsdk:"name"`
+	ParentID   types.String `tfsdk:"parent_id"`
+	Bundles    types.List   `tfsdk:"bundles"`
+	Readme     types.String `tfsdk:"readme"`
+	SyncConfig types.Object `tfsdk:"sync_config"`
+}
+
+type syncConfig struct {
+	Source     types.String `tfsdk:"source"`
+	UniqueTags types.Bool   `tfsdk:"unique_tags"`
 }
 
 func (r *imageRepoResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -82,6 +90,7 @@ func (r *imageRepoResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 					validators.UIDP(false /* allowRootSentinel */),
 				},
 			},
+
 			"bundles": schema.ListAttribute{
 				Description: "List of bundles associated with this repo (a-z freeform keywords for sales purposes).",
 				Optional:    true,
@@ -95,6 +104,29 @@ func (r *imageRepoResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				Optional:    true,
 				Validators: []validator.String{
 					validators.ValidateStringFuncs(validReadmeValue),
+				},
+			},
+		},
+		Blocks: map[string]schema.Block{
+			"sync_config": schema.SingleNestedBlock{
+				Description: "Configuration for catalog syncing.",
+				Validators: []validator.Object{
+					objectvalidator.AlsoRequires(
+						path.Root("sync_config").AtName("source").Expression(),
+					),
+				},
+				Attributes: map[string]schema.Attribute{
+					"source": schema.StringAttribute{
+						Description: "The UIDP of the repository to sync images from.",
+						Optional:    true, // This attribute is required, but only if the block is defined. See Validators.
+						Validators: []validator.String{
+							validators.UIDP(false /* allowRootSentinel */),
+						},
+					},
+					"unique_tags": schema.BoolAttribute{
+						Description: "Whether each synchronized tag should be suffixed with the image timestamp.",
+						Optional:    true,
+					},
 				},
 			},
 		},
@@ -132,17 +164,32 @@ func (r *imageRepoResource) Create(ctx context.Context, req resource.CreateReque
 	}
 	tflog.Info(ctx, fmt.Sprintf("create image repo request: name=%s, parent_id=%s", plan.Name, plan.ParentID))
 
+	var sc *registry.SyncConfig
+	if !plan.SyncConfig.IsNull() {
+		var cfg syncConfig
+		resp.Diagnostics.Append(plan.SyncConfig.As(ctx, &cfg, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		sc = &registry.SyncConfig{
+			Source:     cfg.Source.ValueString(),
+			UniqueTags: cfg.UniqueTags.ValueBool(),
+		}
+	}
+
 	bundles := make([]string, 0, len(plan.Bundles.Elements()))
 	resp.Diagnostics.Append(plan.Bundles.ElementsAs(ctx, &bundles, false /* allowUnhandled */)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	repo, err := r.prov.client.Registry().Registry().CreateRepo(ctx, &registry.CreateRepoRequest{
 		ParentId: plan.ParentID.ValueString(),
 		Repo: &registry.Repo{
-			Name:    plan.Name.ValueString(),
-			Bundles: bundles,
-			Readme:  plan.Readme.ValueString(),
+			Name:       plan.Name.ValueString(),
+			Bundles:    bundles,
+			Readme:     plan.Readme.ValueString(),
+			SyncConfig: sc,
 		},
 	})
 	if err != nil {
@@ -217,16 +264,30 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 	}
 	tflog.Info(ctx, fmt.Sprintf("update image repo request: %s", data.ID))
 
+	var sc *registry.SyncConfig
+	if !data.SyncConfig.IsNull() {
+		var cfg syncConfig
+		resp.Diagnostics.Append(data.SyncConfig.As(ctx, &cfg, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		sc = &registry.SyncConfig{
+			Source:     cfg.Source.ValueString(),
+			UniqueTags: cfg.UniqueTags.ValueBool(),
+		}
+	}
+
 	bundles := make([]string, 0, len(data.Bundles.Elements()))
 	resp.Diagnostics.Append(data.Bundles.ElementsAs(ctx, &bundles, false /* allowUnhandled */)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 	repo, err := r.prov.client.Registry().Registry().UpdateRepo(ctx, &registry.Repo{
-		Id:      data.ID.ValueString(),
-		Name:    data.Name.ValueString(),
-		Bundles: bundles,
-		Readme:  data.Readme.ValueString(),
+		Id:         data.ID.ValueString(),
+		Name:       data.Name.ValueString(),
+		Bundles:    bundles,
+		Readme:     data.Readme.ValueString(),
+		SyncConfig: sc,
 	})
 	if err != nil {
 		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to update image repo"))
