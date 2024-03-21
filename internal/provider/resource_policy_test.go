@@ -17,11 +17,12 @@ import (
 
 func TestAccResourcePolicy(t *testing.T) {
 	description := acctest.RandString(10)
+	name := acctest.RandString(10)
 	document := `
 apiVersion: policy.sigstore.dev/v1beta1
 kind: ClusterImagePolicy
 metadata:
-  name: foo
+  name: %s
 spec:
   images:
   - glob: "example.com/foo/*"
@@ -32,6 +33,7 @@ spec:
       - issuerRegExp: .*kubernetes.default.*
         subjectRegExp: .*kubernetes.io/namespaces/default/serviceaccounts/default
 `
+	document = fmt.Sprintf(document, name)
 	parent := os.Getenv("TF_ACC_GROUP_ID")
 
 	newDescription := acctest.RandString(10)
@@ -39,7 +41,7 @@ spec:
 apiVersion: policy.sigstore.dev/v1beta1
 kind: ClusterImagePolicy
 metadata:
-  name: foo
+  name: %s
 spec:
   images:
   - glob: "example.com/bar/*"
@@ -50,6 +52,7 @@ spec:
       - issuerRegExp: .*kubernetes.default.*
         subjectRegExp: .*kubernetes.io/namespaces/default/serviceaccounts/default
 `
+	newDocument = fmt.Sprintf(newDocument, name)
 
 	childpattern := regexp.MustCompile(fmt.Sprintf(`%s\/[a-z0-9]{16}`, parent))
 
@@ -61,7 +64,7 @@ spec:
 				Config: testAccResourcePolicy(parent, description, document),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(`chainguard_policy.example`, `parent_id`, parent),
-					resource.TestCheckResourceAttr(`chainguard_policy.example`, `name`, `foo`),
+					resource.TestCheckResourceAttr(`chainguard_policy.example`, `name`, name),
 					resource.TestCheckResourceAttr(`chainguard_policy.example`, `description`, description),
 					resource.TestMatchResourceAttr(`chainguard_policy.example`, `id`, childpattern),
 				),
@@ -76,7 +79,7 @@ spec:
 				Config: testAccResourcePolicy(parent, newDescription, newDocument),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(`chainguard_policy.example`, `parent_id`, parent),
-					resource.TestCheckResourceAttr(`chainguard_policy.example`, `name`, `foo`),
+					resource.TestCheckResourceAttr(`chainguard_policy.example`, `name`, name),
 					resource.TestCheckResourceAttr(`chainguard_policy.example`, `description`, newDescription),
 					resource.TestMatchResourceAttr(`chainguard_policy.example`, `document`, regexp.MustCompile(`https://fulcio.sigstage.dev`)),
 					resource.TestMatchResourceAttr(`chainguard_policy.example`, `id`, childpattern),
