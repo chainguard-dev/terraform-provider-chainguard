@@ -10,8 +10,10 @@ import (
 	"os"
 	"testing"
 
-	"chainguard.dev/sdk/uidp"
+	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+
+	"chainguard.dev/sdk/uidp"
 )
 
 type testRepo struct {
@@ -25,7 +27,7 @@ type testRepo struct {
 
 func TestImageRepo(t *testing.T) {
 	parentID := os.Getenv("TF_ACC_GROUP_ID")
-	name := "test-name"
+	name := acctest.RandString(10)
 
 	original := testRepo{
 		parentID: parentID,

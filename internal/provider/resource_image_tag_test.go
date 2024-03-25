@@ -10,6 +10,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
@@ -21,7 +22,7 @@ type testTag struct {
 
 func TestImageTag(t *testing.T) {
 	parentID := os.Getenv("TF_ACC_GROUP_ID")
-	name := "test-name-for-tag"
+	name := acctest.RandString(10)
 
 	original := testTag{
 		parentID: parentID,
