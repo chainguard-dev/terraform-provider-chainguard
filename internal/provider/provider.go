@@ -123,7 +123,6 @@ func (p *Provider) Resources(_ context.Context) []func() resource.Resource {
 		NewIdentityProviderResource,
 		NewImageRepoResource,
 		NewImageTagResource,
-		NewPolicyResource,
 		NewRoleResource,
 		NewRolebindingResource,
 		NewSubscriptionResource,
