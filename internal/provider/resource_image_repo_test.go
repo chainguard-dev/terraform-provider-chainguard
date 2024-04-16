@@ -191,3 +191,53 @@ resource "chainguard_image_repo" "example" {
 
 	return fmt.Sprintf(tmpl, repo.parentID, repo.parentID, repo.name, bundlesLine, readmeLine, syncLine)
 }
+
+// Multiple equivalent concurrent updates should not cause errors.
+func TestImageRepo_ConcurrentUpdates(t *testing.T) {
+	parentID := os.Getenv("TF_ACC_GROUP_ID")
+	name := acctest.RandString(10)
+
+	// One apply to create it.
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{{
+			Config: fmt.Sprintf(`
+		resource "chainguard_image_repo" "repo" {
+		  parent_id = %q
+		  name      = %q
+		  readme    = "# hello"
+		}
+		`, parentID, name),
+			Check: resource.ComposeTestCheckFunc(
+				resource.TestCheckResourceAttr(`chainguard_image_repo.repo`, `parent_id`, parentID),
+				resource.TestCheckResourceAttr(`chainguard_image_repo.repo`, `name`, name),
+			),
+		}},
+	})
+
+	// N concurrent updates, with no changes.
+	for i := 0; i < 10; i++ {
+		t.Run("concurrent_updates", func(t *testing.T) {
+			t.Parallel()
+
+			resource.Test(t, resource.TestCase{
+				PreCheck:                 func() { testAccPreCheck(t) },
+				ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+				Steps: []resource.TestStep{{
+					Config: fmt.Sprintf(`
+				resource "chainguard_image_repo" "repo" {
+				  parent_id = %q
+				  name      = %q
+				  readme    = "# hello"
+				}
+				`, parentID, name),
+					Check: resource.ComposeTestCheckFunc(
+						resource.TestCheckResourceAttr(`chainguard_image_repo.repo`, `parent_id`, parentID),
+						resource.TestCheckResourceAttr(`chainguard_image_repo.repo`, `name`, name),
+					),
+				}},
+			})
+		})
+	}
+}
