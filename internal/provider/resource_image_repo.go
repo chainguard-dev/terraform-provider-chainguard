@@ -8,6 +8,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/objectvalidator"
@@ -154,6 +155,8 @@ func (r *imageRepoResource) ImportState(ctx context.Context, req resource.Import
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
+var mu sync.Mutex
+
 // Create creates the resource and sets the initial Terraform state.
 func (r *imageRepoResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	// Read the plan data into the resource model.
@@ -163,6 +166,10 @@ func (r *imageRepoResource) Create(ctx context.Context, req resource.CreateReque
 		return
 	}
 	tflog.Info(ctx, fmt.Sprintf("create image repo request: name=%s, parent_id=%s", plan.Name, plan.ParentID))
+
+	// Lock to prevent concurrent creation of the same repo.
+	mu.Lock()
+	defer mu.Unlock()
 
 	var sc *registry.SyncConfig
 	if !plan.SyncConfig.IsNull() {
@@ -211,6 +218,10 @@ func (r *imageRepoResource) Read(ctx context.Context, req resource.ReadRequest, 
 		return
 	}
 	tflog.Info(ctx, fmt.Sprintf("read image repo request: %s", state.ID))
+
+	// Lock to prevent concurrent update of the same repo.
+	mu.Lock()
+	defer mu.Unlock()
 
 	// Query for the repo to update state
 	id := state.ID.ValueString()
@@ -263,6 +274,10 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 		return
 	}
 	tflog.Info(ctx, fmt.Sprintf("update image repo request: %s", data.ID))
+
+	// Lock to prevent concurrent update of the same repo.
+	mu.Lock()
+	defer mu.Unlock()
 
 	var sc *registry.SyncConfig
 	if !data.SyncConfig.IsNull() {
@@ -329,6 +344,10 @@ func (r *imageRepoResource) Delete(ctx context.Context, req resource.DeleteReque
 		return
 	}
 	tflog.Info(ctx, fmt.Sprintf("ACCEPTANCE TEST: delete image repo request: %s", state.ID))
+
+	// Lock to prevent concurrent creation of the same repo.
+	mu.Lock()
+	defer mu.Unlock()
 
 	id := state.ID.ValueString()
 	_, err := r.prov.client.Registry().Registry().DeleteRepo(ctx, &registry.DeleteRepoRequest{
