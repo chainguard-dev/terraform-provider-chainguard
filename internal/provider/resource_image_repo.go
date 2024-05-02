@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/objectvalidator"
@@ -22,6 +23,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	registry "chainguard.dev/sdk/proto/platform/registry/v1"
 	"chainguard.dev/sdk/uidp"
@@ -57,6 +59,7 @@ type imageRepoResourceModel struct {
 
 type syncConfig struct {
 	Source     types.String `tfsdk:"source"`
+	Expiration types.String `tfsdk:"expiration"`
 	UniqueTags types.Bool   `tfsdk:"unique_tags"`
 }
 
@@ -114,6 +117,7 @@ func (r *imageRepoResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				Validators: []validator.Object{
 					objectvalidator.AlsoRequires(
 						path.Root("sync_config").AtName("source").Expression(),
+						path.Root("sync_config").AtName("expiration").Expression(),
 					),
 				},
 				Attributes: map[string]schema.Attribute{
@@ -122,6 +126,13 @@ func (r *imageRepoResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 						Optional:    true, // This attribute is required, but only if the block is defined. See Validators.
 						Validators: []validator.String{
 							validators.UIDP(false /* allowRootSentinel */),
+						},
+					},
+					"expiration": schema.StringAttribute{
+						Description: "The RFC3339 encoded date and time at which this entitlement will expire.",
+						Optional:    true, // This attribute is required, but only if the block is defined. See Validators.
+						Validators: []validator.String{
+							validators.ValidateStringFuncs(checkRFC3339),
 						},
 					},
 					"unique_tags": schema.BoolAttribute{
@@ -178,8 +189,16 @@ func (r *imageRepoResource) Create(ctx context.Context, req resource.CreateReque
 		if resp.Diagnostics.HasError() {
 			return
 		}
+		ts, err := time.Parse(time.RFC3339, cfg.Expiration.ValueString())
+		if err != nil {
+			resp.Diagnostics.Append(errorToDiagnostic(err, "failed to parse timestamp"))
+			if resp.Diagnostics.HasError() {
+				return
+			}
+		}
 		sc = &registry.SyncConfig{
 			Source:     cfg.Source.ValueString(),
+			Expiration: timestamppb.New(ts),
 			UniqueTags: cfg.UniqueTags.ValueBool(),
 		}
 	}
@@ -286,8 +305,16 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 		if resp.Diagnostics.HasError() {
 			return
 		}
+		ts, err := time.Parse(time.RFC3339, cfg.Expiration.ValueString())
+		if err != nil {
+			resp.Diagnostics.Append(errorToDiagnostic(err, "failed to parse timestamp"))
+			if resp.Diagnostics.HasError() {
+				return
+			}
+		}
 		sc = &registry.SyncConfig{
 			Source:     cfg.Source.ValueString(),
+			Expiration: timestamppb.New(ts),
 			UniqueTags: cfg.UniqueTags.ValueBool(),
 		}
 	}

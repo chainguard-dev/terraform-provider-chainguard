@@ -43,5 +43,6 @@ resource "chainguard_image_repo" "example" {
 
 Optional:
 
+- `expiration` (String) The RFC3339 encoded date and time at which this entitlement will expire.
 - `source` (String) The UIDP of the repository to sync images from.
 - `unique_tags` (Boolean) Whether each synchronized tag should be suffixed with the image timestamp.

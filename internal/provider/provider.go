@@ -106,7 +106,6 @@ func (p *Provider) Metadata(_ context.Context, _ provider.MetadataRequest, resp 
 // DataSources defines the data sources implemented in the provider.
 func (p *Provider) DataSources(_ context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
-		NewClusterCIDRDataSource,
 		NewGroupDataSource,
 		NewIdentityDataSource,
 		NewRoleDataSource,
