@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -185,8 +186,9 @@ resource "chainguard_image_repo" "example" {
 	if repo.synced {
 		syncLine = fmt.Sprintf(`sync_config {
   source      = chainguard_image_repo.source.id
+  expiration  = %q
   unique_tags = %t
-}`, repo.unique)
+}`, time.Now().Add(24*time.Hour).UTC().Format(time.RFC3339), repo.unique)
 	}
 
 	return fmt.Sprintf(tmpl, repo.parentID, repo.parentID, repo.name, bundlesLine, readmeLine, syncLine)
