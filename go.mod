@@ -14,7 +14,7 @@ require (
 	github.com/sigstore/cosign/v2 v2.2.4
 	golang.org/x/exp v0.0.0-20231206192017-f3f8817b8deb
 	google.golang.org/grpc v1.63.2
-	google.golang.org/protobuf v1.33.0
+	google.golang.org/protobuf v1.34.1
 )
 
 require (
