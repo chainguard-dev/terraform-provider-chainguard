@@ -272,7 +272,6 @@ func (r *identityProviderResource) Read(ctx context.Context, req resource.ReadRe
 			}
 
 			update = (oidc.ClientID.ValueString() != conf.Oidc.ClientId) ||
-				(oidc.ClientSecret.ValueString() != conf.Oidc.ClientSecret) ||
 				(oidc.Issuer.ValueString() != conf.Oidc.Issuer) ||
 				(!oidc.AdditionalScopes.Equal(scopes))
 		}
@@ -280,7 +279,7 @@ func (r *identityProviderResource) Read(ctx context.Context, req resource.ReadRe
 		if update {
 			oidc.Issuer = types.StringValue(conf.Oidc.Issuer)
 			oidc.ClientID = types.StringValue(conf.Oidc.ClientId)
-			oidc.ClientSecret = types.StringValue(conf.Oidc.ClientSecret)
+			// ClientSecret is not returned by the API
 			oidc.AdditionalScopes = scopes
 			state.OIDC, diags = types.ObjectValueFrom(ctx, state.OIDC.AttributeTypes(ctx), oidc)
 			resp.Diagnostics.Append(diags...)
