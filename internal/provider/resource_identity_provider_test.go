@@ -77,9 +77,10 @@ func TestAccResourceIdentityProvider(t *testing.T) {
 			},
 			// ImportState testing.
 			{
-				ResourceName:      "chainguard_identity_provider.example",
-				ImportState:       true,
-				ImportStateVerify: true,
+				ResourceName:            "chainguard_identity_provider.example",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"oidc.client_secret"},
 			},
 			{
 				Config: accDataRoleViewer + testAccResourceIdentityProvider(update),
