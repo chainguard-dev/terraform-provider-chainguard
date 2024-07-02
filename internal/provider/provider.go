@@ -247,8 +247,12 @@ func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest,
 			IdentityProvider: protoutil.FirstNonEmpty(os.Getenv("TF_CHAINGUARD_IDP"), lo.IdentityProvider.ValueString()),
 			OrgName:          protoutil.FirstNonEmpty(os.Getenv("TF_CHAINGUARD_ORG_NAME"), lo.OrgName.ValueString()),
 			UserAgent:        UserAgent,
-			UseRefreshTokens: protoutil.DefaultBool(lo.EnableRefreshTokens, false),
 		}
+
+		// Enable refresh tokens for users by default.
+		// NB: Refresh tokens are incompatible with assumable identities, and unnecessary
+		// when providing an explicit OIDC token.
+		cfg.UseRefreshTokens = protoutil.DefaultBool(lo.EnableRefreshTokens, cfg.IdentityID == "" && cfg.IdentityToken == "")
 
 		// Look for an OIDC token in the following places (in order of precedence)
 		// 1. TF_CHAINGUARD_IDENTITY_TOKEN env var
