@@ -24,6 +24,7 @@ type testRepo struct {
 	readme   string
 	synced   bool
 	unique   bool
+	apks     bool
 }
 
 func TestImageRepo(t *testing.T) {
@@ -56,6 +57,7 @@ func TestImageRepo(t *testing.T) {
 		parentID: parentID,
 		name:     name,
 		synced:   true,
+		apks:     true,
 	}
 
 	// Add unique tags
@@ -64,6 +66,7 @@ func TestImageRepo(t *testing.T) {
 		name:     name,
 		synced:   true,
 		unique:   true,
+		apks:     false,
 	}
 
 	resource.Test(t, resource.TestCase{
@@ -132,6 +135,7 @@ func TestImageRepo(t *testing.T) {
 						return nil
 					}),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `sync_config.unique_tags`, "false"),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `sync_config.sync_apks`, "true"),
 				),
 			},
 
@@ -151,6 +155,7 @@ func TestImageRepo(t *testing.T) {
 						return nil
 					}),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `sync_config.unique_tags`, "true"),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `sync_config.sync_apks`, "false"),
 				),
 			},
 		},
@@ -188,7 +193,8 @@ resource "chainguard_image_repo" "example" {
   source      = chainguard_image_repo.source.id
   expiration  = %q
   unique_tags = %t
-}`, time.Now().Add(24*time.Hour).UTC().Format(time.RFC3339), repo.unique)
+  sync_apks   = %t
+}`, time.Now().Add(24*time.Hour).UTC().Format(time.RFC3339), repo.unique, repo.apks)
 	}
 
 	return fmt.Sprintf(tmpl, repo.parentID, repo.parentID, repo.name, bundlesLine, readmeLine, syncLine)

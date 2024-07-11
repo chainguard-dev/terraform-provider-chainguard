@@ -61,6 +61,7 @@ type syncConfig struct {
 	Source     types.String `tfsdk:"source"`
 	Expiration types.String `tfsdk:"expiration"`
 	UniqueTags types.Bool   `tfsdk:"unique_tags"`
+	SyncAPKs   types.Bool   `tfsdk:"sync_apks"`
 }
 
 func (r *imageRepoResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -139,6 +140,10 @@ func (r *imageRepoResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 						Description: "Whether each synchronized tag should be suffixed with the image timestamp.",
 						Optional:    true,
 					},
+					"sync_apks": schema.BoolAttribute{
+						Description: "Whether the APKs for each image should also be synchronized.",
+						Optional:    true,
+					},
 				},
 			},
 		},
@@ -200,6 +205,7 @@ func (r *imageRepoResource) Create(ctx context.Context, req resource.CreateReque
 			Source:     cfg.Source.ValueString(),
 			Expiration: timestamppb.New(ts),
 			UniqueTags: cfg.UniqueTags.ValueBool(),
+			SyncApks:   cfg.SyncAPKs.ValueBool(),
 		}
 	}
 
@@ -316,6 +322,7 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 			Source:     cfg.Source.ValueString(),
 			Expiration: timestamppb.New(ts),
 			UniqueTags: cfg.UniqueTags.ValueBool(),
+			SyncApks:   cfg.SyncAPKs.ValueBool(),
 		}
 	}
 
