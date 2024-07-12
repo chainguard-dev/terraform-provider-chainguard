@@ -279,7 +279,28 @@ func (r *imageRepoResource) Read(ctx context.Context, req resource.ReadRequest, 
 		state.Readme = types.StringValue(repo.Readme)
 	}
 
+	var sc syncConfig
 	var diags diag.Diagnostics
+	if !state.SyncConfig.IsNull() {
+		if diags = state.SyncConfig.As(ctx, &sc, basetypes.ObjectAsOptions{}); diags.HasError() {
+			resp.Diagnostics.Append(diags...)
+			return
+		}
+		update := (sc.Source.ValueString() != repo.SyncConfig.Source) ||
+			(sc.Expiration.ValueString() != repo.SyncConfig.Expiration.String()) ||
+			(sc.UniqueTags.ValueBool() != repo.SyncConfig.UniqueTags) ||
+			(sc.SyncAPKs.ValueBool() != repo.SyncConfig.SyncApks)
+
+		if update {
+			sc.Source = types.StringValue(repo.SyncConfig.Source)
+			sc.Expiration = types.StringValue(repo.SyncConfig.Expiration.String())
+			sc.UniqueTags = types.BoolValue(repo.SyncConfig.UniqueTags)
+			sc.SyncAPKs = types.BoolValue(repo.SyncConfig.SyncApks)
+			state.SyncConfig, diags = types.ObjectValueFrom(ctx, state.SyncConfig.AttributeTypes(ctx), sc)
+			resp.Diagnostics.Append(diags...)
+		}
+	}
+
 	state.Bundles, diags = types.ListValueFrom(ctx, types.StringType, repo.Bundles)
 	if diags.HasError() {
 		resp.Diagnostics.Append(diags...)
