@@ -43,6 +43,7 @@ resource "chainguard_image_repo" "example" {
 
 Optional:
 
+- `apko_overlay` (String) A json-encoded APKO configuration to overlay on rebuilds of images being synced.
 - `expiration` (String) The RFC3339 encoded date and time at which this entitlement will expire.
 - `source` (String) The UIDP of the repository to sync images from.
 - `sync_apks` (Boolean) Whether the APKs for each image should also be synchronized.
