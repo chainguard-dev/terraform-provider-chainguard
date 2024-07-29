@@ -58,10 +58,11 @@ type imageRepoResourceModel struct {
 }
 
 type syncConfig struct {
-	Source     types.String `tfsdk:"source"`
-	Expiration types.String `tfsdk:"expiration"`
-	UniqueTags types.Bool   `tfsdk:"unique_tags"`
-	SyncAPKs   types.Bool   `tfsdk:"sync_apks"`
+	Source      types.String `tfsdk:"source"`
+	Expiration  types.String `tfsdk:"expiration"`
+	UniqueTags  types.Bool   `tfsdk:"unique_tags"`
+	SyncAPKs    types.Bool   `tfsdk:"sync_apks"`
+	ApkoOverlay types.String `tfsdk:"apko_overlay"`
 }
 
 func (r *imageRepoResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -144,6 +145,11 @@ func (r *imageRepoResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 						Description: "Whether the APKs for each image should also be synchronized.",
 						Optional:    true,
 					},
+					"apko_overlay": schema.StringAttribute{
+						Description: "A json-encoded APKO configuration to overlay on rebuilds of images being synced.",
+						Optional:    true,
+						// TODO: Validatore for JSON + APKO
+					},
 				},
 			},
 		},
@@ -202,10 +208,11 @@ func (r *imageRepoResource) Create(ctx context.Context, req resource.CreateReque
 			}
 		}
 		sc = &registry.SyncConfig{
-			Source:     cfg.Source.ValueString(),
-			Expiration: timestamppb.New(ts),
-			UniqueTags: cfg.UniqueTags.ValueBool(),
-			SyncApks:   cfg.SyncAPKs.ValueBool(),
+			Source:      cfg.Source.ValueString(),
+			Expiration:  timestamppb.New(ts),
+			UniqueTags:  cfg.UniqueTags.ValueBool(),
+			SyncApks:    cfg.SyncAPKs.ValueBool(),
+			ApkoOverlay: cfg.ApkoOverlay.ValueString(),
 		}
 	}
 
@@ -340,10 +347,11 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 			}
 		}
 		sc = &registry.SyncConfig{
-			Source:     cfg.Source.ValueString(),
-			Expiration: timestamppb.New(ts),
-			UniqueTags: cfg.UniqueTags.ValueBool(),
-			SyncApks:   cfg.SyncAPKs.ValueBool(),
+			Source:      cfg.Source.ValueString(),
+			Expiration:  timestamppb.New(ts),
+			UniqueTags:  cfg.UniqueTags.ValueBool(),
+			SyncApks:    cfg.SyncAPKs.ValueBool(),
+			ApkoOverlay: cfg.ApkoOverlay.ValueString(),
 		}
 	}
 
