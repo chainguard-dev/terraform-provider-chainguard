@@ -33,6 +33,7 @@ resource "chainguard_image_repo" "example" {
 - `bundles` (List of String) List of bundles associated with this repo (a-z freeform keywords for sales purposes).
 - `readme` (String) The README for this repo.
 - `sync_config` (Block, Optional) Configuration for catalog syncing. (see [below for nested schema](#nestedblock--sync_config))
+- `tier` (String) Image tier associated with this repo.
 
 ### Read-Only
 

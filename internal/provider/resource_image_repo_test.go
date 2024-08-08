@@ -25,6 +25,7 @@ type testRepo struct {
 	synced   bool
 	unique   bool
 	apks     bool
+	tier     string
 }
 
 func TestImageRepo(t *testing.T) {
@@ -42,6 +43,7 @@ func TestImageRepo(t *testing.T) {
 		name:     name,
 		bundles:  `["a", "b", "c"]`,
 		readme:   "# hello",
+		tier:     "APPLICATION",
 	}
 
 	// Modify bundles and readme
@@ -50,6 +52,7 @@ func TestImageRepo(t *testing.T) {
 		name:     name,
 		bundles:  `["x", "y", "z"]`,
 		readme:   "# goodbye",
+		tier:     "BASE",
 	}
 
 	// Delete readme and bundles, add syncing
@@ -81,6 +84,7 @@ func TestImageRepo(t *testing.T) {
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `name`, name),
 					resource.TestCheckNoResourceAttr(`chainguard_image_repo.example`, `bundles`),
 					resource.TestCheckNoResourceAttr(`chainguard_image_repo.example`, `readme`),
+					resource.TestCheckNoResourceAttr(`chainguard_image_repo.example`, `tier`),
 				),
 			},
 
@@ -101,6 +105,7 @@ func TestImageRepo(t *testing.T) {
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `bundles.1`, "b"),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `bundles.2`, "c"),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `readme`, "# hello"),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `tier`, "APPLICATION"),
 				),
 			},
 
@@ -114,6 +119,7 @@ func TestImageRepo(t *testing.T) {
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `bundles.1`, "y"),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `bundles.2`, "z"),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `readme`, "# goodbye"),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `tier`, "BASE"),
 				),
 			},
 
@@ -175,6 +181,7 @@ resource "chainguard_image_repo" "example" {
   %s
   %s
   %s
+  %s
 }
 `
 	var bundlesLine string
@@ -197,7 +204,12 @@ resource "chainguard_image_repo" "example" {
 }`, time.Now().Add(24*time.Hour).UTC().Format(time.RFC3339), repo.unique, repo.apks)
 	}
 
-	return fmt.Sprintf(tmpl, repo.parentID, repo.parentID, repo.name, bundlesLine, readmeLine, syncLine)
+	var tierLine string
+	if repo.tier != "" {
+		tierLine = fmt.Sprintf("tier = %q", repo.tier)
+	}
+
+	return fmt.Sprintf(tmpl, repo.parentID, repo.parentID, repo.name, bundlesLine, readmeLine, syncLine, tierLine)
 }
 
 // Multiple equivalent concurrent updates should not cause errors.
