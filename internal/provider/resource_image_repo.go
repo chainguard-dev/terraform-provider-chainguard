@@ -55,6 +55,8 @@ type imageRepoResourceModel struct {
 	Bundles    types.List   `tfsdk:"bundles"`
 	Readme     types.String `tfsdk:"readme"`
 	SyncConfig types.Object `tfsdk:"sync_config"`
+	// Image tier (e.g. APPLICATION, BASE, etc.)
+	Tier types.String `tfsdk:"tier"`
 }
 
 type syncConfig struct {
@@ -112,6 +114,13 @@ func (r *imageRepoResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 					validators.ValidateStringFuncs(validReadmeValue),
 				},
 			},
+			"tier": schema.StringAttribute{
+				Description: "Image tier associated with this repo.",
+				Optional:    true,
+				Validators: []validator.String{
+					validators.ValidateStringFuncs(validTierValue),
+				},
+			},
 		},
 		Blocks: map[string]schema.Block{
 			"sync_config": schema.SingleNestedBlock{
@@ -160,6 +169,14 @@ func (r *imageRepoResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 func validBundlesValue(s string) error {
 	if err := validation.ValidateBundles([]string{s}); err != nil {
 		return fmt.Errorf("bundle item %q is invalid: %w", s, err)
+	}
+	return nil
+}
+
+// validTierValue implements validators.ValidateStringFunc.
+func validTierValue(s string) error {
+	if _, ok := registry.CatalogTier_value[s]; !ok {
+		return fmt.Errorf("tier %q is invalid", s)
 	}
 	return nil
 }
@@ -225,10 +242,11 @@ func (r *imageRepoResource) Create(ctx context.Context, req resource.CreateReque
 	repo, err := r.prov.client.Registry().Registry().CreateRepo(ctx, &registry.CreateRepoRequest{
 		ParentId: plan.ParentID.ValueString(),
 		Repo: &registry.Repo{
-			Name:       plan.Name.ValueString(),
-			Bundles:    bundles,
-			Readme:     plan.Readme.ValueString(),
-			SyncConfig: sc,
+			Name:        plan.Name.ValueString(),
+			Bundles:     bundles,
+			Readme:      plan.Readme.ValueString(),
+			SyncConfig:  sc,
+			CatalogTier: registry.CatalogTier(registry.CatalogTier_value[plan.Tier.ValueString()]),
 		},
 	})
 	if err != nil {
@@ -286,6 +304,10 @@ func (r *imageRepoResource) Read(ctx context.Context, req resource.ReadRequest, 
 		state.Readme = types.StringValue(repo.Readme)
 	}
 
+	if !(state.Tier.IsNull() && repo.CatalogTier == registry.CatalogTier_UNKNOWN) {
+		state.Tier = types.StringValue(repo.CatalogTier.String())
+	}
+
 	var sc syncConfig
 	var diags diag.Diagnostics
 	if !state.SyncConfig.IsNull() {
@@ -294,13 +316,13 @@ func (r *imageRepoResource) Read(ctx context.Context, req resource.ReadRequest, 
 			return
 		}
 		update := (sc.Source.ValueString() != repo.SyncConfig.Source) ||
-			(sc.Expiration.ValueString() != repo.SyncConfig.Expiration.String()) ||
+			(sc.Expiration.ValueString() != repo.SyncConfig.Expiration.AsTime().Format(time.RFC3339)) ||
 			(sc.UniqueTags.ValueBool() != repo.SyncConfig.UniqueTags) ||
 			(sc.SyncAPKs.ValueBool() != repo.SyncConfig.SyncApks)
 
 		if update {
 			sc.Source = types.StringValue(repo.SyncConfig.Source)
-			sc.Expiration = types.StringValue(repo.SyncConfig.Expiration.String())
+			sc.Expiration = types.StringValue(repo.SyncConfig.Expiration.AsTime().Format(time.RFC3339))
 			sc.UniqueTags = types.BoolValue(repo.SyncConfig.UniqueTags)
 			sc.SyncAPKs = types.BoolValue(repo.SyncConfig.SyncApks)
 			state.SyncConfig, diags = types.ObjectValueFrom(ctx, state.SyncConfig.AttributeTypes(ctx), sc)
@@ -361,11 +383,12 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 		return
 	}
 	repo, err := r.prov.client.Registry().Registry().UpdateRepo(ctx, &registry.Repo{
-		Id:         data.ID.ValueString(),
-		Name:       data.Name.ValueString(),
-		Bundles:    bundles,
-		Readme:     data.Readme.ValueString(),
-		SyncConfig: sc,
+		Id:          data.ID.ValueString(),
+		Name:        data.Name.ValueString(),
+		Bundles:     bundles,
+		Readme:      data.Readme.ValueString(),
+		SyncConfig:  sc,
+		CatalogTier: registry.CatalogTier(registry.CatalogTier_value[data.Tier.ValueString()]),
 	})
 	if err != nil {
 		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to update image repo"))
@@ -379,6 +402,12 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 	// Treat empty readme as nil
 	if repo.Readme != "" {
 		data.Readme = types.StringValue(repo.Readme)
+	}
+	// Treat UNKNOWN tier as null, but only if it was already null
+	if !(data.Tier.IsNull() && repo.CatalogTier == registry.CatalogTier_UNKNOWN) {
+		data.Tier = types.StringValue(repo.CatalogTier.String())
+	} else {
+		data.Tier = types.StringNull()
 	}
 
 	var diags diag.Diagnostics
