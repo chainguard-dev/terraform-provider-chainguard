@@ -35,7 +35,7 @@ jobs:
       - uses: chainguard-dev/actions/setup-chainctl@main
         with:
           identity: "ef127a7c0909329f04b43d845cf80eea4247a07b/66305475446bbef6/51be6000f74f6cb7/72b16b9edc62a069"
-      - uses: hashicorp/setup-terraform@651471c36a6092792c552e8b1bef71e592b462d8 # v3.1.1
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
         with:
           terraform_version: ${{ matrix.terraform }}
           terraform_wrapper: false
