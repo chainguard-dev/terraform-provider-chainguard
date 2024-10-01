@@ -64,6 +64,8 @@ type syncConfig struct {
 	Expiration  types.String `tfsdk:"expiration"`
 	UniqueTags  types.Bool   `tfsdk:"unique_tags"`
 	SyncAPKs    types.Bool   `tfsdk:"sync_apks"`
+	Google      types.String `tfsdk:"google"`
+	Amazon      types.String `tfsdk:"amazon"`
 	ApkoOverlay types.String `tfsdk:"apko_overlay"`
 }
 
@@ -154,6 +156,14 @@ func (r *imageRepoResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 						Description: "Whether the APKs for each image should also be synchronized.",
 						Optional:    true,
 					},
+					"amazon": schema.StringAttribute{
+						Description: "The Amazon repository under which to create a new repository with the same name as the source repository.",
+						Optional:    true, // This attribute is required, but only if the block is defined. See Validators.
+					},
+					"google": schema.StringAttribute{
+						Description: "The Google repository under which to create a new repository with the same name as the source repository.",
+						Optional:    true, // This attribute is required, but only if the block is defined. See Validators.
+					},
 					"apko_overlay": schema.StringAttribute{
 						Description: "A json-encoded APKO configuration to overlay on rebuilds of images being synced.",
 						Optional:    true,
@@ -229,6 +239,8 @@ func (r *imageRepoResource) Create(ctx context.Context, req resource.CreateReque
 			Expiration:  timestamppb.New(ts),
 			UniqueTags:  cfg.UniqueTags.ValueBool(),
 			SyncApks:    cfg.SyncAPKs.ValueBool(),
+			Amazon:      cfg.Amazon.ValueString(),
+			Google:      cfg.Google.ValueString(),
 			ApkoOverlay: cfg.ApkoOverlay.ValueString(),
 		}
 	}
@@ -373,6 +385,8 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 			Expiration:  timestamppb.New(ts),
 			UniqueTags:  cfg.UniqueTags.ValueBool(),
 			SyncApks:    cfg.SyncAPKs.ValueBool(),
+			Amazon:      cfg.Amazon.ValueString(),
+			Google:      cfg.Google.ValueString(),
 			ApkoOverlay: cfg.ApkoOverlay.ValueString(),
 		}
 	}
