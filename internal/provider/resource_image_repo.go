@@ -98,7 +98,6 @@ func (r *imageRepoResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 					validators.UIDP(false /* allowRootSentinel */),
 				},
 			},
-
 			"bundles": schema.ListAttribute{
 				Description: "List of bundles associated with this repo (a-z freeform keywords for sales purposes).",
 				Optional:    true,
