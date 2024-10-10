@@ -30,6 +30,7 @@ resource "chainguard_image_repo" "example" {
 
 ### Optional
 
+- `aliases` (List of String) Known aliases for a given image.
 - `bundles` (List of String) List of bundles associated with this repo (a-z freeform keywords for sales purposes).
 - `readme` (String) The README for this repo.
 - `sync_config` (Block, Optional) Configuration for catalog syncing. (see [below for nested schema](#nestedblock--sync_config))

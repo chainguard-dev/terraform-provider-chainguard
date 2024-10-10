@@ -26,6 +26,7 @@ type testRepo struct {
 	unique   bool
 	apks     bool
 	tier     string
+	aliases  string
 }
 
 func TestImageRepo(t *testing.T) {
@@ -37,22 +38,24 @@ func TestImageRepo(t *testing.T) {
 		name:     name,
 	}
 
-	// Add bundles and readme
+	// Add bundles and readme and aliases
 	update1 := testRepo{
 		parentID: parentID,
 		name:     name,
 		bundles:  `["a", "b", "c"]`,
 		readme:   "# hello",
 		tier:     "APPLICATION",
+		aliases:  `["image:1", "image:2", "image:latest"]`,
 	}
 
-	// Modify bundles and readme
+	// Modify bundles and readme and aliases
 	update2 := testRepo{
 		parentID: parentID,
 		name:     name,
 		bundles:  `["x", "y", "z"]`,
 		readme:   "# goodbye",
 		tier:     "BASE",
+		aliases:  `["image:97", "image:98", "image:99"]`,
 	}
 
 	// Delete readme and bundles, add syncing
@@ -85,6 +88,7 @@ func TestImageRepo(t *testing.T) {
 					resource.TestCheckNoResourceAttr(`chainguard_image_repo.example`, `bundles`),
 					resource.TestCheckNoResourceAttr(`chainguard_image_repo.example`, `readme`),
 					resource.TestCheckNoResourceAttr(`chainguard_image_repo.example`, `tier`),
+					resource.TestCheckNoResourceAttr(`chainguard_image_repo.example`, `aliases`),
 				),
 			},
 
@@ -106,6 +110,9 @@ func TestImageRepo(t *testing.T) {
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `bundles.2`, "c"),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `readme`, "# hello"),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `tier`, "APPLICATION"),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `aliases.0`, "image:1"),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `aliases.1`, "image:2"),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `aliases.2`, "image:latest"),
 				),
 			},
 
@@ -120,6 +127,9 @@ func TestImageRepo(t *testing.T) {
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `bundles.2`, "z"),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `readme`, "# goodbye"),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `tier`, "BASE"),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `aliases.0`, "image:97"),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `aliases.1`, "image:98"),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `aliases.2`, "image:99"),
 				),
 			},
 
@@ -142,6 +152,7 @@ func TestImageRepo(t *testing.T) {
 					}),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `sync_config.unique_tags`, "false"),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `sync_config.sync_apks`, "true"),
+					resource.TestCheckNoResourceAttr(`chainguard_image_repo.example`, `aliases`),
 				),
 			},
 
@@ -182,6 +193,7 @@ resource "chainguard_image_repo" "example" {
   %s
   %s
   %s
+  %s
 }
 `
 	var bundlesLine string
@@ -209,7 +221,12 @@ resource "chainguard_image_repo" "example" {
 		tierLine = fmt.Sprintf("tier = %q", repo.tier)
 	}
 
-	return fmt.Sprintf(tmpl, repo.parentID, repo.parentID, repo.name, bundlesLine, readmeLine, syncLine, tierLine)
+	var aliasesLine string
+	if repo.aliases != "" {
+		aliasesLine = fmt.Sprintf("aliases = %s", repo.aliases)
+	}
+
+	return fmt.Sprintf(tmpl, repo.parentID, repo.parentID, repo.name, bundlesLine, readmeLine, syncLine, tierLine, aliasesLine)
 }
 
 // Multiple equivalent concurrent updates should not cause errors.
