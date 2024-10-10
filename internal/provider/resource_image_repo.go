@@ -56,7 +56,8 @@ type imageRepoResourceModel struct {
 	Readme     types.String `tfsdk:"readme"`
 	SyncConfig types.Object `tfsdk:"sync_config"`
 	// Image tier (e.g. APPLICATION, BASE, etc.)
-	Tier types.String `tfsdk:"tier"`
+	Tier    types.String `tfsdk:"tier"`
+	Aliases types.List   `tfsdk:"aliases"`
 }
 
 type syncConfig struct {
@@ -123,6 +124,14 @@ func (r *imageRepoResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 					validators.ValidateStringFuncs(validTierValue),
 				},
 			},
+			"aliases": schema.ListAttribute{
+				Description: "Known aliases for a given image.",
+				Optional:    true,
+				ElementType: types.StringType,
+				Validators: []validator.List{
+					listvalidator.ValueStringsAre(validators.ValidateStringFuncs(validAliasesValue)),
+				},
+			},
 		},
 		Blocks: map[string]schema.Block{
 			"sync_config": schema.SingleNestedBlock{
@@ -179,6 +188,14 @@ func (r *imageRepoResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 func validBundlesValue(s string) error {
 	if err := validation.ValidateBundles([]string{s}); err != nil {
 		return fmt.Errorf("bundle item %q is invalid: %w", s, err)
+	}
+	return nil
+}
+
+// validAliasesValue implements validators.ValidateStringFunc.
+func validAliasesValue(s string) error {
+	if err := validation.ValidateAliases([]string{s}); err != nil {
+		return fmt.Errorf("alias %q is invalid: %w", s, err)
 	}
 	return nil
 }
