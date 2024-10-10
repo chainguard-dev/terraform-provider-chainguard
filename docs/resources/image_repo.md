@@ -34,6 +34,7 @@ resource "chainguard_image_repo" "example" {
 - `readme` (String) The README for this repo.
 - `sync_config` (Block, Optional) Configuration for catalog syncing. (see [below for nested schema](#nestedblock--sync_config))
 - `tier` (String) Image tier associated with this repo.
+- `aliases` (List of String) Known aliases for a given image.
 
 ### Read-Only
 
