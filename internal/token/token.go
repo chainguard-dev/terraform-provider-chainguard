@@ -167,5 +167,11 @@ func exchangeToken(ctx context.Context, idToken string, cfg LoginConfig) (string
 		// If IdentityID is empty this is a noop during exchange.
 		sts.WithIdentity(cfg.IdentityID),
 	}
-	return sts.Exchange(ctx, cfg.Issuer, cfg.Audience, idToken, opts...)
+
+	tok, err := sts.ExchangePair(ctx, cfg.Issuer, cfg.Audience, idToken, opts...)
+	if err != nil {
+		return "", err
+	}
+
+	return tok.AccessToken, nil
 }
