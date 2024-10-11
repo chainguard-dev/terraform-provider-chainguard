@@ -666,7 +666,7 @@ resource "chainguard_rolebinding" "binding" {
 					}
 
 					// Use the token we get back to list groups.
-					cred := sdkauth.NewFromToken(ctx, fmt.Sprintf("Bearer %s", tok), false)
+					cred := sdkauth.NewFromToken(ctx, fmt.Sprintf("Bearer %s", tok.AccessToken), false)
 					clients, err := platform.NewPlatformClients(ctx, os.Getenv("TF_ACC_CONSOLE_API"), cred)
 					if err != nil {
 						return err
@@ -725,7 +725,7 @@ resource "chainguard_rolebinding" "binding" {
 						InsecureSkipSignatureCheck: true,
 						SkipIssuerCheck:            true,
 					})
-					t, err := verifier.Verify(ctx, tok)
+					t, err := verifier.Verify(ctx, tok.AccessToken)
 					if err != nil {
 						return err
 					}
@@ -739,7 +739,7 @@ resource "chainguard_rolebinding" "binding" {
 						return fmt.Errorf("got act[%q] = %q, wanted %q", customClaimID, got, customClaimValue)
 					}
 					// Use the token we get back to list groups.
-					cred := sdkauth.NewFromToken(ctx, fmt.Sprintf("Bearer %s", tok), false)
+					cred := sdkauth.NewFromToken(ctx, fmt.Sprintf("Bearer %s", tok.AccessToken), false)
 					clients, err := platform.NewPlatformClients(ctx, os.Getenv("TF_ACC_CONSOLE_API"), cred)
 					if err != nil {
 						return err
@@ -849,7 +849,7 @@ resource "chainguard_rolebinding" "binding" {
 						InsecureSkipSignatureCheck: true,
 						SkipIssuerCheck:            true,
 					})
-					t, err := verifier.Verify(ctx, tok)
+					t, err := verifier.Verify(ctx, tok.AccessToken)
 					if err != nil {
 						return err
 					}
@@ -863,7 +863,7 @@ resource "chainguard_rolebinding" "binding" {
 						return fmt.Errorf("got act[%q] = %q, wanted %q", customClaimID, got, customClaimValue)
 					}
 					// Use the token we get back to list groups.
-					cred := sdkauth.NewFromToken(ctx, fmt.Sprintf("Bearer %s", tok), false)
+					cred := sdkauth.NewFromToken(ctx, fmt.Sprintf("Bearer %s", tok.AccessToken), false)
 					clients, err := platform.NewPlatformClients(ctx, os.Getenv("TF_ACC_CONSOLE_API"), cred)
 					if err != nil {
 						return err
@@ -973,7 +973,7 @@ resource "chainguard_rolebinding" "binding" {
 						InsecureSkipSignatureCheck: true,
 						SkipIssuerCheck:            true,
 					})
-					t, err := verifier.Verify(ctx, tok)
+					t, err := verifier.Verify(ctx, tok.AccessToken)
 					if err != nil {
 						return err
 					}
@@ -987,7 +987,7 @@ resource "chainguard_rolebinding" "binding" {
 						return fmt.Errorf("got act[%q] = %q, wanted %q", customClaimID, got, customClaimValue)
 					}
 					// Use the token we get back to list groups.
-					cred := sdkauth.NewFromToken(ctx, fmt.Sprintf("Bearer %s", tok), false)
+					cred := sdkauth.NewFromToken(ctx, fmt.Sprintf("Bearer %s", tok.AccessToken), false)
 					clients, err := platform.NewPlatformClients(ctx, os.Getenv("TF_ACC_CONSOLE_API"), cred)
 					if err != nil {
 						return err
