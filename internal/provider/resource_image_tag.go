@@ -166,7 +166,7 @@ func (r *imageTagResource) Read(ctx context.Context, req resource.ReadRequest, r
 	state.Name = types.StringValue(tag.Name)
 
 	var diags diag.Diagnostics
-	state.Bundles, diags = types.ListValueFrom(ctx, types.StringType, tag.Bundles)
+	state.Bundles, diags = filterOutExistingDeprecatedBundles(ctx, tag.Bundles)
 	if diags.HasError() {
 		resp.Diagnostics.Append(diags...)
 		return

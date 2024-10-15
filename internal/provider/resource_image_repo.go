@@ -8,6 +8,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"sync"
 	"time"
 
@@ -359,7 +360,7 @@ func (r *imageRepoResource) Read(ctx context.Context, req resource.ReadRequest, 
 		}
 	}
 
-	state.Bundles, diags = types.ListValueFrom(ctx, types.StringType, repo.Bundles)
+	state.Bundles, diags = filterOutExistingDeprecatedBundles(ctx, repo.Bundles)
 	if diags.HasError() {
 		resp.Diagnostics.Append(diags...)
 		return
@@ -480,4 +481,23 @@ func (r *imageRepoResource) Delete(ctx context.Context, req resource.DeleteReque
 		resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to delete image repo %q", id)))
 		return
 	}
+}
+
+// TODO: Make bundleAllowListCompiled public in the SDK.
+var bundleAllowListCompiled = regexp.MustCompile(`^application$|^base$|^byol$|^ai$|^ai-gpu$|^featured$|^fips$`)
+
+func filterOutExistingDeprecatedBundles(ctx context.Context, bundles []string) (basetypes.ListValue, diag.Diagnostics) {
+	tmp := []string{}
+	orig, diags := types.ListValueFrom(ctx, types.StringType, bundles)
+	if diags.HasError() {
+		return basetypes.ListValue{}, diags
+	}
+	for _, bundle := range orig.Elements() {
+		s := bundle.String()
+		if !bundleAllowListCompiled.MatchString(s) {
+			continue
+		}
+		tmp = append(tmp, s)
+	}
+	return types.ListValueFrom(ctx, types.StringType, tmp)
 }
