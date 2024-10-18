@@ -64,6 +64,7 @@ type syncConfig struct {
 	Source      types.String `tfsdk:"source"`
 	Expiration  types.String `tfsdk:"expiration"`
 	UniqueTags  types.Bool   `tfsdk:"unique_tags"`
+	GracePeriod types.Bool   `tfsdk:"grace_period"`
 	SyncAPKs    types.Bool   `tfsdk:"sync_apks"`
 	Google      types.String `tfsdk:"google"`
 	Amazon      types.String `tfsdk:"amazon"`
@@ -161,6 +162,10 @@ func (r *imageRepoResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 						Description: "Whether each synchronized tag should be suffixed with the image timestamp.",
 						Optional:    true,
 					},
+					"grace_period": schema.BoolAttribute{
+						Description: "Controls whether the image grace period functionality is enabled or not.",
+						Optional:    true,
+					},
 					"sync_apks": schema.BoolAttribute{
 						Description: "Whether the APKs for each image should also be synchronized.",
 						Optional:    true,
@@ -255,6 +260,7 @@ func (r *imageRepoResource) Create(ctx context.Context, req resource.CreateReque
 			Source:      cfg.Source.ValueString(),
 			Expiration:  timestamppb.New(ts),
 			UniqueTags:  cfg.UniqueTags.ValueBool(),
+			GracePeriod: cfg.GracePeriod.ValueBool(),
 			SyncApks:    cfg.SyncAPKs.ValueBool(),
 			Amazon:      cfg.Amazon.ValueString(),
 			Google:      cfg.Google.ValueString(),
@@ -347,12 +353,14 @@ func (r *imageRepoResource) Read(ctx context.Context, req resource.ReadRequest, 
 		update := (sc.Source.ValueString() != repo.SyncConfig.Source) ||
 			(sc.Expiration.ValueString() != repo.SyncConfig.Expiration.AsTime().Format(time.RFC3339)) ||
 			(sc.UniqueTags.ValueBool() != repo.SyncConfig.UniqueTags) ||
+			(sc.GracePeriod.ValueBool() != repo.SyncConfig.GracePeriod) ||
 			(sc.SyncAPKs.ValueBool() != repo.SyncConfig.SyncApks)
 
 		if update {
 			sc.Source = types.StringValue(repo.SyncConfig.Source)
 			sc.Expiration = types.StringValue(repo.SyncConfig.Expiration.AsTime().Format(time.RFC3339))
 			sc.UniqueTags = types.BoolValue(repo.SyncConfig.UniqueTags)
+			sc.GracePeriod = types.BoolValue(repo.SyncConfig.GracePeriod)
 			sc.SyncAPKs = types.BoolValue(repo.SyncConfig.SyncApks)
 			state.SyncConfig, diags = types.ObjectValueFrom(ctx, state.SyncConfig.AttributeTypes(ctx), sc)
 			resp.Diagnostics.Append(diags...)
@@ -401,6 +409,7 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 			Source:      cfg.Source.ValueString(),
 			Expiration:  timestamppb.New(ts),
 			UniqueTags:  cfg.UniqueTags.ValueBool(),
+			GracePeriod: cfg.GracePeriod.ValueBool(),
 			SyncApks:    cfg.SyncAPKs.ValueBool(),
 			Amazon:      cfg.Amazon.ValueString(),
 			Google:      cfg.Google.ValueString(),
