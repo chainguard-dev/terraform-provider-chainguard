@@ -47,6 +47,7 @@ type groupResourceModel struct {
 	Name        types.String `tfsdk:"name"`
 	Description types.String `tfsdk:"description"`
 	ParentID    types.String `tfsdk:"parent_id"`
+	Verified    types.Bool   `tfsdk:"verified"`
 }
 
 func (r *groupResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -83,6 +84,10 @@ func (r *groupResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 				Description: "Description of this IAM group.",
 				Optional:    true,
 			},
+			"verified": schema.BoolAttribute{
+				Description: "Whether the organization has been verified by a Chainguardian. Only applicable to root groups.",
+				Optional:    true,
+			},
 		},
 	}
 }
@@ -107,6 +112,7 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 		Group: &iam.Group{
 			Name:        plan.Name.ValueString(),
 			Description: plan.Description.ValueString(),
+			Verified:    plan.Verified.ValueBool(),
 		},
 	}
 	// Only include Parent UIDP for non-root groups.
@@ -187,6 +193,11 @@ func (r *groupResource) Read(ctx context.Context, req resource.ReadRequest, resp
 		if !state.ParentID.IsNull() || !uidp.InRoot(g.Id) {
 			state.ParentID = types.StringValue(uidp.Parent(g.Id))
 		}
+		// Keep null verified fields null for backward compatibility
+		// if it hasn't changed upstream.
+		if !state.Verified.IsNull() || g.Verified {
+			state.Verified = types.BoolValue(g.Verified)
+		}
 
 		// Set state
 		resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
@@ -211,6 +222,7 @@ func (r *groupResource) Update(ctx context.Context, req resource.UpdateRequest, 
 		Id:          data.ID.ValueString(),
 		Name:        data.Name.ValueString(),
 		Description: data.Description.ValueString(),
+		Verified:    data.Verified.ValueBool(),
 	})
 	if err != nil {
 		resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to update group %q", data.ID.ValueString())))
@@ -222,6 +234,9 @@ func (r *groupResource) Update(ctx context.Context, req resource.UpdateRequest, 
 	data.Name = types.StringValue(g.GetName())
 	if !(data.Description.IsNull() && g.Description != "") {
 		data.Description = types.StringValue(g.GetDescription())
+	}
+	if !data.Verified.IsNull() || g.Verified {
+		data.Verified = types.BoolValue(g.Verified)
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
