@@ -37,8 +37,9 @@ type versionsDataSource struct {
 type versionsDataSourceModel struct {
 	Package types.String `tfsdk:"package"`
 
-	Versions   *versionsDataSourceProtoModel                `tfsdk:"versions"`
-	VersionMap map[string]versionsDataSourceVersionMapModel `tfsdk:"version_map"`
+	Versions    *versionsDataSourceProtoModel                `tfsdk:"versions"`
+	VersionMap  map[string]versionsDataSourceVersionMapModel `tfsdk:"version_map"`
+	OrderedKeys []string                                     `tfsdk:"ordered_keys"`
 }
 
 // versionsDataSourceProtoModel is the schema for the "proto" version
@@ -208,6 +209,11 @@ func (d *versionsDataSource) Schema(_ context.Context, _ datasource.SchemaReques
 					},
 				},
 			},
+			"ordered_keys": schema.ListAttribute{
+				Description: "TODO",
+				Computed:    true,
+				ElementType: types.StringType,
+			},
 		},
 	}
 }
@@ -249,7 +255,13 @@ func (d *versionsDataSource) Read(ctx context.Context, req datasource.ReadReques
 
 	vmap := make(map[string]versionsDataSourceVersionMapModel)
 
+	orderedKeys := []string{}
+
 	for i, pv := range vproto.Versions {
+		if !pv.Exists {
+			continue
+		}
+
 		vname := data.Package.ValueString() + "-" + pv.Version
 
 		model := versionsDataSourceVersionMapModel{
@@ -269,10 +281,20 @@ func (d *versionsDataSource) Read(ctx context.Context, req datasource.ReadReques
 		}
 
 		vmap[vname] = model
+		orderedKeys = append(orderedKeys, vname)
 	}
 
 	for _, pv := range vproto.EolVersions {
 		if !pv.Exists {
+			continue
+		}
+
+		insideEOLGracePeriodWindow, err := checkEOLGracePeriodWindow(pv.EolDate, vproto.GracePeriodMonths)
+		if err != nil {
+			resp.Diagnostics.Append(errorToDiagnostic(err, "failed to calculate EOL grace period"))
+			return
+		}
+		if !insideEOLGracePeriodWindow {
 			continue
 		}
 
@@ -290,9 +312,16 @@ func (d *versionsDataSource) Read(ctx context.Context, req datasource.ReadReques
 		}
 
 		vmap[vname] = model
+		orderedKeys = append(orderedKeys, vname)
 	}
 
 	data.VersionMap = vmap
+	data.OrderedKeys = orderedKeys
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+// TODO: this check
+func checkEOLGracePeriodWindow(eolDate string, gracePeriodMonths int64) (bool, error) {
+	return false, nil
 }
