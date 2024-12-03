@@ -274,6 +274,12 @@ func (r *imageRepoResource) Create(ctx context.Context, req resource.CreateReque
 		return
 	}
 
+	aliases := make([]string, 0, len(plan.Aliases.Elements()))
+	resp.Diagnostics.Append(plan.Aliases.ElementsAs(ctx, &aliases, false /* allowUnhandled */)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	repo, err := r.prov.client.Registry().Registry().CreateRepo(ctx, &registry.CreateRepoRequest{
 		ParentId: plan.ParentID.ValueString(),
 		Repo: &registry.Repo{
@@ -282,6 +288,7 @@ func (r *imageRepoResource) Create(ctx context.Context, req resource.CreateReque
 			Readme:      plan.Readme.ValueString(),
 			SyncConfig:  sc,
 			CatalogTier: registry.CatalogTier(registry.CatalogTier_value[plan.Tier.ValueString()]),
+			Aliases:     aliases,
 		},
 	})
 	if err != nil {
@@ -373,6 +380,12 @@ func (r *imageRepoResource) Read(ctx context.Context, req resource.ReadRequest, 
 		return
 	}
 
+	state.Aliases, diags = types.ListValueFrom(ctx, types.StringType, repo.Aliases)
+	if diags.HasError() {
+		resp.Diagnostics.Append(diags...)
+		return
+	}
+
 	// Set state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
@@ -422,6 +435,13 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	aliases := make([]string, 0, len(data.Aliases.Elements()))
+	resp.Diagnostics.Append(data.Aliases.ElementsAs(ctx, &aliases, false /* allowUnhandled */)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	repo, err := r.prov.client.Registry().Registry().UpdateRepo(ctx, &registry.Repo{
 		Id:          data.ID.ValueString(),
 		Name:        data.Name.ValueString(),
@@ -429,6 +449,7 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 		Readme:      data.Readme.ValueString(),
 		SyncConfig:  sc,
 		CatalogTier: registry.CatalogTier(registry.CatalogTier_value[data.Tier.ValueString()]),
+		Aliases:     aliases,
 	})
 	if err != nil {
 		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to update image repo"))
@@ -456,6 +477,13 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 		resp.Diagnostics.Append(diags...)
 		return
 	}
+
+	data.Aliases, diags = types.ListValueFrom(ctx, types.StringType, repo.Aliases)
+	if diags.HasError() {
+		resp.Diagnostics.Append(diags...)
+		return
+	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
