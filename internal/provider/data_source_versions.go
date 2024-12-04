@@ -321,7 +321,9 @@ func (d *versionsDataSource) Read(ctx context.Context, req datasource.ReadReques
 
 	orderedKeys := []string{}
 
-	for i, pv := range vproto.Versions {
+	latestAssigned := false
+
+	for _, pv := range vproto.Versions {
 		// Non-FIPS and doesnt exist (via "exists" bool)? Do not use
 		// FIPS and doesnt exist (via "fips" bool)? Do not use
 		if (!fips && !pv.Exists) || (fips && !pv.Fips) {
@@ -342,8 +344,9 @@ func (d *versionsDataSource) Read(ctx context.Context, req datasource.ReadReques
 			Version:     pv.Version,
 		}
 
-		if i == 0 {
+		if !latestAssigned {
 			model.IsLatest = true
+			latestAssigned = true
 		}
 
 		vmap[vname] = model
@@ -377,6 +380,11 @@ func (d *versionsDataSource) Read(ctx context.Context, req datasource.ReadReques
 			Main:        vname,
 			ReleaseDate: pv.ReleaseDate,
 			Version:     pv.Version,
+		}
+
+		if !latestAssigned {
+			model.IsLatest = true
+			latestAssigned = true
 		}
 
 		vmap[vname] = model
