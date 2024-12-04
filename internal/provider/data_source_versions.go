@@ -231,7 +231,7 @@ func (d *versionsDataSource) Schema(_ context.Context, _ datasource.SchemaReques
 				},
 			},
 			"ordered_keys": schema.ListAttribute{
-				Description: "TODO",
+				Description: "A list of keys as they appear in the versions output, sorted semantically.",
 				Computed:    true,
 				ElementType: types.StringType,
 			},

@@ -25,7 +25,7 @@ Lookup an identity with the given issuer and subject.
 
 ### Read-Only
 
-- `ordered_keys` (List of String) TODO
+- `ordered_keys` (List of String) A list of keys as they appear in the versions output, sorted semantically.
 - `version_map` (Attributes Map) The version map. (see [below for nested schema](#nestedatt--version_map))
 - `versions` (Attributes) The versions output of the package. (see [below for nested schema](#nestedatt--versions))
 
