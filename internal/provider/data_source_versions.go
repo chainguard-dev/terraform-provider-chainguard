@@ -16,6 +16,7 @@ import (
 	registry "chainguard.dev/sdk/proto/platform/registry/v1"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -37,6 +38,7 @@ type versionsDataSource struct {
 
 type versionsDataSourceModel struct {
 	Package types.String `tfsdk:"package"`
+	Variant types.String `tfsdk:"variant"`
 
 	Versions    *versionsDataSourceProtoModel                `tfsdk:"versions"`
 	VersionMap  map[string]versionsDataSourceVersionMapModel `tfsdk:"version_map"`
@@ -57,12 +59,14 @@ type versionsDataSourceProtoModel struct {
 type versionsDataSourceProtoEolVersionsModel struct {
 	EolDate     string `tfsdk:"eol_date"`
 	Exists      bool   `tfsdk:"exists"`
+	Fips        bool   `tfsdk:"fips"`
 	ReleaseDate string `tfsdk:"release_date"`
 	Version     string `tfsdk:"version"`
 }
 
 type versionsDataSourceProtoVersionsModel struct {
 	Exists      bool   `tfsdk:"exists"`
+	Fips        bool   `tfsdk:"fips"`
 	ReleaseDate string `tfsdk:"release_date"`
 	Version     string `tfsdk:"version"`
 }
@@ -83,7 +87,7 @@ type versionsDataSourceVersionMapModel struct {
 }
 
 func (m versionsDataSourceModel) InputParams() string {
-	return fmt.Sprintf("[package=%s]", m.Package)
+	return fmt.Sprintf("[package=%s, variant=%s]", m.Package, m.Variant)
 }
 
 // Metadata returns the data source type name.
@@ -102,7 +106,12 @@ func (d *versionsDataSource) Schema(_ context.Context, _ datasource.SchemaReques
 		Attributes: map[string]schema.Attribute{
 			"package": schema.StringAttribute{
 				Description: "The name of the package to lookup.",
+				Required:    true,
+			},
+			"variant": schema.StringAttribute{
+				Description: "A package variant (e.g. fips).",
 				Optional:    true,
+				Validators:  []validator.String{Variant()},
 			},
 			"versions": schema.SingleNestedAttribute{
 				Description: "The versions output of the package.",
@@ -133,6 +142,10 @@ func (d *versionsDataSource) Schema(_ context.Context, _ datasource.SchemaReques
 									Description: "Whether the version exists.",
 									Computed:    true,
 								},
+								"fips": schema.BoolAttribute{
+									Description: "Whether the FIPS version exists.",
+									Computed:    true,
+								},
 								"release_date": schema.StringAttribute{
 									Description: "The release date.",
 									Computed:    true,
@@ -151,6 +164,10 @@ func (d *versionsDataSource) Schema(_ context.Context, _ datasource.SchemaReques
 							Attributes: map[string]schema.Attribute{
 								"exists": schema.BoolAttribute{
 									Description: "Whether the version exists.",
+									Computed:    true,
+								},
+								"fips": schema.BoolAttribute{
+									Description: "Whether the FIPS version exists.",
 									Computed:    true,
 								},
 								"release_date": schema.StringAttribute{
@@ -258,18 +275,28 @@ func (d *versionsDataSource) Read(ctx context.Context, req datasource.ReadReques
 
 	orderedKeys := []string{}
 
+	// If variant provided (i.e. "fips"), modify the key names to include it
+	key := data.Package.ValueString()
+	fips := false
+	if variant := data.Variant.ValueString(); variant != "" {
+		key = fmt.Sprintf("%s-%s", key, variant)
+		fips = variant == "fips"
+	}
+
 	for i, pv := range vproto.Versions {
-		if !pv.Exists {
+		// Non-FIPS and doesnt exist (via "exists" bool)? Do not use
+		// FIPS and doesnt exist (via "fips" bool)? Do not use
+		if (!fips && !pv.Exists) || (fips && !pv.Fips) {
 			continue
 		}
 
-		vname := data.Package.ValueString() + "-" + pv.Version
+		vname := key + "-" + pv.Version
 
 		model := versionsDataSourceVersionMapModel{
 			Eol:         false,
 			EolDate:     "",
 			Exists:      pv.Exists,
-			Fips:        false,
+			Fips:        pv.Fips,
 			IsLatest:    false,
 			Lts:         "",
 			Main:        vname,
@@ -286,7 +313,9 @@ func (d *versionsDataSource) Read(ctx context.Context, req datasource.ReadReques
 	}
 
 	for _, pv := range vproto.EolVersions {
-		if !pv.Exists {
+		// Non-FIPS and doesnt exist (via "exists" bool)? Do not use
+		// FIPS and doesnt exist (via "fips" bool)? Do not use
+		if (!fips && !pv.Exists) || (fips && !pv.Fips) {
 			continue
 		}
 
@@ -299,12 +328,12 @@ func (d *versionsDataSource) Read(ctx context.Context, req datasource.ReadReques
 			continue
 		}
 
-		vname := data.Package.ValueString() + "-" + pv.Version
+		vname := key + "-" + pv.Version
 		model := versionsDataSourceVersionMapModel{
 			Eol:         true,
 			EolDate:     pv.EolDate,
 			Exists:      pv.Exists,
-			Fips:        false,
+			Fips:        pv.Fips,
 			IsLatest:    false,
 			Lts:         "",
 			Main:        vname,
@@ -331,4 +360,38 @@ func checkEOLGracePeriodWindow(eolDate string, gracePeriodMonths int64) (bool, e
 	// and ensure that it is greater than or equal to right now
 	t = t.AddDate(0, int(gracePeriodMonths), 0)
 	return t.Compare(time.Now().UTC()) >= 0, nil
+}
+
+// Variant validates the string value is a valid variant.
+func Variant() validator.String {
+	return variantVal{}
+}
+
+type variantVal struct{}
+
+func (v variantVal) Description(_ context.Context) string {
+	return "Check that the given string is a valid variant."
+}
+
+func (v variantVal) MarkdownDescription(ctx context.Context) string {
+	return v.Description(ctx)
+}
+
+func (v variantVal) ValidateString(_ context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+	// Attributes may be optional, and thus null, which should not fail validation.
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+	s := req.ConfigValue.ValueString()
+	// Empty string means caller has not set variant, do not fail validation
+	if s == "" {
+		return
+	}
+	// TODO: allow for more variants than just "fips"?
+	if s != "fips" {
+		resp.Diagnostics.AddError("failed variant validation",
+			fmt.Sprintf("\"%s\" is not a valid variant (must be \"fips\")", s))
+		return
+	}
+	return
 }
