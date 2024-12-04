@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	registry "chainguard.dev/sdk/proto/platform/registry/v1"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -245,12 +247,55 @@ func (d *versionsDataSource) Read(ctx context.Context, req datasource.ReadReques
 	}
 	tflog.Info(ctx, "read identity data-source request", map[string]interface{}{"config": data})
 
+	// If variant provided (i.e. "fips"), modify the key names to include it
+	key := data.Package.ValueString()
+	fips := false
+	if variant := data.Variant.ValueString(); variant != "" {
+		key = fmt.Sprintf("%s-%s", key, variant)
+		fips = variant == "fips"
+	}
+
 	vreq := &registry.PackageVersionMetadataRequest{
 		Package: data.Package.ValueString(),
 	}
 
 	v, err := d.prov.client.Registry().Registry().GetPackageVersionMetadata(ctx, vreq)
 	if err != nil {
+		if st, ok := status.FromError(err); ok && st.Code() == codes.NotFound {
+			// At this point, the requested version stream has not been found,
+			// so we return early with default empty structures
+			// TODO: disable/enable this via some input such as "must_resolve: true"?
+			data.Versions = &versionsDataSourceProtoModel{
+				GracePeriodMonths:    0,
+				LastUpdatedTimestamp: "",
+				LatestVersion:        "",
+				EolVersions:          []*versionsDataSourceProtoEolVersionsModel{},
+				Versions: []*versionsDataSourceProtoVersionsModel{
+					{
+						Exists:      true,
+						Fips:        false,
+						ReleaseDate: "",
+						Version:     "",
+					},
+				},
+			}
+			data.VersionMap = map[string]versionsDataSourceVersionMapModel{
+				key: {
+					Eol:         false,
+					EolDate:     "",
+					Exists:      true,
+					Fips:        false,
+					IsLatest:    true,
+					Lts:         "",
+					Main:        key,
+					ReleaseDate: "",
+					Version:     "",
+				},
+			}
+			data.OrderedKeys = []string{key}
+			resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+			return
+		}
 		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to list package versions"))
 		return
 	}
@@ -274,14 +319,6 @@ func (d *versionsDataSource) Read(ctx context.Context, req datasource.ReadReques
 	vmap := make(map[string]versionsDataSourceVersionMapModel)
 
 	orderedKeys := []string{}
-
-	// If variant provided (i.e. "fips"), modify the key names to include it
-	key := data.Package.ValueString()
-	fips := false
-	if variant := data.Variant.ValueString(); variant != "" {
-		key = fmt.Sprintf("%s-%s", key, variant)
-		fips = variant == "fips"
-	}
 
 	for i, pv := range vproto.Versions {
 		// Non-FIPS and doesnt exist (via "exists" bool)? Do not use
