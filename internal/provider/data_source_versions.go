@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -381,6 +382,9 @@ func (d *versionsDataSource) Read(ctx context.Context, req datasource.ReadReques
 		vmap[vname] = model
 		orderedKeys = append(orderedKeys, vname)
 	}
+
+	// We want the latest version at the end of this list
+	slices.Reverse(orderedKeys)
 
 	data.VersionMap = vmap
 	data.OrderedKeys = orderedKeys
