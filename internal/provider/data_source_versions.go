@@ -105,7 +105,7 @@ func (d *versionsDataSource) Configure(ctx context.Context, req datasource.Confi
 // Schema defines the schema for the data source.
 func (d *versionsDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Lookup an identity with the given issuer and subject.",
+		Description: "Lookup a package version stream",
 		Attributes: map[string]schema.Attribute{
 			"package": schema.StringAttribute{
 				Description: "The name of the package to lookup.",
@@ -246,7 +246,7 @@ func (d *versionsDataSource) Read(ctx context.Context, req datasource.ReadReques
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	tflog.Info(ctx, "read identity data-source request", map[string]interface{}{"config": data})
+	tflog.Info(ctx, "read versions data-source request", map[string]interface{}{"config": data})
 
 	// If variant provided (i.e. "fips"), modify the key names to include it
 	key := data.Package.ValueString()

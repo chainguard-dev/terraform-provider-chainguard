@@ -3,12 +3,12 @@
 page_title: "chainguard_versions Data Source - terraform-provider-chainguard"
 subcategory: ""
 description: |-
-  Lookup an identity with the given issuer and subject.
+  Lookup a package version stream
 ---
 
 # chainguard_versions (Data Source)
 
-Lookup an identity with the given issuer and subject.
+Lookup a package version stream
 
 
 
