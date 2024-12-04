@@ -428,7 +428,5 @@ func (v variantVal) ValidateString(_ context.Context, req validator.StringReques
 	if s != "fips" {
 		resp.Diagnostics.AddError("failed variant validation",
 			fmt.Sprintf("\"%s\" is not a valid variant (must be \"fips\")", s))
-		return
 	}
-	return
 }
