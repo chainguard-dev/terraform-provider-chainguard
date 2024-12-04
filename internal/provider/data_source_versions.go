@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
@@ -321,7 +322,13 @@ func (d *versionsDataSource) Read(ctx context.Context, req datasource.ReadReques
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// TODO: this check
 func checkEOLGracePeriodWindow(eolDate string, gracePeriodMonths int64) (bool, error) {
-	return false, nil
+	t, err := time.Parse(time.DateOnly, eolDate)
+	if err != nil {
+		return false, err
+	}
+	// Take the parsed EOL date, fast forward it to X months in the future
+	// and ensure that it is greater than or equal to right now
+	t = t.AddDate(0, int(gracePeriodMonths), 0)
+	return t.Compare(time.Now().UTC()) >= 0, nil
 }
