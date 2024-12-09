@@ -19,6 +19,7 @@ import (
 	registry "chainguard.dev/sdk/proto/platform/registry/v1"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
@@ -248,25 +249,47 @@ func (d *versionsDataSource) Read(ctx context.Context, req datasource.ReadReques
 	}
 	tflog.Info(ctx, "read versions data-source request", map[string]interface{}{"config": data})
 
+	pkg := data.Package.ValueString()
+	variant := data.Variant.ValueString()
+
+	vproto, vmap, orderedKeys, diagnostic := calculate(ctx, d.prov.client.Registry().Registry(), pkg, variant)
+	if diagnostic != nil {
+		resp.Diagnostics.Append(diagnostic)
+		return
+	}
+
+	data.Versions = vproto
+	data.VersionMap = vmap
+	data.OrderedKeys = orderedKeys
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+// Responsible for the generation of all calculated fields (i.e. Versions, VersionMap, OrderedKeys).
+func calculate(ctx context.Context, client registry.RegistryClient, pkg string, variant string) (*versionsDataSourceProtoModel, map[string]versionsDataSourceVersionMapModel, []string, diag.Diagnostic) {
 	// If variant provided (i.e. "fips"), modify the key names to include it
-	key := data.Package.ValueString()
+	key := pkg
 	fips := false
-	if variant := data.Variant.ValueString(); variant != "" {
+	if variant := variant; variant != "" {
+		// TODO: allow for more variants than just "fips"?
+		if variant != "fips" {
+			return nil, nil, nil, errorToDiagnostic(fmt.Errorf("invalid variant: %s", variant), "must be \"fips\"")
+		}
 		key = fmt.Sprintf("%s-%s", key, variant)
 		fips = variant == "fips"
 	}
 
 	vreq := &registry.PackageVersionMetadataRequest{
-		Package: data.Package.ValueString(),
+		Package: pkg,
 	}
 
-	v, err := d.prov.client.Registry().Registry().GetPackageVersionMetadata(ctx, vreq)
+	v, err := client.GetPackageVersionMetadata(ctx, vreq)
 	if err != nil {
 		if st, ok := status.FromError(err); ok && st.Code() == codes.NotFound {
 			// At this point, the requested version stream has not been found,
 			// so we return early with default empty structures
 			// TODO: disable/enable this via some input such as "must_resolve: true"?
-			data.Versions = &versionsDataSourceProtoModel{
+			vproto := &versionsDataSourceProtoModel{
 				GracePeriodMonths:    0,
 				LastUpdatedTimestamp: "",
 				LatestVersion:        "",
@@ -274,18 +297,18 @@ func (d *versionsDataSource) Read(ctx context.Context, req datasource.ReadReques
 				Versions: []*versionsDataSourceProtoVersionsModel{
 					{
 						Exists:      true,
-						Fips:        false,
+						Fips:        fips,
 						ReleaseDate: "",
 						Version:     "",
 					},
 				},
 			}
-			data.VersionMap = map[string]versionsDataSourceVersionMapModel{
+			vmap := map[string]versionsDataSourceVersionMapModel{
 				key: {
 					Eol:         false,
 					EolDate:     "",
 					Exists:      true,
-					Fips:        false,
+					Fips:        fips,
 					IsLatest:    true,
 					Lts:         "",
 					Main:        key,
@@ -293,27 +316,21 @@ func (d *versionsDataSource) Read(ctx context.Context, req datasource.ReadReques
 					Version:     "",
 				},
 			}
-			data.OrderedKeys = []string{key}
-			resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
-			return
+			orderedKeys := []string{key}
+			return vproto, vmap, orderedKeys, nil
 		}
-		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to list package versions"))
-		return
+		return nil, nil, nil, errorToDiagnostic(err, "failed to list package versions")
 	}
 
 	raw, err := json.Marshal(v)
 	if err != nil {
-		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to marshal package version"))
-		return
+		return nil, nil, nil, errorToDiagnostic(err, "failed to marshal package version")
 	}
 
 	var vproto *versionsDataSourceProtoModel
 	if err := json.Unmarshal(raw, &vproto); err != nil {
-		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to unmarshal package version"))
-		return
+		return nil, nil, nil, errorToDiagnostic(err, "failed to unmarshal package version")
 	}
-
-	data.Versions = vproto
 
 	// everything below is for backwards compatibility with the versions module
 
@@ -362,8 +379,7 @@ func (d *versionsDataSource) Read(ctx context.Context, req datasource.ReadReques
 
 		insideEOLGracePeriodWindow, err := checkEOLGracePeriodWindow(pv.EolDate, vproto.GracePeriodMonths)
 		if err != nil {
-			resp.Diagnostics.Append(errorToDiagnostic(err, "failed to calculate EOL grace period"))
-			return
+			return nil, nil, nil, errorToDiagnostic(err, "failed to calculate EOL grace period")
 		}
 		if !insideEOLGracePeriodWindow {
 			continue
@@ -394,10 +410,7 @@ func (d *versionsDataSource) Read(ctx context.Context, req datasource.ReadReques
 	// We want the latest version at the end of this list
 	slices.Reverse(orderedKeys)
 
-	data.VersionMap = vmap
-	data.OrderedKeys = orderedKeys
-
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	return vproto, vmap, orderedKeys, nil
 }
 
 func checkEOLGracePeriodWindow(eolDate string, gracePeriodMonths int64) (bool, error) {
