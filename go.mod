@@ -5,7 +5,7 @@ go 1.23.2
 require (
 	chainguard.dev/sdk v0.1.28
 	github.com/coreos/go-oidc/v3 v3.11.0
-	github.com/hashicorp/terraform-plugin-docs v0.20.0
+	github.com/hashicorp/terraform-plugin-docs v0.20.1
 	github.com/hashicorp/terraform-plugin-framework v1.13.0
 	github.com/hashicorp/terraform-plugin-framework-validators v0.15.0
 	github.com/hashicorp/terraform-plugin-go v0.25.0
