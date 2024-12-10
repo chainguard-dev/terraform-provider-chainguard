@@ -347,7 +347,7 @@ func calculate(ctx context.Context, client registry.RegistryClient, pkg string, 
 		for _, v := range vproto.EolVersions {
 			if _, ok := allows[key+"-"+v.Version]; !ok {
 				diags.AddWarning(
-					fmt.Sprintf("%s is set, skipping version %s-%s", EnvChainguardVersionAllow, key, v.Version),
+					fmt.Sprintf("%s is set, skipping eol version %s-%s", EnvChainguardVersionAllow, key, v.Version),
 					fmt.Sprintf("%s-%s is not allowed by %s [%v]", key, v.Version, EnvChainguardVersionAllow, allows),
 				)
 				continue
@@ -357,7 +357,7 @@ func calculate(ctx context.Context, client registry.RegistryClient, pkg string, 
 		for _, v := range vproto.Versions {
 			if _, ok := allows[key+"-"+v.Version]; !ok {
 				diags.AddWarning(
-					fmt.Sprintf("%s is set, skipping eol version %s-%s", EnvChainguardVersionAllow, key, v.Version),
+					fmt.Sprintf("%s is set, skipping version %s-%s", EnvChainguardVersionAllow, key, v.Version),
 					fmt.Sprintf("%s-%s is not allowed by %s [%v]", key, v.Version, EnvChainguardVersionAllow, allows),
 				)
 				continue
