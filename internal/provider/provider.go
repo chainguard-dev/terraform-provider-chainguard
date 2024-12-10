@@ -83,8 +83,9 @@ type Provider struct {
 }
 
 type ProviderModel struct {
-	ConsoleAPI   types.String `tfsdk:"console_api"`
-	LoginOptions types.Object `tfsdk:"login_options"`
+	ConsoleAPI          types.String `tfsdk:"console_api"`
+	LoginOptions        types.Object `tfsdk:"login_options"`
+	VersionStreamAllows types.List   `tfsdk:"version_stream_allows"`
 }
 
 type LoginOptionsModel struct {
@@ -143,6 +144,25 @@ func (p *Provider) Schema(_ context.Context, _ provider.SchemaRequest, resp *pro
 					validators.IsURL(false /* requireHTTPS */),
 				},
 			},
+			"version_stream_allows": schema.ListAttribute{
+				MarkdownDescription: `An allowlist of version streams. Can be either
+set in the provider or as the "CHAINGUARD_VERSION_ALLOW" environment
+variable. When setting via an environment variable, the list must be
+comma separated.
+
+For example, if the resource returns the following versions:
+
+- foo-1.0
+- foo-1.1
+- foo-1.2
+
+And the allowlist is set to ["foo-1.0"], then the returned results will return
+only the version stream "foo-1.0". This applies to both EOL and non EOL
+version streams, and also affects the computed "is_latest" field to
+only consider the filtered versions.`,
+				Optional:    true,
+				ElementType: types.StringType,
+			},
 		},
 		Blocks: map[string]schema.Block{
 			"login_options": schema.SingleNestedBlock{
@@ -195,18 +215,20 @@ func (p *Provider) Schema(_ context.Context, _ provider.SchemaRequest, resp *pro
 }
 
 type providerData struct {
-	client      platform.Clients
-	consoleAPI  string
-	loginConfig token.LoginConfig
-	testing     bool
+	client              platform.Clients
+	consoleAPI          string
+	loginConfig         token.LoginConfig
+	testing             bool
+	versionStreamAllows map[string]struct{}
 }
 
 // Configure prepares a Chainguard API client for data sources and resources.
 func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
 	// Parse provider configs
 	var (
-		pm ProviderModel
-		lo LoginOptionsModel
+		pm                  ProviderModel
+		lo                  LoginOptionsModel
+		versionStreamAllows []string
 	)
 	if resp.Diagnostics.Append(req.Config.Get(ctx, &pm)...); resp.Diagnostics.HasError() {
 		return
@@ -216,6 +238,12 @@ func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest,
 			return
 		}
 		tflog.Info(ctx, fmt.Sprintf("login options parsed: %#v", lo))
+	}
+	if !pm.VersionStreamAllows.IsNull() {
+		if resp.Diagnostics.Append(pm.VersionStreamAllows.ElementsAs(ctx, &versionStreamAllows, false)...); resp.Diagnostics.HasError() {
+			return
+		}
+		tflog.Info(ctx, fmt.Sprintf("version stream allows parsed: %#v", versionStreamAllows))
 	}
 
 	// Load default values and environment variables
@@ -275,15 +303,27 @@ func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest,
 
 	tflog.SetField(ctx, "chainguard.console_api", consoleAPI)
 
+	// version stream allows from environment takes precedence over provider config
+	envVersionStreamAllows := os.Getenv("CHAINGUARD_VERSION_ALLOWS")
+	if envVersionStreamAllows != "" {
+		versionStreamAllows = strings.Split(envVersionStreamAllows, ",")
+	}
+
+	vsAllowMap := make(map[string]struct{}, len(versionStreamAllows))
+	for _, vs := range versionStreamAllows {
+		vsAllowMap[vs] = struct{}{}
+	}
+
 	// Client is intentionally set to nil here in case this
 	// provider is used in an environment which does not have
 	// access to the Chainguard API. Instead, client is set by
 	// setupClient() only as needed.
 	d := &providerData{
-		client:      nil,
-		loginConfig: cfg,
-		consoleAPI:  consoleAPI,
-		testing:     p.version == "acctest",
+		client:              nil,
+		loginConfig:         cfg,
+		consoleAPI:          consoleAPI,
+		testing:             p.version == "acctest",
+		versionStreamAllows: vsAllowMap,
 	}
 
 	resp.DataSourceData = d

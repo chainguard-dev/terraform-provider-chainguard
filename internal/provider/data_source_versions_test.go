@@ -88,6 +88,7 @@ func Test_calculate(t *testing.T) {
 		wantError           bool
 		expectedOrderedKeys []string
 		expectedVersionsMap map[string]versionsDataSourceVersionMapModel
+		allow               map[string]struct{}
 	}{
 		{
 			name:      "causes server error",
@@ -208,19 +209,69 @@ func Test_calculate(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "allow list",
+			pkg:  "found",
+			allow: map[string]struct{}{
+				"found-3.8":  {},
+				"found-3.13": {},
+			},
+			expectedOrderedKeys: []string{
+				"found-3.8",
+				"found-3.13",
+			},
+			expectedVersionsMap: map[string]versionsDataSourceVersionMapModel{
+				"found-3.8": {
+					Exists:   true,
+					Fips:     true,
+					IsLatest: false,
+					Main:     "found-3.8",
+					Version:  "3.8",
+					Eol:      true,
+					EolDate:  "2924-10-07",
+				},
+				"found-3.13": {
+					Exists:   true,
+					Fips:     true,
+					IsLatest: true,
+					Main:     "found-3.13",
+					Version:  "3.13",
+				},
+			},
+		},
+		{
+			name:    "allow list, fips",
+			pkg:     "found",
+			variant: "fips",
+			allow: map[string]struct{}{
+				"found-fips-3.9": {},
+			},
+			expectedOrderedKeys: []string{
+				"found-fips-3.9",
+			},
+			expectedVersionsMap: map[string]versionsDataSourceVersionMapModel{
+				"found-fips-3.9": {
+					Exists:   true,
+					Fips:     true,
+					IsLatest: true, // ensure new latest is also identified
+					Main:     "found-fips-3.9",
+					Version:  "3.9",
+				},
+			},
+		},
 	}
 
 	ctx := context.Background()
 	testClient := clients.Registry().Registry()
 
 	for _, test := range tests {
-		_, versionsMap, orderedKeys, diagnostic := calculate(ctx, testClient, test.pkg, test.variant)
-		if diagnostic == nil && test.wantError {
+		_, versionsMap, orderedKeys, diagnostic := calculate(ctx, testClient, test.pkg, test.variant, test.allow)
+		if !diagnostic.HasError() && test.wantError {
 			t.Errorf("%s: wanted error/diag returned but was nil", test.name)
 			continue
 		}
-		if diagnostic != nil && !test.wantError {
-			t.Errorf("%s: error/diag returned but expected nil: %s", test.name, diagnostic.Summary())
+		if diagnostic.HasError() && !test.wantError {
+			t.Errorf("%s: error/diag returned but expected nil: %s", test.name, diagnostic.Errors())
 			continue
 		}
 		if diff := cmp.Diff(test.expectedOrderedKeys, orderedKeys); diff != "" {
