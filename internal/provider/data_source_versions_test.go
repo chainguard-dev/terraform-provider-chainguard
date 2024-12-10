@@ -54,6 +54,14 @@ func Test_calculate(t *testing.T) {
 									Exists:  true,
 									Version: "3.7",
 								},
+								{
+									EolDate: "2924-10-07", // TODO: update in 900 years
+									Exists:  true,
+									Version: "3.6",
+									// this should cause this version to be ignored completely
+									// even though it falls into the grace period
+									EolBroken: true,
+								},
 							},
 							Versions: []*registry.PackageVersion{
 								{
