@@ -252,9 +252,9 @@ func (d *versionsDataSource) Read(ctx context.Context, req datasource.ReadReques
 	pkg := data.Package.ValueString()
 	variant := data.Variant.ValueString()
 
-	vproto, vmap, orderedKeys, diagnostic := calculate(ctx, d.prov.client.Registry().Registry(), pkg, variant)
-	if diagnostic != nil {
-		resp.Diagnostics.Append(diagnostic)
+	vproto, vmap, orderedKeys, diags := calculate(ctx, d.prov.client.Registry().Registry(), pkg, variant, d.prov.versionStreamAllows)
+	resp.Diagnostics.Append(diags...)
+	if diags.HasError() {
 		return
 	}
 
@@ -266,14 +266,16 @@ func (d *versionsDataSource) Read(ctx context.Context, req datasource.ReadReques
 }
 
 // Responsible for the generation of all calculated fields (i.e. Versions, VersionMap, OrderedKeys).
-func calculate(ctx context.Context, client registry.RegistryClient, pkg string, variant string) (*versionsDataSourceProtoModel, map[string]versionsDataSourceVersionMapModel, []string, diag.Diagnostic) {
+func calculate(ctx context.Context, client registry.RegistryClient, pkg string, variant string, allows map[string]struct{}) (*versionsDataSourceProtoModel, map[string]versionsDataSourceVersionMapModel, []string, diag.Diagnostics) {
+	diags := make(diag.Diagnostics, 0)
+
 	// If variant provided (i.e. "fips"), modify the key names to include it
 	key := pkg
 	fips := false
 	if variant := variant; variant != "" {
 		// TODO: allow for more variants than just "fips"?
 		if variant != "fips" {
-			return nil, nil, nil, errorToDiagnostic(fmt.Errorf("invalid variant: %s", variant), "must be \"fips\"")
+			return nil, nil, nil, []diag.Diagnostic{errorToDiagnostic(fmt.Errorf("invalid variant: %s", variant), "must be \"fips\"")}
 		}
 		key = fmt.Sprintf("%s-%s", key, variant)
 		fips = variant == "fips"
@@ -319,17 +321,47 @@ func calculate(ctx context.Context, client registry.RegistryClient, pkg string, 
 			orderedKeys := []string{key}
 			return vproto, vmap, orderedKeys, nil
 		}
-		return nil, nil, nil, errorToDiagnostic(err, "failed to list package versions")
+		return nil, nil, nil, []diag.Diagnostic{errorToDiagnostic(err, "failed to list package versions")}
 	}
 
 	raw, err := json.Marshal(v)
 	if err != nil {
-		return nil, nil, nil, errorToDiagnostic(err, "failed to marshal package version")
+		return nil, nil, nil, []diag.Diagnostic{errorToDiagnostic(err, "failed to marshal package version")}
 	}
 
 	var vproto *versionsDataSourceProtoModel
 	if err := json.Unmarshal(raw, &vproto); err != nil {
-		return nil, nil, nil, errorToDiagnostic(err, "failed to unmarshal package version")
+		return nil, nil, nil, []diag.Diagnostic{errorToDiagnostic(err, "failed to unmarshal package version")}
+	}
+
+	// if versionStreamAllows exists, either from the provider or the
+	// environment, filter out any {eol-}versions that are not allowed before
+	// processing. if we have a hit, log it as a warning
+	if allows != nil {
+		fv, fev := []*versionsDataSourceProtoVersionsModel{}, []*versionsDataSourceProtoEolVersionsModel{}
+		for _, v := range vproto.EolVersions {
+			if _, ok := allows[key+"-"+v.Version]; !ok {
+				diags.AddWarning(
+					fmt.Sprintf("CHAINGUARD_VERSION_ALLOW is set, skipping version %s-%s", key, v.Version),
+					fmt.Sprintf("%s-%s is not allowed by CHAINGUARD_VERSION_ALLOW [%v]", key, v.Version, allows),
+				)
+				continue
+			}
+			fev = append(fev, v)
+		}
+		for _, v := range vproto.Versions {
+			if _, ok := allows[key+"-"+v.Version]; !ok {
+				diags.AddWarning(
+					fmt.Sprintf("CHAINGUARD_VERSION_ALLOW is set, skipping eol version %s-%s", key, v.Version),
+					fmt.Sprintf("%s-%s is not allowed by CHAINGUARD_VERSION_ALLOW [%v]", key, v.Version, allows),
+				)
+				continue
+			}
+			fv = append(fv, v)
+		}
+
+		vproto.EolVersions = fev
+		vproto.Versions = fv
 	}
 
 	// everything below is for backwards compatibility with the versions module
@@ -379,7 +411,7 @@ func calculate(ctx context.Context, client registry.RegistryClient, pkg string, 
 
 		insideEOLGracePeriodWindow, err := checkEOLGracePeriodWindow(pv.EolDate, vproto.GracePeriodMonths)
 		if err != nil {
-			return nil, nil, nil, errorToDiagnostic(err, "failed to calculate EOL grace period")
+			return nil, nil, nil, []diag.Diagnostic{errorToDiagnostic(err, "failed to calculate EOL grace period")}
 		}
 		if !insideEOLGracePeriodWindow {
 			continue
@@ -410,7 +442,7 @@ func calculate(ctx context.Context, client registry.RegistryClient, pkg string, 
 	// We want the latest version at the end of this list
 	slices.Reverse(orderedKeys)
 
-	return vproto, vmap, orderedKeys, nil
+	return vproto, vmap, orderedKeys, diags
 }
 
 func checkEOLGracePeriodWindow(eolDate string, gracePeriodMonths int64) (bool, error) {

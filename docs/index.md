@@ -30,6 +30,21 @@ provider "chainguard" {}
 
 - `console_api` (String) URL of Chainguard console API.
 - `login_options` (Block, Optional) Options to configure automatic login when Chainguard token is expired. (see [below for nested schema](#nestedblock--login_options))
+- `version_stream_allows` (List of String) An allowlist of version streams. Can be either
+set in the provider or as the "CHAINGUARD_VERSION_ALLOW" environment
+variable. When setting via an environment variable, the list must be
+comma separated.
+
+For example, if the resource returns the following versions:
+
+- foo-1.0
+- foo-1.1
+- foo-1.2
+
+And the allowlist is set to ["foo-1.0"], then the returned results will return
+only the version stream "foo-1.0". This applies to both EOL and non EOL
+version streams, and also affects the computed "is_latest" field to
+only consider the filtered versions.
 
 <a id="nestedblock--login_options"></a>
 ### Nested Schema for `login_options`
