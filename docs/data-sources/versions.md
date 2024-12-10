@@ -61,6 +61,7 @@ Read-Only:
 
 Read-Only:
 
+- `eol_broken` (Boolean) Whether the EOL version is broken.
 - `eol_date` (String) The eol date.
 - `exists` (Boolean) Whether the version exists.
 - `fips` (Boolean) Whether the FIPS version exists.

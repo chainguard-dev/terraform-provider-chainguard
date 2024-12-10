@@ -267,6 +267,16 @@ func Test_calculate(t *testing.T) {
 				},
 			},
 		},
+		{
+			// NOTE: The provider Configure() doesn't set (is nil) when the allow
+			// list isn't set, so it isn't this test, this test simply protects
+			// against unknown regressions
+			name:                "empty but present allow list produces nothing",
+			pkg:                 "found",
+			allow:               map[string]struct{}{},
+			expectedOrderedKeys: []string{},
+			expectedVersionsMap: map[string]versionsDataSourceVersionMapModel{},
+		},
 	}
 
 	ctx := context.Background()
