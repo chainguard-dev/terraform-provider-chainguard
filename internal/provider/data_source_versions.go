@@ -62,6 +62,7 @@ type versionsDataSourceProtoModel struct {
 
 type versionsDataSourceProtoEolVersionsModel struct {
 	EolDate     string `tfsdk:"eol_date"`
+	EolBroken   bool   `tfsdk:"eol_broken"`
 	Exists      bool   `tfsdk:"exists"`
 	Fips        bool   `tfsdk:"fips"`
 	ReleaseDate string `tfsdk:"release_date"`
@@ -373,7 +374,8 @@ func calculate(ctx context.Context, client registry.RegistryClient, pkg string, 
 	for _, pv := range vproto.EolVersions {
 		// Non-FIPS and doesnt exist (via "exists" bool)? Do not use
 		// FIPS and doesnt exist (via "fips" bool)? Do not use
-		if (!fips && !pv.Exists) || (fips && !pv.Fips) {
+		// Marked as broken (via "eolBroken" bool)? Do not use
+		if (!fips && !pv.Exists) || (fips && !pv.Fips) || pv.EolBroken {
 			continue
 		}
 
