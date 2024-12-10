@@ -49,6 +49,8 @@ const (
 
 	// EnvAccAmbient signals acceptance tests are being executed by GHA with ambient credentials.
 	EnvAccAmbient = "TF_ACC_AMBIENT"
+
+	EnvChainguardVersionAllow = "CHAINGUARD_VERSION_ALLOW"
 )
 
 var EnvAccVars = []string{
@@ -304,14 +306,10 @@ func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest,
 	tflog.SetField(ctx, "chainguard.console_api", consoleAPI)
 
 	// version stream allows from environment takes precedence over provider config
-	envVersionStreamAllows := os.Getenv("CHAINGUARD_VERSION_ALLOWS")
-	if envVersionStreamAllows != "" {
-		versionStreamAllows = strings.Split(envVersionStreamAllows, ",")
-	}
-
-	vsAllowMap := make(map[string]struct{}, len(versionStreamAllows))
-	for _, vs := range versionStreamAllows {
-		vsAllowMap[vs] = struct{}{}
+	if allows, ok := os.LookupEnv(EnvChainguardVersionAllow); ok && allows == "" {
+		resp.Diagnostics.AddError(fmt.Sprintf("specified %s but no value(s) found", EnvChainguardVersionAllow), "If set, must be a comma separated list of version streams.")
+	} else if ok && allows != "" {
+		versionStreamAllows = strings.Split(allows, ",")
 	}
 
 	// Client is intentionally set to nil here in case this
@@ -319,11 +317,18 @@ func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest,
 	// access to the Chainguard API. Instead, client is set by
 	// setupClient() only as needed.
 	d := &providerData{
-		client:              nil,
-		loginConfig:         cfg,
-		consoleAPI:          consoleAPI,
-		testing:             p.version == "acctest",
-		versionStreamAllows: vsAllowMap,
+		client:      nil,
+		loginConfig: cfg,
+		consoleAPI:  consoleAPI,
+		testing:     p.version == "acctest",
+	}
+
+	if versionStreamAllows != nil {
+		vsAllowMap := make(map[string]struct{}, len(versionStreamAllows))
+		for _, vs := range versionStreamAllows {
+			vsAllowMap[vs] = struct{}{}
+		}
+		d.versionStreamAllows = vsAllowMap
 	}
 
 	resp.DataSourceData = d

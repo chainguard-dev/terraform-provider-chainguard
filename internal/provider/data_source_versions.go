@@ -143,6 +143,10 @@ func (d *versionsDataSource) Schema(_ context.Context, _ datasource.SchemaReques
 									Description: "The eol date.",
 									Computed:    true,
 								},
+								"eol_broken": schema.BoolAttribute{
+									Description: "Whether the EOL version is broken.",
+									Computed:    true,
+								},
 								"exists": schema.BoolAttribute{
 									Description: "Whether the version exists.",
 									Computed:    true,
@@ -343,8 +347,8 @@ func calculate(ctx context.Context, client registry.RegistryClient, pkg string, 
 		for _, v := range vproto.EolVersions {
 			if _, ok := allows[key+"-"+v.Version]; !ok {
 				diags.AddWarning(
-					fmt.Sprintf("CHAINGUARD_VERSION_ALLOW is set, skipping version %s-%s", key, v.Version),
-					fmt.Sprintf("%s-%s is not allowed by CHAINGUARD_VERSION_ALLOW [%v]", key, v.Version, allows),
+					fmt.Sprintf("%s is set, skipping version %s-%s", EnvChainguardVersionAllow, key, v.Version),
+					fmt.Sprintf("%s-%s is not allowed by %s [%v]", key, v.Version, EnvChainguardVersionAllow, allows),
 				)
 				continue
 			}
@@ -353,8 +357,8 @@ func calculate(ctx context.Context, client registry.RegistryClient, pkg string, 
 		for _, v := range vproto.Versions {
 			if _, ok := allows[key+"-"+v.Version]; !ok {
 				diags.AddWarning(
-					fmt.Sprintf("CHAINGUARD_VERSION_ALLOW is set, skipping eol version %s-%s", key, v.Version),
-					fmt.Sprintf("%s-%s is not allowed by CHAINGUARD_VERSION_ALLOW [%v]", key, v.Version, allows),
+					fmt.Sprintf("%s is set, skipping eol version %s-%s", EnvChainguardVersionAllow, key, v.Version),
+					fmt.Sprintf("%s-%s is not allowed by %s [%v]", key, v.Version, EnvChainguardVersionAllow, allows),
 				)
 				continue
 			}
