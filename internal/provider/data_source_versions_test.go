@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"google.golang.org/grpc/codes"
@@ -20,6 +21,7 @@ import (
 )
 
 func Test_calculate(t *testing.T) {
+	eolDate := time.Now().Add(-30 * 24 * time.Hour).Format(time.DateOnly)
 	clients := &platformtest.MockPlatformClients{
 		RegistryClient: registrytest.MockRegistryClients{
 			RegistryClient: registrytest.MockRegistryClient{
@@ -80,6 +82,21 @@ func Test_calculate(t *testing.T) {
 									Exists:  true,
 									Fips:    true,
 									Version: "3.9",
+								},
+							},
+						},
+					},
+					{
+						Given: &registry.PackageVersionMetadataRequest{
+							Package: "eol",
+						},
+						Get: &registry.PackageVersionMetadata{
+							GracePeriodMonths: 6,
+							EolVersions: []*registry.PackageVersion{
+								{
+									EolDate: eolDate,
+									Exists:  true,
+									Version: "3.8",
 								},
 							},
 						},
@@ -157,7 +174,7 @@ func Test_calculate(t *testing.T) {
 					IsLatest: false,
 					Main:     "found-3.8",
 					Version:  "3.8",
-					Eol:      true,
+					Eol:      false,
 					EolDate:  "2924-10-07",
 				},
 				"found-3.9": {
@@ -198,7 +215,7 @@ func Test_calculate(t *testing.T) {
 					IsLatest: false,
 					Main:     "found-fips-3.8",
 					Version:  "3.8",
-					Eol:      true,
+					Eol:      false,
 					EolDate:  "2924-10-07",
 				},
 				"found-fips-3.9": {
@@ -235,7 +252,7 @@ func Test_calculate(t *testing.T) {
 					IsLatest: false,
 					Main:     "found-3.8",
 					Version:  "3.8",
-					Eol:      true,
+					Eol:      false,
 					EolDate:  "2924-10-07",
 				},
 				"found-3.13": {
@@ -277,26 +294,46 @@ func Test_calculate(t *testing.T) {
 			expectedOrderedKeys: []string{},
 			expectedVersionsMap: map[string]versionsDataSourceVersionMapModel{},
 		},
+		{
+			name: "eol",
+			pkg:  "eol",
+			expectedOrderedKeys: []string{
+				"eol-3.8",
+			},
+			allow: map[string]struct{}{
+				"eol-3.8": {},
+			},
+			expectedVersionsMap: map[string]versionsDataSourceVersionMapModel{
+				"eol-3.8": {
+					Exists:   true,
+					Eol:      true,
+					EolDate:  eolDate,
+					IsLatest: true, // ensure new latest is also identified
+					Main:     "eol-3.8",
+					Version:  "3.8",
+				},
+			},
+		},
 	}
 
 	ctx := context.Background()
 	testClient := clients.Registry().Registry()
 
 	for _, test := range tests {
-		_, versionsMap, orderedKeys, diagnostic := calculate(ctx, testClient, test.pkg, test.variant, test.allow)
-		if !diagnostic.HasError() && test.wantError {
-			t.Errorf("%s: wanted error/diag returned but was nil", test.name)
-			continue
-		}
-		if diagnostic.HasError() && !test.wantError {
-			t.Errorf("%s: error/diag returned but expected nil: %s", test.name, diagnostic.Errors())
-			continue
-		}
-		if diff := cmp.Diff(test.expectedOrderedKeys, orderedKeys); diff != "" {
-			t.Errorf("%s: orderedKeys did not match: %s", test.name, diff)
-		}
-		if diff := cmp.Diff(test.expectedVersionsMap, versionsMap); diff != "" {
-			t.Errorf("%s: versionsMap did not match: %s", test.name, diff)
-		}
+		t.Run(test.name, func(t *testing.T) {
+			_, versionsMap, orderedKeys, diagnostic := calculate(ctx, testClient, test.pkg, test.variant, test.allow)
+			if !diagnostic.HasError() && test.wantError {
+				t.Fatalf("%s: wanted error/diag returned but was nil", test.name)
+			}
+			if diagnostic.HasError() && !test.wantError {
+				t.Fatalf("%s: error/diag returned but expected nil: %s", test.name, diagnostic.Errors())
+			}
+			if diff := cmp.Diff(test.expectedOrderedKeys, orderedKeys); diff != "" {
+				t.Errorf("%s: orderedKeys did not match: %s", test.name, diff)
+			}
+			if diff := cmp.Diff(test.expectedVersionsMap, versionsMap); diff != "" {
+				t.Errorf("%s: versionsMap did not match: %s", test.name, diff)
+			}
+		})
 	}
 }
