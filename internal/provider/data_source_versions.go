@@ -415,7 +415,7 @@ func calculate(ctx context.Context, client registry.RegistryClient, pkg string, 
 			continue
 		}
 
-		insideEOLGracePeriodWindow, err := checkEOLGracePeriodWindow(pv.EolDate, vproto.GracePeriodMonths)
+		isEOL, insideEOLGracePeriodWindow, err := checkEOLGracePeriodWindow(pv.EolDate, vproto.GracePeriodMonths)
 		if err != nil {
 			return nil, nil, nil, []diag.Diagnostic{errorToDiagnostic(err, "failed to calculate EOL grace period")}
 		}
@@ -425,7 +425,7 @@ func calculate(ctx context.Context, client registry.RegistryClient, pkg string, 
 
 		vname := key + "-" + pv.Version
 		model := versionsDataSourceVersionMapModel{
-			Eol:         true,
+			Eol:         isEOL,
 			EolDate:     pv.EolDate,
 			Exists:      pv.Exists,
 			Fips:        pv.Fips,
@@ -451,15 +451,20 @@ func calculate(ctx context.Context, client registry.RegistryClient, pkg string, 
 	return vproto, vmap, orderedKeys, diags
 }
 
-func checkEOLGracePeriodWindow(eolDate string, gracePeriodMonths int64) (bool, error) {
+// returns whether we are eol, whether we are in the grace period window, and any error.
+func checkEOLGracePeriodWindow(eolDate string, gracePeriodMonths int64) (bool, bool, error) {
 	t, err := time.Parse(time.DateOnly, eolDate)
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
 	// Take the parsed EOL date, fast forward it to X months in the future
-	// and ensure that it is greater than or equal to right now
-	t = t.AddDate(0, int(gracePeriodMonths), 0)
-	return t.Compare(time.Now().UTC()) >= 0, nil
+	// and ensure that it is greater than or equal to right now.
+	eol := t.AddDate(0, int(gracePeriodMonths), 0)
+	now := time.Now().UTC()
+
+	// We are EOL if the EOL date is before the current time.
+	// We are in the grace period window if the EOL grace period date is after the current time.
+	return t.Before(now), eol.After(now), nil
 }
 
 // Variant validates the string value is a valid variant.
