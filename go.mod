@@ -3,6 +3,7 @@ module github.com/chainguard-dev/terraform-provider-chainguard
 go 1.23.4
 
 require (
+	chainguard.dev/apko v0.20.1
 	chainguard.dev/sdk v0.1.29
 	github.com/coreos/go-oidc/v3 v3.12.0
 	github.com/google/go-cmp v0.6.0
@@ -14,12 +15,12 @@ require (
 	github.com/hashicorp/terraform-plugin-testing v1.11.0
 	github.com/sigstore/cosign/v2 v2.4.1
 	golang.org/x/exp v0.0.0-20241108190413-2d47ceb2692f
-	google.golang.org/grpc v1.69.2
+	google.golang.org/grpc v1.69.4
 	google.golang.org/protobuf v1.36.1
+	gopkg.in/yaml.v2 v2.4.0
 )
 
 require (
-	chainguard.dev/apko v0.20.1 // indirect
 	chainguard.dev/go-grpc-kit v0.17.7 // indirect
 	dario.cat/mergo v1.0.1 // indirect
 	github.com/BurntSushi/toml v1.2.1 // indirect
@@ -130,6 +131,5 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20241118233622-e639e219e697 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20241118233622-e639e219e697 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
-	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
