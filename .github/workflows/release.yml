@@ -4,6 +4,8 @@ on:
     tags:
       - 'v*'
 
+permissions: {}
+
 jobs:
   goreleaser:
     permissions:
