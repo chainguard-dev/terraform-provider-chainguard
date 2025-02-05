@@ -30,7 +30,7 @@ resource "chainguard_image_tag" "example" {
 
 ### Optional
 
-- `bundles` (List of String) List of bundles associated with this repo (a-z freeform keywords for sales purposes).
+- `bundles` (List of String) List of bundles associated with this repo (valid ones: `application|base|byol|ai|ai-gpu|featured|fips`).
 
 ### Read-Only
 
