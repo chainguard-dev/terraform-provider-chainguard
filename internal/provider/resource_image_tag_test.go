@@ -27,13 +27,13 @@ func TestImageTag(t *testing.T) {
 	original := testTag{
 		parentID: parentID,
 		name:     name,
-		bundles:  `["aa", "bb", "cc"]`,
+		bundles:  `["application", "fips", "featured"]`,
 	}
 
 	update := testTag{
 		parentID: parentID,
 		name:     name,
-		bundles:  `["xx", "yy", "zz"]`,
+		bundles:  `["base", "application", "byol"]`,
 	}
 
 	resource.Test(t, resource.TestCase{
@@ -46,9 +46,9 @@ func TestImageTag(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					// We do not check the repo_id because it will be dynamic based on chainguard_image_repo.tag_example
 					resource.TestCheckResourceAttr(`chainguard_image_tag.tag_example`, `name`, name),
-					resource.TestCheckResourceAttr(`chainguard_image_tag.tag_example`, `bundles.0`, "aa"),
-					resource.TestCheckResourceAttr(`chainguard_image_tag.tag_example`, `bundles.1`, "bb"),
-					resource.TestCheckResourceAttr(`chainguard_image_tag.tag_example`, `bundles.2`, "cc"),
+					resource.TestCheckResourceAttr(`chainguard_image_tag.tag_example`, `bundles.0`, "application"),
+					resource.TestCheckResourceAttr(`chainguard_image_tag.tag_example`, `bundles.1`, "fips"),
+					resource.TestCheckResourceAttr(`chainguard_image_tag.tag_example`, `bundles.2`, "featured"),
 				),
 			},
 			// ImportState testing.
@@ -63,9 +63,9 @@ func TestImageTag(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					// We do not check the repo_id because it will be dynamic based on chainguard_image_repo.tag_example
 					resource.TestCheckResourceAttr(`chainguard_image_tag.tag_example`, `name`, name),
-					resource.TestCheckResourceAttr(`chainguard_image_tag.tag_example`, `bundles.0`, "xx"),
-					resource.TestCheckResourceAttr(`chainguard_image_tag.tag_example`, `bundles.1`, "yy"),
-					resource.TestCheckResourceAttr(`chainguard_image_tag.tag_example`, `bundles.2`, "zz"),
+					resource.TestCheckResourceAttr(`chainguard_image_tag.tag_example`, `bundles.0`, "base"),
+					resource.TestCheckResourceAttr(`chainguard_image_tag.tag_example`, `bundles.1`, "application"),
+					resource.TestCheckResourceAttr(`chainguard_image_tag.tag_example`, `bundles.2`, "byol"),
 				),
 			},
 		},

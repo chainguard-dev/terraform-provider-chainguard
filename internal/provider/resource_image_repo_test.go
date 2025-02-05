@@ -43,7 +43,7 @@ func TestImageRepo(t *testing.T) {
 	update1 := testRepo{
 		parentID: parentID,
 		name:     name,
-		bundles:  `["a", "b", "c"]`,
+		bundles:  `["application", "base", "fips"]`,
 		readme:   "# hello",
 		tier:     "APPLICATION",
 		aliases:  `["image:1", "image:2", "image:latest"]`,
@@ -53,7 +53,7 @@ func TestImageRepo(t *testing.T) {
 	update2 := testRepo{
 		parentID: parentID,
 		name:     name,
-		bundles:  `["x", "y", "z"]`,
+		bundles:  `["byol", "base", "featured"]`,
 		readme:   "# goodbye",
 		tier:     "BASE",
 		aliases:  `["image:97", "image:98", "image:99"]`,
@@ -107,9 +107,9 @@ func TestImageRepo(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `parent_id`, parentID),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `name`, name),
-					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `bundles.0`, "a"),
-					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `bundles.1`, "b"),
-					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `bundles.2`, "c"),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `bundles.0`, "application"),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `bundles.1`, "base"),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `bundles.2`, "fips"),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `readme`, "# hello"),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `tier`, "APPLICATION"),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `aliases.0`, "image:1"),
@@ -124,9 +124,9 @@ func TestImageRepo(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `parent_id`, parentID),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `name`, name),
-					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `bundles.0`, "x"),
-					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `bundles.1`, "y"),
-					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `bundles.2`, "z"),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `bundles.0`, "byol"),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `bundles.1`, "base"),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `bundles.2`, "featured"),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `readme`, "# goodbye"),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `tier`, "BASE"),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `aliases.0`, "image:97"),

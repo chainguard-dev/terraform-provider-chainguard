@@ -16,7 +16,7 @@ Image repo (note: delete is purposefully a no-op).
 resource "chainguard_image_repo" "example" {
   parent_id = "foo/bar"
   name      = "nginx"
-  bundles   = ["a", "b"]
+  bundles   = ["application", "fips"]
 }
 ```
 
@@ -31,7 +31,7 @@ resource "chainguard_image_repo" "example" {
 ### Optional
 
 - `aliases` (List of String) Known aliases for a given image.
-- `bundles` (List of String) List of bundles associated with this repo (a-z freeform keywords for sales purposes).
+- `bundles` (List of String) List of bundles associated with this repo (valid ones: `application|base|byol|ai|ai-gpu|featured|fips`).
 - `readme` (String) The README for this repo.
 - `sync_config` (Block, Optional) Configuration for catalog syncing. (see [below for nested schema](#nestedblock--sync_config))
 - `tier` (String) Image tier associated with this repo.
