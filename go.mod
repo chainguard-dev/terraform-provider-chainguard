@@ -6,7 +6,7 @@ require (
 	chainguard.dev/apko v0.25.1
 	chainguard.dev/sdk v0.1.31
 	github.com/coreos/go-oidc/v3 v3.12.0
-	github.com/google/go-cmp v0.6.0
+	github.com/google/go-cmp v0.7.0
 	github.com/hashicorp/terraform-plugin-docs v0.20.1
 	github.com/hashicorp/terraform-plugin-framework v1.14.1
 	github.com/hashicorp/terraform-plugin-framework-validators v0.17.0
