@@ -12,6 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -43,11 +44,12 @@ type groupResource struct {
 }
 
 type groupResourceModel struct {
-	ID          types.String `tfsdk:"id"`
-	Name        types.String `tfsdk:"name"`
-	Description types.String `tfsdk:"description"`
-	ParentID    types.String `tfsdk:"parent_id"`
-	Verified    types.Bool   `tfsdk:"verified"`
+	ID                 types.String `tfsdk:"id"`
+	Name               types.String `tfsdk:"name"`
+	Description        types.String `tfsdk:"description"`
+	ParentID           types.String `tfsdk:"parent_id"`
+	Verified           types.Bool   `tfsdk:"verified"`
+	VerifiedProtection types.Bool   `tfsdk:"verified_protection"`
 }
 
 func (r *groupResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -87,6 +89,12 @@ func (r *groupResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 			"verified": schema.BoolAttribute{
 				Description: "Whether the organization has been verified by a Chainguardian. Only applicable to root groups.",
 				Optional:    true,
+			},
+			"verified_protection": schema.BoolAttribute{
+				Description: "Prevent the group from being unverified through Terraform. Defaults to true.",
+				Optional:    true,
+				Computed:    true,
+				Default:     booldefault.StaticBool(true),
 			},
 		},
 	}
@@ -185,7 +193,7 @@ func (r *groupResource) Read(ctx context.Context, req resource.ReadRequest, resp
 		state.ID = types.StringValue(g.Id)
 		state.Name = types.StringValue(g.Name)
 		// Only update the state description if it started as non-null or we receive a description.
-		if !(state.Description.IsNull() && g.Description == "") {
+		if !state.Description.IsNull() || g.Description != "" {
 			state.Description = types.StringValue(g.Description)
 		}
 		// Allow ParentID to remain null for root groups, but ensure it is populated
@@ -218,6 +226,21 @@ func (r *groupResource) Update(ctx context.Context, req resource.UpdateRequest, 
 	}
 	tflog.Info(ctx, fmt.Sprintf("update group request: %s", data.ID))
 
+	// Fetch the state to compare the verified property
+	var state groupResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Check if the group is attempting to update from verified to unverified,
+	// and is protected from being unverified in the current state.
+	// NB: This requires unverifying to happen in two steps: apply verified_protection = false, then apply verified = false (or remove the attribute).
+	if state.Verified.ValueBool() && !data.Verified.ValueBool() && state.VerifiedProtection.ValueBool() {
+		resp.Diagnostics.AddError("cannot unverify group", fmt.Sprintf("group %s is verified and verified_protection = true; apply verified_protection = false before attempting to unverify this group", state.ID.ValueString()))
+		return
+	}
+
 	g, err := r.prov.client.IAM().Groups().Update(ctx, &iam.Group{
 		Id:          data.ID.ValueString(),
 		Name:        data.Name.ValueString(),
@@ -232,7 +255,7 @@ func (r *groupResource) Update(ctx context.Context, req resource.UpdateRequest, 
 	// Set state.
 	data.ID = types.StringValue(g.Id)
 	data.Name = types.StringValue(g.GetName())
-	if !(data.Description.IsNull() && g.Description != "") {
+	if !data.Description.IsNull() || g.Description != "" {
 		data.Description = types.StringValue(g.GetDescription())
 	}
 	if !data.Verified.IsNull() || g.Verified {
