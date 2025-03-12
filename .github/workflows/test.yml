@@ -1,5 +1,5 @@
 # Terraform Provider testing workflow.
-name: Tests
+name: Acceptance Tests
 
 on:
   push:
