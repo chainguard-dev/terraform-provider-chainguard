@@ -9,10 +9,10 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -22,6 +22,7 @@ import (
 	common "chainguard.dev/sdk/proto/platform/common/v1"
 	iam "chainguard.dev/sdk/proto/platform/iam/v1"
 	"chainguard.dev/sdk/uidp"
+	"github.com/chainguard-dev/terraform-provider-chainguard/internal/protoutil"
 	"github.com/chainguard-dev/terraform-provider-chainguard/internal/token"
 	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
 )
@@ -91,10 +92,8 @@ func (r *groupResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 				Optional:    true,
 			},
 			"verified_protection": schema.BoolAttribute{
-				Description: "Prevent the group from being unverified through Terraform. Defaults to true.",
+				Description: "Prevent the group from being unverified through Terraform. Null is treated as true.",
 				Optional:    true,
-				Computed:    true,
-				Default:     booldefault.StaticBool(true),
 			},
 		},
 	}
@@ -216,6 +215,38 @@ func (r *groupResource) Read(ctx context.Context, req resource.ReadRequest, resp
 	}
 }
 
+func (r *groupResource) update(ctx context.Context, data *groupResourceModel, state groupResourceModel) diag.Diagnostic {
+	// Check if the group is attempting to update from verified to unverified,
+	// and is protected from being unverified in the current state.
+	// NB: When not set, verified_protection is treated as true.
+	// This requires unverifying to happen in two steps:
+	// apply verified_protection = false, then apply verified = false (or remove the attribute).
+	if state.Verified.ValueBool() && !data.Verified.ValueBool() && protoutil.DefaultBool(state.VerifiedProtection, true) {
+		return diag.NewErrorDiagnostic("cannot unverify group", fmt.Sprintf("group %s is verified and verified_protection is true or null; apply verified_protection = false before attempting to unverify this group", state.ID.ValueString()))
+	}
+
+	g, err := r.prov.client.IAM().Groups().Update(ctx, &iam.Group{
+		Id:          data.ID.ValueString(),
+		Name:        data.Name.ValueString(),
+		Description: data.Description.ValueString(),
+		Verified:    data.Verified.ValueBool(),
+	})
+	if err != nil {
+		return errorToDiagnostic(err, fmt.Sprintf("failed to update group %q", data.ID.ValueString()))
+	}
+
+	// Update data from the returned value.
+	data.ID = types.StringValue(g.Id)
+	data.Name = types.StringValue(g.GetName())
+	if !data.Description.IsNull() || g.Description != "" {
+		data.Description = types.StringValue(g.GetDescription())
+	}
+	if !data.Verified.IsNull() || g.Verified {
+		data.Verified = types.BoolValue(g.Verified)
+	}
+	return nil
+}
+
 // Update updates the resource and sets the updated Terraform state on success.
 func (r *groupResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	// Read the plan into the resource model.
@@ -233,34 +264,12 @@ func (r *groupResource) Update(ctx context.Context, req resource.UpdateRequest, 
 		return
 	}
 
-	// Check if the group is attempting to update from verified to unverified,
-	// and is protected from being unverified in the current state.
-	// NB: This requires unverifying to happen in two steps: apply verified_protection = false, then apply verified = false (or remove the attribute).
-	if state.Verified.ValueBool() && !data.Verified.ValueBool() && state.VerifiedProtection.ValueBool() {
-		resp.Diagnostics.AddError("cannot unverify group", fmt.Sprintf("group %s is verified and verified_protection = true; apply verified_protection = false before attempting to unverify this group", state.ID.ValueString()))
+	// Attempt to update the group
+	resp.Diagnostics.Append(r.update(ctx, &data, state))
+	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	g, err := r.prov.client.IAM().Groups().Update(ctx, &iam.Group{
-		Id:          data.ID.ValueString(),
-		Name:        data.Name.ValueString(),
-		Description: data.Description.ValueString(),
-		Verified:    data.Verified.ValueBool(),
-	})
-	if err != nil {
-		resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to update group %q", data.ID.ValueString())))
-		return
-	}
-
-	// Set state.
-	data.ID = types.StringValue(g.Id)
-	data.Name = types.StringValue(g.GetName())
-	if !data.Description.IsNull() || g.Description != "" {
-		data.Description = types.StringValue(g.GetDescription())
-	}
-	if !data.Verified.IsNull() || g.Verified {
-		data.Verified = types.BoolValue(g.Verified)
-	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
