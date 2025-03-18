@@ -1,6 +1,7 @@
 module github.com/chainguard-dev/terraform-provider-chainguard
 
-go 1.23.6
+go 1.24.0
+
 toolchain go1.24.1
 
 require (
