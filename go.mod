@@ -19,7 +19,7 @@ require (
 	github.com/sigstore/cosign/v2 v2.4.3
 	golang.org/x/exp v0.0.0-20250218142911-aa4b98e5adaa
 	google.golang.org/grpc v1.71.0
-	google.golang.org/protobuf v1.36.5
+	google.golang.org/protobuf v1.36.6
 	gopkg.in/yaml.v2 v2.4.0
 )
 
