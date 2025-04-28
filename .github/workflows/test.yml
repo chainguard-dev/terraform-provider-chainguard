@@ -37,7 +37,7 @@ jobs:
           go-version-file: 'go.mod'
           check-latest: true
           cache: true
-      - uses: chainguard-dev/setup-chainctl@2302a56a61228140753b428d1018cb0d0addbec6 # v0.3.0
+      - uses: chainguard-dev/setup-chainctl@272698817627c158bbd813cb783b62a4b9bbbc67 # v0.3.1
         with:
           identity: "ef127a7c0909329f04b43d845cf80eea4247a07b/66305475446bbef6/51be6000f74f6cb7/72b16b9edc62a069"
       - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
