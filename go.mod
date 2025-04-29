@@ -5,7 +5,7 @@ go 1.24.0
 toolchain go1.24.1
 
 require (
-	chainguard.dev/apko v0.26.1
+	chainguard.dev/apko v0.27.0
 	chainguard.dev/sdk v0.1.32
 	github.com/chainguard-dev/clog v1.7.0
 	github.com/coreos/go-oidc/v3 v3.14.1
