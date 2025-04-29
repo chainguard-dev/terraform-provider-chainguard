@@ -249,7 +249,7 @@ func (r *identityProviderResource) Read(ctx context.Context, req resource.ReadRe
 	idp := idpList.Items[0]
 	state.ID = types.StringValue(idp.Id)
 	state.Name = types.StringValue(idp.Name)
-	if !(state.Description.IsNull() && idp.Description == "") {
+	if !state.Description.IsNull() || idp.Description != "" {
 		state.Description = types.StringValue(idp.Description)
 	}
 	state.DefaultRole = types.StringValue(idp.DefaultRole)

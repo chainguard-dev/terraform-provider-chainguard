@@ -121,12 +121,12 @@ func (d *groupDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 		groupList.Items = groups
 	}
 
-	switch c := len(groupList.GetItems()); {
-	case c == 0:
+	switch c := len(groupList.GetItems()); c {
+	case 0:
 		// Group was not found (either never existed, or was deleted).
 		resp.Diagnostics.Append(dataNotFound("group", "" /* extra */, data))
 
-	case c == 1:
+	case 1:
 		g := groupList.GetItems()[0]
 		data.ID = types.StringValue(g.Id)
 		data.Name = types.StringValue(g.Name)

@@ -182,12 +182,12 @@ func (r *groupResource) Read(ctx context.Context, req resource.ReadRequest, resp
 		return
 	}
 
-	switch c := len(groupList.GetItems()); {
-	case c == 0:
+	switch c := len(groupList.GetItems()); c {
+	case 0:
 		// Group was already deleted outside TF, remove from state
 		resp.State.RemoveResource(ctx)
 
-	case c == 1:
+	case 1:
 		g := groupList.GetItems()[0]
 		state.ID = types.StringValue(g.Id)
 		state.Name = types.StringValue(g.Name)
