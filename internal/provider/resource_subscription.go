@@ -132,12 +132,12 @@ func (r *subscriptionResource) Read(ctx context.Context, req resource.ReadReques
 		return
 	}
 
-	switch c := len(subList.GetItems()); {
-	case c == 0:
+	switch c := len(subList.GetItems()); c {
+	case 0:
 		// Subscription was deleted outside TF, remove from state
 		resp.State.RemoveResource(ctx)
 
-	case c == 1:
+	case 1:
 		sub := subList.Items[0]
 		state.ID = types.StringValue(sub.Id)
 		state.Sink = types.StringValue(sub.Sink)

@@ -342,11 +342,11 @@ func (r *imageRepoResource) Read(ctx context.Context, req resource.ReadRequest, 
 	state.Name = types.StringValue(repo.Name)
 
 	// Only update the state readme if it started as non-null or we receive a description.
-	if !(state.Readme.IsNull() && repo.Readme == "") {
+	if !state.Readme.IsNull() || repo.Readme != "" {
 		state.Readme = types.StringValue(repo.Readme)
 	}
 
-	if !(state.Tier.IsNull() && repo.CatalogTier == registry.CatalogTier_UNKNOWN) {
+	if !state.Tier.IsNull() || repo.CatalogTier != registry.CatalogTier_UNKNOWN {
 		state.Tier = types.StringValue(repo.CatalogTier.String())
 	}
 
@@ -465,7 +465,7 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 		data.Readme = types.StringValue(repo.Readme)
 	}
 	// Treat UNKNOWN tier as null, but only if it was already null
-	if !(data.Tier.IsNull() && repo.CatalogTier == registry.CatalogTier_UNKNOWN) {
+	if !data.Tier.IsNull() || repo.CatalogTier != registry.CatalogTier_UNKNOWN {
 		data.Tier = types.StringValue(repo.CatalogTier.String())
 	} else {
 		data.Tier = types.StringNull()

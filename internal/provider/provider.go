@@ -376,7 +376,7 @@ func (pd *providerData) setupClient(ctx context.Context) error {
 		// If it doesn't exist or is expired, attempt to get a new one, depending on login_options
 		cgToken, err := token.Get(ctx, pd.loginConfig, false /* forceRefresh */)
 		if err != nil {
-			return fmt.Errorf("Failed to retrieve token. Either no token was found for audience %q or there was an error reading it.\n"+
+			return fmt.Errorf("failed to retrieve token. Either no token was found for audience %q or there was an error reading it.\n"+
 				"Please check the value of \"chainguard.console_api\" in your Terraform provider configuration: %s", pd.loginConfig.Audience, err.Error())
 		}
 

@@ -138,12 +138,12 @@ func (r *rolebindingResource) Read(ctx context.Context, req resource.ReadRequest
 		return
 	}
 
-	switch c := len(bindingList.GetItems()); {
-	case c == 0:
+	switch c := len(bindingList.GetItems()); c {
+	case 0:
 		// Role doesn't exist or was deleted outside TF
 		resp.State.RemoveResource(ctx)
 
-	case c == 1:
+	case 1:
 		binding := bindingList.GetItems()[0]
 		state.ID = types.StringValue(binding.Id)
 		state.Group = types.StringValue(binding.Group.Id)

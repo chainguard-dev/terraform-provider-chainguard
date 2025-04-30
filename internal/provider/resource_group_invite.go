@@ -182,12 +182,12 @@ func (r *groupInviteResource) Read(ctx context.Context, req resource.ReadRequest
 		return
 	}
 
-	switch c := len(inviteList.GetItems()); {
-	case c == 0:
+	switch c := len(inviteList.GetItems()); c {
+	case 0:
 		// Group was already deleted outside TF, remove from state
 		resp.State.RemoveResource(ctx)
 
-	case c == 1:
+	case 1:
 		// TODO: We cannot read the code, so are there any useful fields to set?
 
 		// Set state

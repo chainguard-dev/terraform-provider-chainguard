@@ -155,12 +155,12 @@ func (r *roleResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		return
 	}
 
-	switch c := len(roleList.GetItems()); {
-	case c == 0:
+	switch c := len(roleList.GetItems()); c {
+	case 0:
 		// Role doesn't exist or was deleted outside TF
 		resp.State.RemoveResource(ctx)
 
-	case c == 1:
+	case 1:
 		r := roleList.GetItems()[0]
 		state.ID = types.StringValue(r.Id)
 		state.Name = types.StringValue(r.Name)
