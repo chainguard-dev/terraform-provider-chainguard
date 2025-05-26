@@ -3,7 +3,7 @@ module github.com/chainguard-dev/terraform-provider-chainguard
 go 1.24.2
 
 require (
-	chainguard.dev/apko v0.27.6
+	chainguard.dev/apko v0.27.7
 	chainguard.dev/sdk v0.1.33
 	github.com/chainguard-dev/clog v1.7.0
 	github.com/coreos/go-oidc/v3 v3.14.1
