@@ -49,6 +49,8 @@ resource "chainguard_group" "example_sub" {
 
 Import is supported using the following syntax:
 
+The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
+
 ```shell
 # Group can be imported by specifying the exact UIDP of the group
 terraform import chainguard_group.example fb694596eb1678321f94eec283e1e0be690f655c/ae3a1bdc96e6f1a4
