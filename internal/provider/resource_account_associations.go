@@ -8,6 +8,7 @@ package provider
 import (
 	"context"
 	"fmt"
+
 	"github.com/hashicorp/terraform-plugin-framework-validators/mapvalidator"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -51,6 +52,7 @@ type accountAssociationsResourceModel struct {
 	Group       types.String `tfsdk:"group"`
 	Amazon      types.Object `tfsdk:"amazon"`
 	Google      types.Object `tfsdk:"google"`
+	Azure       types.Object `tfsdk:"azure"`
 	Chainguard  types.Object `tfsdk:"chainguard"`
 }
 
@@ -65,6 +67,11 @@ type chainguardAccountModel struct {
 type googleAccountModel struct {
 	ProjectID     types.String `tfsdk:"project_id"`
 	ProjectNumber types.String `tfsdk:"project_number"`
+}
+
+type azureAccountModel struct {
+	TenantID  types.String `tfsdk:"tenant_id"`
+	ClientIDs types.Map    `tfsdk:"client_ids"`
 }
 
 func (r *accountAssociationsResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -115,6 +122,7 @@ func (r *accountAssociationsResource) Schema(_ context.Context, _ resource.Schem
 					objectvalidator.AtLeastOneOf(
 						path.MatchRoot("amazon"),
 						path.MatchRoot("google"),
+						path.MatchRoot("azure"),
 						path.MatchRoot("chainguard"),
 					),
 				},
@@ -162,6 +170,26 @@ func (r *accountAssociationsResource) Schema(_ context.Context, _ resource.Schem
 						Validators: []validator.Map{
 							mapvalidator.ValueStringsAre(validators.UIDP(false /* allowRootSentinel */)),
 						},
+					},
+				},
+			},
+			"azure": schema.SingleNestedBlock{
+				Description: "Azure account association configuration",
+				Validators: []validator.Object{
+					objectvalidator.AlsoRequires(
+						path.Root("azure").AtName("tenant_id").Expression(),
+						path.Root("azure").AtName("client_ids").Expression(),
+					),
+				},
+				Attributes: map[string]schema.Attribute{
+					"tenant_id": schema.StringAttribute{
+						Description: "Azure tenant id",
+						Optional:    true,
+					},
+					"client_ids": schema.MapAttribute{
+						ElementType: types.StringType,
+						Description: "Azure compoment name to client id mapping",
+						Optional:    true,
 					},
 				},
 			},
@@ -218,6 +246,22 @@ func populateAccountAssociation(ctx context.Context, m accountAssociationsResour
 		assoc.Google = &iam.AccountAssociations_Google{
 			ProjectId:     gm.ProjectID.ValueString(),
 			ProjectNumber: gm.ProjectNumber.ValueString(),
+		}
+	}
+
+	if !m.Azure.IsNull() {
+		var am azureAccountModel
+		if diags = m.Azure.As(ctx, &am, basetypes.ObjectAsOptions{}); diags.HasError() {
+			return nil, diags
+		}
+		m := map[string]string{}
+		diags := am.ClientIDs.ElementsAs(ctx, &m, false)
+		if diags.HasError() {
+			return nil, diags
+		}
+		assoc.Azure = &iam.AccountAssociations_Azure{
+			TenantId:  am.TenantID.ValueString(),
+			ClientIds: m,
 		}
 	}
 
@@ -365,12 +409,45 @@ func (r *accountAssociationsResource) Read(ctx context.Context, req resource.Rea
 		}
 	}
 
+	if assoc.Azure != nil {
+		var am azureAccountModel
+		update := true
+		if !state.Azure.IsNull() {
+			if diags = state.Azure.As(ctx, &am, basetypes.ObjectAsOptions{}); diags.HasError() {
+				resp.Diagnostics.Append(diags...)
+				return
+			}
+			update = (am.TenantID.ValueString() != assoc.Azure.TenantId) || !compareMaps(assoc.Azure.ClientIds, am.ClientIDs)
+		}
+
+		if update {
+			am.TenantID = types.StringValue(assoc.Azure.TenantId)
+			am.ClientIDs, diags = types.MapValueFrom(ctx, types.StringType, assoc.Azure.ClientIds)
+			resp.Diagnostics.Append(diags...)
+			state.Azure, diags = types.ObjectValueFrom(ctx, state.Azure.AttributeTypes(ctx), am)
+			resp.Diagnostics.Append(diags...)
+		}
+	}
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
 	// Set state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+}
+
+func compareMaps(a map[string]string, b types.Map) bool {
+	bmap := b.Elements()
+	if len(a) != len(bmap) {
+		return false
+	}
+	for k, v := range a {
+		if bVal, ok := bmap[k]; !ok || bVal.String() != v {
+			return false
+		}
+	}
+	return true
 }
 
 // Update updates the resource and sets the updated Terraform state on success.
