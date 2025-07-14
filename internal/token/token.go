@@ -124,15 +124,24 @@ func getChainguardToken(ctx context.Context, cfg LoginConfig) (accessToken strin
 	opts := []login.Option{
 		login.WithIssuer(cfg.Issuer),
 		login.WithAudience([]string{cfg.Audience}),
-		login.WithClientID(auth0ClientID),
 		login.WithIdentity(cfg.IdentityID),
-		login.WithIdentityProvider(cfg.IdentityProvider),
-		login.WithAuth0Connection(cfg.Auth0Connection),
-		login.WithOrgName(cfg.OrgName),
 	}
 	if cfg.UseRefreshTokens {
 		opts = append(opts, login.WithCreateRefreshToken())
 	}
+	// Decide which external IDP we're using. These are mutually exclusive options.
+	// If both are set, prefer identity provider UIDP over org name.
+	switch {
+	case cfg.IdentityProvider != "":
+		opts = append(opts, login.WithIdentityProvider(cfg.IdentityProvider))
+	case cfg.OrgName != "":
+		opts = append(opts, login.WithOrgName(cfg.OrgName))
+	default:
+		// NB: It is safe to set the auth0 connection even if the config is an empty string,
+		// since it will only be added to the issuer URL parameters if it is non-empty.
+		opts = append(opts, login.WithClientID(auth0ClientID), login.WithAuth0Connection(cfg.Auth0Connection))
+	}
+
 	return login.Login(loginCtx, opts...)
 }
 
