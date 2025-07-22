@@ -23,6 +23,13 @@ resource "chainguard_account_associations" "example" {
     project_id     = "example"
     project_number = "213411233"
   }
+  azure {
+    tenant_id = "12345678-1234-1234-1234-123456789012"
+    client_ids = {
+      "client1" = "11111111-1111-1111-1111-111111111111"
+      "client2" = "22222222-2222-2222-2222-222222222222"
+    }
+  }
 }
 ```
 
@@ -37,6 +44,7 @@ resource "chainguard_account_associations" "example" {
 ### Optional
 
 - `amazon` (Block, Optional) Amazon account configuration (see [below for nested schema](#nestedblock--amazon))
+- `azure` (Block, Optional) Azure account association configuration (see [below for nested schema](#nestedblock--azure))
 - `chainguard` (Block, Optional) Association of Chainguard services to the service principals they should assume when talking to Chainguard APIs. (see [below for nested schema](#nestedblock--chainguard))
 - `description` (String) Description of the account association.
 - `google` (Block, Optional) Google Cloud Platform account association configuration (see [below for nested schema](#nestedblock--google))
@@ -51,6 +59,15 @@ resource "chainguard_account_associations" "example" {
 Optional:
 
 - `account` (String) AWS account ID
+
+
+<a id="nestedblock--azure"></a>
+### Nested Schema for `azure`
+
+Optional:
+
+- `client_ids` (Map of String) Azure compoment name to client id mapping
+- `tenant_id` (String) Azure tenant id
 
 
 <a id="nestedblock--chainguard"></a>
