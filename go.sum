@@ -1,5 +1,5 @@
-chainguard.dev/apko v0.29.7 h1:ms7nvwXTpCIHxa9f1RMBKPziwihmka0EMgqSQ9FTLCo=
-chainguard.dev/apko v0.29.7/go.mod h1:8MTY5N3RVNPUl6QBQVcl67GhMoB8aJN7nLZveDyYnpA=
+chainguard.dev/apko v0.29.8 h1:ftwCPJmCRWLI73VHrqs3o2RCTFxyuWZj0f36EwkPJEE=
+chainguard.dev/apko v0.29.8/go.mod h1:duwNM0y4AtN2YNH4u5z+hgjnfuiTl+rAMzjOKwBkyMw=
 chainguard.dev/go-grpc-kit v0.17.11 h1:m4ZL2yg6sSrdPA593qVh9KHTZ+XOmLwqv3Jt5vT0FuU=
 chainguard.dev/go-grpc-kit v0.17.11/go.mod h1:aYlrvAscMZBtVIA7bykUWfbjhL2fDoUCECHvopC2xWY=
 chainguard.dev/go-oidctest v0.4.0 h1:B9YTfoa1WtsrEg0wnFeSP7i9tth0LO+GICm2j8HOgWI=
@@ -443,8 +443,8 @@ golang.org/x/tools v0.0.0-20191119224855-298f0cb1881e/go.mod h1:b+2E5dAYhXwXZwtn
 golang.org/x/tools v0.0.0-20200619180055-7c47624df98f/go.mod h1:EkVYQZoAsY45+roYkvgYkIh4xh/qjgUK9TdY2XT94GE=
 golang.org/x/tools v0.0.0-20210106214847-113979e3529a/go.mod h1:emZCQorbCU4vsT4fOWvOPXz4eW1wZW4PmDk9uLelYpA=
 golang.org/x/tools v0.1.12/go.mod h1:hNGJHUnrk76NpqgfD5Aqm5Crs+Hm0VOH/i9J2+nxYbc=
-golang.org/x/tools v0.34.0 h1:qIpSLOxeCYGg9TrcJokLBG4KFA6d795g0xkBkiESGlo=
-golang.org/x/tools v0.34.0/go.mod h1:pAP9OwEaY1CAW3HOmg3hLZC5Z0CCmzjAF2UQMSqNARg=
+golang.org/x/tools v0.35.0 h1:mBffYraMEf7aa0sB+NuKnuCy8qI/9Bughn8dC2Gu5r0=
+golang.org/x/tools v0.35.0/go.mod h1:NKdj5HkL/73byiZSJjqJgKn3ep7KjFkBOkR/Hps3VPw=
 golang.org/x/xerrors v0.0.0-20190717185122-a985d3407aa7/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
 golang.org/x/xerrors v0.0.0-20191011141410-1b5146add898/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
 golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
@@ -492,5 +492,5 @@ gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
 honnef.co/go/tools v0.0.0-20180728063816-88497007e858/go.mod h1:rf3lG4BRIbNafJWhAfAdb/ePZxsR/4RtNHQocxwk9r4=
 honnef.co/go/tools v0.0.0-20190102054323-c2f93a96b099/go.mod h1:rf3lG4BRIbNafJWhAfAdb/ePZxsR/4RtNHQocxwk9r4=
 honnef.co/go/tools v0.0.0-20190523083050-ea95bdfd59fc/go.mod h1:rf3lG4BRIbNafJWhAfAdb/ePZxsR/4RtNHQocxwk9r4=
-sigs.k8s.io/release-utils v0.11.1 h1:hzvXGpHgHJfLOJB6TRuu14bzWc3XEglHmXHJqwClSZE=
-sigs.k8s.io/release-utils v0.11.1/go.mod h1:ybR2V/uQAOGxYfzYtBenSYeXWkBGNP2qnEiX77ACtpc=
+sigs.k8s.io/release-utils v0.12.0 h1:+Z8cEUAaxItrMcTOJ0jtUg3Fm1uNgPNol+VIL6XtQqQ=
+sigs.k8s.io/release-utils v0.12.0/go.mod h1:TveYRPK4Mq6qXA0PJiUMEOlWvvIQG0Mh5APQmHD5JpA=

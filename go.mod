@@ -3,7 +3,7 @@ module github.com/chainguard-dev/terraform-provider-chainguard
 go 1.24.5
 
 require (
-	chainguard.dev/apko v0.29.7
+	chainguard.dev/apko v0.29.8
 	chainguard.dev/sdk v0.1.37
 	github.com/chainguard-dev/clog v1.7.0
 	github.com/coreos/go-oidc/v3 v3.14.1
@@ -135,7 +135,7 @@ require (
 	golang.org/x/sync v0.16.0 // indirect
 	golang.org/x/sys v0.34.0 // indirect
 	golang.org/x/text v0.27.0 // indirect
-	golang.org/x/tools v0.34.0 // indirect
+	golang.org/x/tools v0.35.0 // indirect
 	google.golang.org/api v0.242.0 // indirect
 	google.golang.org/appengine v1.6.8 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250603155806-513f23925822 // indirect
