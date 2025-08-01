@@ -68,6 +68,7 @@ type syncConfig struct {
 	SyncAPKs    types.Bool   `tfsdk:"sync_apks"`
 	Google      types.String `tfsdk:"google"`
 	Amazon      types.String `tfsdk:"amazon"`
+	Azure       types.String `tfsdk:"azure"`
 	ApkoOverlay types.String `tfsdk:"apko_overlay"`
 }
 
@@ -178,6 +179,10 @@ func (r *imageRepoResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 						Description: "The Google repository under which to create a new repository with the same name as the source repository.",
 						Optional:    true, // This attribute is required, but only if the block is defined. See Validators.
 					},
+					"azure": schema.StringAttribute{
+						Description: "The Azure repository under which to create a new repository with the same name as the source repository.",
+						Optional:    true, // This attribute is required, but only if the block is defined. See Validators.
+					},
 					"apko_overlay": schema.StringAttribute{
 						Description: "A json-encoded APKO configuration to overlay on rebuilds of images being synced.",
 						Optional:    true,
@@ -264,6 +269,7 @@ func (r *imageRepoResource) Create(ctx context.Context, req resource.CreateReque
 			SyncApks:    cfg.SyncAPKs.ValueBool(),
 			Amazon:      cfg.Amazon.ValueString(),
 			Google:      cfg.Google.ValueString(),
+			Azure:       cfg.Azure.ValueString(),
 			ApkoOverlay: cfg.ApkoOverlay.ValueString(),
 		}
 	}
@@ -426,6 +432,7 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 			SyncApks:    cfg.SyncAPKs.ValueBool(),
 			Amazon:      cfg.Amazon.ValueString(),
 			Google:      cfg.Google.ValueString(),
+			Azure:       cfg.Azure.ValueString(),
 			ApkoOverlay: cfg.ApkoOverlay.ValueString(),
 		}
 	}

@@ -47,6 +47,7 @@ Optional:
 
 - `amazon` (String) The Amazon repository under which to create a new repository with the same name as the source repository.
 - `apko_overlay` (String) A json-encoded APKO configuration to overlay on rebuilds of images being synced.
+- `azure` (String) The Azure repository under which to create a new repository with the same name as the source repository.
 - `expiration` (String) The RFC3339 encoded date and time at which this entitlement will expire.
 - `google` (String) The Google repository under which to create a new repository with the same name as the source repository.
 - `grace_period` (Boolean) Controls whether the image grace period functionality is enabled or not.
