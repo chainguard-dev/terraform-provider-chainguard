@@ -194,7 +194,7 @@ func (v uidpVal) ValidateString(_ context.Context, req validator.StringRequest, 
 	}
 
 	id := strings.TrimSpace(req.ConfigValue.ValueString())
-	if !uidp.Valid(id) && !(v.allowRootSentinel && id == "/") {
+	if !uidp.Valid(id) && (!v.allowRootSentinel || id != "/") {
 		switch {
 		case v.allowRootSentinel:
 			resp.Diagnostics.AddError("failed uidp validation",

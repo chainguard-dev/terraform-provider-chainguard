@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -21,6 +22,7 @@ import (
 	common "chainguard.dev/sdk/proto/platform/common/v1"
 	iam "chainguard.dev/sdk/proto/platform/iam/v1"
 	"chainguard.dev/sdk/uidp"
+	"github.com/chainguard-dev/terraform-provider-chainguard/internal/protoutil"
 	"github.com/chainguard-dev/terraform-provider-chainguard/internal/token"
 	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
 )
@@ -43,10 +45,12 @@ type groupResource struct {
 }
 
 type groupResourceModel struct {
-	ID          types.String `tfsdk:"id"`
-	Name        types.String `tfsdk:"name"`
-	Description types.String `tfsdk:"description"`
-	ParentID    types.String `tfsdk:"parent_id"`
+	ID                 types.String `tfsdk:"id"`
+	Name               types.String `tfsdk:"name"`
+	Description        types.String `tfsdk:"description"`
+	ParentID           types.String `tfsdk:"parent_id"`
+	Verified           types.Bool   `tfsdk:"verified"`
+	VerifiedProtection types.Bool   `tfsdk:"verified_protection"`
 }
 
 func (r *groupResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -83,6 +87,14 @@ func (r *groupResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 				Description: "Description of this IAM group.",
 				Optional:    true,
 			},
+			"verified": schema.BoolAttribute{
+				Description: "Whether the organization has been verified by a Chainguardian. Only applicable to root groups.",
+				Optional:    true,
+			},
+			"verified_protection": schema.BoolAttribute{
+				Description: "Prevent the group from being unverified through Terraform. Null is treated as true.",
+				Optional:    true,
+			},
 		},
 	}
 }
@@ -107,6 +119,7 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 		Group: &iam.Group{
 			Name:        plan.Name.ValueString(),
 			Description: plan.Description.ValueString(),
+			Verified:    plan.Verified.ValueBool(),
 		},
 	}
 	// Only include Parent UIDP for non-root groups.
@@ -169,23 +182,28 @@ func (r *groupResource) Read(ctx context.Context, req resource.ReadRequest, resp
 		return
 	}
 
-	switch c := len(groupList.GetItems()); {
-	case c == 0:
+	switch c := len(groupList.GetItems()); c {
+	case 0:
 		// Group was already deleted outside TF, remove from state
 		resp.State.RemoveResource(ctx)
 
-	case c == 1:
+	case 1:
 		g := groupList.GetItems()[0]
 		state.ID = types.StringValue(g.Id)
 		state.Name = types.StringValue(g.Name)
 		// Only update the state description if it started as non-null or we receive a description.
-		if !(state.Description.IsNull() && g.Description == "") {
+		if !state.Description.IsNull() || g.Description != "" {
 			state.Description = types.StringValue(g.Description)
 		}
 		// Allow ParentID to remain null for root groups, but ensure it is populated
 		// for when importing non-root groups.
 		if !state.ParentID.IsNull() || !uidp.InRoot(g.Id) {
 			state.ParentID = types.StringValue(uidp.Parent(g.Id))
+		}
+		// Keep null verified fields null for backward compatibility
+		// if it hasn't changed upstream.
+		if !state.Verified.IsNull() || g.Verified {
+			state.Verified = types.BoolValue(g.Verified)
 		}
 
 		// Set state
@@ -195,6 +213,38 @@ func (r *groupResource) Read(ctx context.Context, req resource.ReadRequest, resp
 		tflog.Error(ctx, fmt.Sprintf("group list returned %d groups for filter %v", c, f))
 		resp.Diagnostics.AddError("more than one group found matching filters", fmt.Sprintf("filters=%v\nPlease provide more context to narrow query (e.g. parent_id).", state))
 	}
+}
+
+func (r *groupResource) update(ctx context.Context, data *groupResourceModel, state groupResourceModel) diag.Diagnostic {
+	// Check if the group is attempting to update from verified to unverified,
+	// and is protected from being unverified in the current state.
+	// NB: When not set, verified_protection is treated as true.
+	// This requires unverifying to happen in two steps:
+	// apply verified_protection = false, then apply verified = false (or remove the attribute).
+	if state.Verified.ValueBool() && !data.Verified.ValueBool() && protoutil.DefaultBool(state.VerifiedProtection, true) {
+		return diag.NewErrorDiagnostic("cannot unverify group", fmt.Sprintf("group %s is verified and verified_protection is true or null; apply verified_protection = false before attempting to unverify this group", state.ID.ValueString()))
+	}
+
+	g, err := r.prov.client.IAM().Groups().Update(ctx, &iam.Group{
+		Id:          data.ID.ValueString(),
+		Name:        data.Name.ValueString(),
+		Description: data.Description.ValueString(),
+		Verified:    data.Verified.ValueBool(),
+	})
+	if err != nil {
+		return errorToDiagnostic(err, fmt.Sprintf("failed to update group %q", data.ID.ValueString()))
+	}
+
+	// Update data from the returned value.
+	data.ID = types.StringValue(g.Id)
+	data.Name = types.StringValue(g.GetName())
+	if !data.Description.IsNull() || g.Description != "" {
+		data.Description = types.StringValue(g.GetDescription())
+	}
+	if !data.Verified.IsNull() || g.Verified {
+		data.Verified = types.BoolValue(g.Verified)
+	}
+	return nil
 }
 
 // Update updates the resource and sets the updated Terraform state on success.
@@ -207,22 +257,19 @@ func (r *groupResource) Update(ctx context.Context, req resource.UpdateRequest, 
 	}
 	tflog.Info(ctx, fmt.Sprintf("update group request: %s", data.ID))
 
-	g, err := r.prov.client.IAM().Groups().Update(ctx, &iam.Group{
-		Id:          data.ID.ValueString(),
-		Name:        data.Name.ValueString(),
-		Description: data.Description.ValueString(),
-	})
-	if err != nil {
-		resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to update group %q", data.ID.ValueString())))
+	// Fetch the state to compare the verified property
+	var state groupResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// Set state.
-	data.ID = types.StringValue(g.Id)
-	data.Name = types.StringValue(g.GetName())
-	if !(data.Description.IsNull() && g.Description != "") {
-		data.Description = types.StringValue(g.GetDescription())
+	// Attempt to update the group
+	resp.Diagnostics.Append(r.update(ctx, &data, state))
+	if resp.Diagnostics.HasError() {
+		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 

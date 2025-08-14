@@ -16,7 +16,7 @@ Image repo (note: delete is purposefully a no-op).
 resource "chainguard_image_repo" "example" {
   parent_id = "foo/bar"
   name      = "nginx"
-  bundles   = ["a", "b"]
+  bundles   = ["application", "fips"]
 }
 ```
 
@@ -30,7 +30,8 @@ resource "chainguard_image_repo" "example" {
 
 ### Optional
 
-- `bundles` (List of String) List of bundles associated with this repo (a-z freeform keywords for sales purposes).
+- `aliases` (List of String) Known aliases for a given image.
+- `bundles` (List of String) List of bundles associated with this repo (valid ones: `application|base|byol|ai|ai-gpu|featured|fips`).
 - `readme` (String) The README for this repo.
 - `sync_config` (Block, Optional) Configuration for catalog syncing. (see [below for nested schema](#nestedblock--sync_config))
 - `tier` (String) Image tier associated with this repo.
@@ -44,8 +45,12 @@ resource "chainguard_image_repo" "example" {
 
 Optional:
 
+- `amazon` (String) The Amazon repository under which to create a new repository with the same name as the source repository.
 - `apko_overlay` (String) A json-encoded APKO configuration to overlay on rebuilds of images being synced.
+- `azure` (String) The Azure repository under which to create a new repository with the same name as the source repository.
 - `expiration` (String) The RFC3339 encoded date and time at which this entitlement will expire.
+- `google` (String) The Google repository under which to create a new repository with the same name as the source repository.
+- `grace_period` (Boolean) Controls whether the image grace period functionality is enabled or not.
 - `source` (String) The UIDP of the repository to sync images from.
 - `sync_apks` (Boolean) Whether the APKs for each image should also be synchronized.
 - `unique_tags` (Boolean) Whether each synchronized tag should be suffixed with the image timestamp.

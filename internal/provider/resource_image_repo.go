@@ -56,14 +56,19 @@ type imageRepoResourceModel struct {
 	Readme     types.String `tfsdk:"readme"`
 	SyncConfig types.Object `tfsdk:"sync_config"`
 	// Image tier (e.g. APPLICATION, BASE, etc.)
-	Tier types.String `tfsdk:"tier"`
+	Tier    types.String `tfsdk:"tier"`
+	Aliases types.List   `tfsdk:"aliases"`
 }
 
 type syncConfig struct {
 	Source      types.String `tfsdk:"source"`
 	Expiration  types.String `tfsdk:"expiration"`
 	UniqueTags  types.Bool   `tfsdk:"unique_tags"`
+	GracePeriod types.Bool   `tfsdk:"grace_period"`
 	SyncAPKs    types.Bool   `tfsdk:"sync_apks"`
+	Google      types.String `tfsdk:"google"`
+	Amazon      types.String `tfsdk:"amazon"`
+	Azure       types.String `tfsdk:"azure"`
 	ApkoOverlay types.String `tfsdk:"apko_overlay"`
 }
 
@@ -99,7 +104,7 @@ func (r *imageRepoResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				},
 			},
 			"bundles": schema.ListAttribute{
-				Description: "List of bundles associated with this repo (a-z freeform keywords for sales purposes).",
+				Description: "List of bundles associated with this repo (valid ones: `application|base|byol|ai|ai-gpu|featured|fips`).",
 				Optional:    true,
 				ElementType: types.StringType,
 				Validators: []validator.List{
@@ -118,6 +123,14 @@ func (r *imageRepoResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				Optional:    true,
 				Validators: []validator.String{
 					validators.ValidateStringFuncs(validTierValue),
+				},
+			},
+			"aliases": schema.ListAttribute{
+				Description: "Known aliases for a given image.",
+				Optional:    true,
+				ElementType: types.StringType,
+				Validators: []validator.List{
+					listvalidator.ValueStringsAre(validators.ValidateStringFuncs(validAliasesValue)),
 				},
 			},
 		},
@@ -149,9 +162,25 @@ func (r *imageRepoResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 						Description: "Whether each synchronized tag should be suffixed with the image timestamp.",
 						Optional:    true,
 					},
+					"grace_period": schema.BoolAttribute{
+						Description: "Controls whether the image grace period functionality is enabled or not.",
+						Optional:    true,
+					},
 					"sync_apks": schema.BoolAttribute{
 						Description: "Whether the APKs for each image should also be synchronized.",
 						Optional:    true,
+					},
+					"amazon": schema.StringAttribute{
+						Description: "The Amazon repository under which to create a new repository with the same name as the source repository.",
+						Optional:    true, // This attribute is required, but only if the block is defined. See Validators.
+					},
+					"google": schema.StringAttribute{
+						Description: "The Google repository under which to create a new repository with the same name as the source repository.",
+						Optional:    true, // This attribute is required, but only if the block is defined. See Validators.
+					},
+					"azure": schema.StringAttribute{
+						Description: "The Azure repository under which to create a new repository with the same name as the source repository.",
+						Optional:    true, // This attribute is required, but only if the block is defined. See Validators.
 					},
 					"apko_overlay": schema.StringAttribute{
 						Description: "A json-encoded APKO configuration to overlay on rebuilds of images being synced.",
@@ -168,6 +197,14 @@ func (r *imageRepoResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 func validBundlesValue(s string) error {
 	if err := validation.ValidateBundles([]string{s}); err != nil {
 		return fmt.Errorf("bundle item %q is invalid: %w", s, err)
+	}
+	return nil
+}
+
+// validAliasesValue implements validators.ValidateStringFunc.
+func validAliasesValue(s string) error {
+	if err := validation.ValidateAliases([]string{s}); err != nil {
+		return fmt.Errorf("alias %q is invalid: %w", s, err)
 	}
 	return nil
 }
@@ -227,13 +264,23 @@ func (r *imageRepoResource) Create(ctx context.Context, req resource.CreateReque
 			Source:      cfg.Source.ValueString(),
 			Expiration:  timestamppb.New(ts),
 			UniqueTags:  cfg.UniqueTags.ValueBool(),
+			GracePeriod: cfg.GracePeriod.ValueBool(),
 			SyncApks:    cfg.SyncAPKs.ValueBool(),
+			Amazon:      cfg.Amazon.ValueString(),
+			Google:      cfg.Google.ValueString(),
+			Azure:       cfg.Azure.ValueString(),
 			ApkoOverlay: cfg.ApkoOverlay.ValueString(),
 		}
 	}
 
 	bundles := make([]string, 0, len(plan.Bundles.Elements()))
 	resp.Diagnostics.Append(plan.Bundles.ElementsAs(ctx, &bundles, false /* allowUnhandled */)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	aliases := make([]string, 0, len(plan.Aliases.Elements()))
+	resp.Diagnostics.Append(plan.Aliases.ElementsAs(ctx, &aliases, false /* allowUnhandled */)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -246,6 +293,7 @@ func (r *imageRepoResource) Create(ctx context.Context, req resource.CreateReque
 			Readme:      plan.Readme.ValueString(),
 			SyncConfig:  sc,
 			CatalogTier: registry.CatalogTier(registry.CatalogTier_value[plan.Tier.ValueString()]),
+			Aliases:     aliases,
 		},
 	})
 	if err != nil {
@@ -299,11 +347,11 @@ func (r *imageRepoResource) Read(ctx context.Context, req resource.ReadRequest, 
 	state.Name = types.StringValue(repo.Name)
 
 	// Only update the state readme if it started as non-null or we receive a description.
-	if !(state.Readme.IsNull() && repo.Readme == "") {
+	if !state.Readme.IsNull() || repo.Readme != "" {
 		state.Readme = types.StringValue(repo.Readme)
 	}
 
-	if !(state.Tier.IsNull() && repo.CatalogTier == registry.CatalogTier_UNKNOWN) {
+	if !state.Tier.IsNull() || repo.CatalogTier != registry.CatalogTier_UNKNOWN {
 		state.Tier = types.StringValue(repo.CatalogTier.String())
 	}
 
@@ -317,12 +365,14 @@ func (r *imageRepoResource) Read(ctx context.Context, req resource.ReadRequest, 
 		update := (sc.Source.ValueString() != repo.SyncConfig.Source) ||
 			(sc.Expiration.ValueString() != repo.SyncConfig.Expiration.AsTime().Format(time.RFC3339)) ||
 			(sc.UniqueTags.ValueBool() != repo.SyncConfig.UniqueTags) ||
+			(sc.GracePeriod.ValueBool() != repo.SyncConfig.GracePeriod) ||
 			(sc.SyncAPKs.ValueBool() != repo.SyncConfig.SyncApks)
 
 		if update {
 			sc.Source = types.StringValue(repo.SyncConfig.Source)
 			sc.Expiration = types.StringValue(repo.SyncConfig.Expiration.AsTime().Format(time.RFC3339))
 			sc.UniqueTags = types.BoolValue(repo.SyncConfig.UniqueTags)
+			sc.GracePeriod = types.BoolValue(repo.SyncConfig.GracePeriod)
 			sc.SyncAPKs = types.BoolValue(repo.SyncConfig.SyncApks)
 			state.SyncConfig, diags = types.ObjectValueFrom(ctx, state.SyncConfig.AttributeTypes(ctx), sc)
 			resp.Diagnostics.Append(diags...)
@@ -330,6 +380,12 @@ func (r *imageRepoResource) Read(ctx context.Context, req resource.ReadRequest, 
 	}
 
 	state.Bundles, diags = types.ListValueFrom(ctx, types.StringType, repo.Bundles)
+	if diags.HasError() {
+		resp.Diagnostics.Append(diags...)
+		return
+	}
+
+	state.Aliases, diags = types.ListValueFrom(ctx, types.StringType, repo.Aliases)
 	if diags.HasError() {
 		resp.Diagnostics.Append(diags...)
 		return
@@ -371,7 +427,11 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 			Source:      cfg.Source.ValueString(),
 			Expiration:  timestamppb.New(ts),
 			UniqueTags:  cfg.UniqueTags.ValueBool(),
+			GracePeriod: cfg.GracePeriod.ValueBool(),
 			SyncApks:    cfg.SyncAPKs.ValueBool(),
+			Amazon:      cfg.Amazon.ValueString(),
+			Google:      cfg.Google.ValueString(),
+			Azure:       cfg.Azure.ValueString(),
 			ApkoOverlay: cfg.ApkoOverlay.ValueString(),
 		}
 	}
@@ -381,6 +441,13 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	aliases := make([]string, 0, len(data.Aliases.Elements()))
+	resp.Diagnostics.Append(data.Aliases.ElementsAs(ctx, &aliases, false /* allowUnhandled */)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	repo, err := r.prov.client.Registry().Registry().UpdateRepo(ctx, &registry.Repo{
 		Id:          data.ID.ValueString(),
 		Name:        data.Name.ValueString(),
@@ -388,6 +455,7 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 		Readme:      data.Readme.ValueString(),
 		SyncConfig:  sc,
 		CatalogTier: registry.CatalogTier(registry.CatalogTier_value[data.Tier.ValueString()]),
+		Aliases:     aliases,
 	})
 	if err != nil {
 		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to update image repo"))
@@ -403,7 +471,7 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 		data.Readme = types.StringValue(repo.Readme)
 	}
 	// Treat UNKNOWN tier as null, but only if it was already null
-	if !(data.Tier.IsNull() && repo.CatalogTier == registry.CatalogTier_UNKNOWN) {
+	if !data.Tier.IsNull() || repo.CatalogTier != registry.CatalogTier_UNKNOWN {
 		data.Tier = types.StringValue(repo.CatalogTier.String())
 	} else {
 		data.Tier = types.StringNull()
@@ -415,6 +483,13 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 		resp.Diagnostics.Append(diags...)
 		return
 	}
+
+	data.Aliases, diags = types.ListValueFrom(ctx, types.StringType, repo.Aliases)
+	if diags.HasError() {
+		resp.Diagnostics.Append(diags...)
+		return
+	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 

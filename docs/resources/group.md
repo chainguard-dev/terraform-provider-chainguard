@@ -38,6 +38,8 @@ resource "chainguard_group" "example_sub" {
 
 - `description` (String) Description of this IAM group.
 - `parent_id` (String) Parent IAM group of this group. If not set, this group is assumed to be a root group.
+- `verified` (Boolean) Whether the organization has been verified by a Chainguardian. Only applicable to root groups.
+- `verified_protection` (Boolean) Prevent the group from being unverified through Terraform. Null is treated as true.
 
 ### Read-Only
 
@@ -46,6 +48,8 @@ resource "chainguard_group" "example_sub" {
 ## Import
 
 Import is supported using the following syntax:
+
+The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
 # Group can be imported by specifying the exact UIDP of the group

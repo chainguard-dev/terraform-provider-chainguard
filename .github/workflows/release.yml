@@ -4,6 +4,8 @@ on:
     tags:
       - 'v*'
 
+permissions: {}
+
 jobs:
   goreleaser:
     permissions:
@@ -12,37 +14,47 @@ jobs:
 
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@ec9f2d5744a09debf3a187a3f4f675c53b671911 # v2.13.0
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       - run: git fetch --prune --unshallow
-      - uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5.0.2
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
           go-version-file: 'go.mod'
           cache: false
+          check-latest: true
 
       # This is provisioned here: https://github.com/chainguard-dev/secrets/blob/main/terraform-provider-chainguard.tf
-      - uses: google-github-actions/auth@62cf5bd3e4211a0a0b51f2c6d6a37129d828611d # v2.1.5
+      - uses: step-security/google-github-auth@40f6deebd366f16c782d7a0ad0844e3b96a032a6 # v2.1.10
         id: auth
         with:
           workload_identity_provider: "projects/12758742386/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
           service_account: "terraform-provider-chainguard@chainguard-github-secrets.iam.gserviceaccount.com"
-      - uses: google-github-actions/setup-gcloud@f0990588f1e5b5af6827153b93673613abdc6ec7 # v2.1.1
+      - uses: google-github-actions/setup-gcloud@cb1e50a9932213ecece00a606661ae9ca44f3397 # v2.2.0
         with:
           project_id: "chainguard-github-secrets"
-      - uses: google-github-actions/get-secretmanager-secrets@95a0b09b8348ef3d02c68c6ba5662a037e78d713 # v2.1.4
+      - uses: google-github-actions/get-secretmanager-secrets@50ec04d56ddf2740b0bde82926cc742f90e06d2b # v2.2.4
         id: secrets
         with:
           secrets: |-
             token:chainguard-github-secrets/terraform-provider-chainguard-signing-key
 
       - id: import_gpg
-        uses: crazy-max/ghaction-import-gpg@01dd5d3ca463c7f10f7f4f7b4f177225ac661ee4 # v6.1.0
+        uses: step-security/ghaction-import-gpg@c86c374c0659a6c2d1284bccf8af889e73ce8fe0 # v6.3.0
         with:
           gpg_private_key: ${{ steps.secrets.outputs.token }}
 
-      - uses: goreleaser/goreleaser-action@286f3b13b1b49da4ac219696163fb8c1c93e1200 # v6.0.0
+      - run: |
+          gpg --keyserver keys.openpgp.org --send-keys ${{ steps.import_gpg.outputs.fingerprint }}
+
+      - uses: goreleaser/goreleaser-action@9c156ee8a17a598857849441385a2041ef570552 # v6.3.0
         with:
           version: '~> v2'
-          args: release --clean
+          # using parallelism 1 to avoid when signing a race condition that makes the key unavailable
+          args: release --clean --parallelism=1
         env:
           GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

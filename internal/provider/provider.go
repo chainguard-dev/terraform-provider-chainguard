@@ -49,6 +49,8 @@ const (
 
 	// EnvAccAmbient signals acceptance tests are being executed by GHA with ambient credentials.
 	EnvAccAmbient = "TF_ACC_AMBIENT"
+
+	EnvChainguardVersionAllow = "CHAINGUARD_VERSION_ALLOW"
 )
 
 var EnvAccVars = []string{
@@ -83,8 +85,9 @@ type Provider struct {
 }
 
 type ProviderModel struct {
-	ConsoleAPI   types.String `tfsdk:"console_api"`
-	LoginOptions types.Object `tfsdk:"login_options"`
+	ConsoleAPI          types.String `tfsdk:"console_api"`
+	LoginOptions        types.Object `tfsdk:"login_options"`
+	VersionStreamAllows types.List   `tfsdk:"version_stream_allows"`
 }
 
 type LoginOptionsModel struct {
@@ -110,6 +113,7 @@ func (p *Provider) DataSources(_ context.Context) []func() datasource.DataSource
 		NewIdentityDataSource,
 		NewRoleDataSource,
 		NewImageRepoDataSource,
+		NewVersionsDataSource,
 	}
 }
 
@@ -126,6 +130,7 @@ func (p *Provider) Resources(_ context.Context) []func() resource.Resource {
 		NewRoleResource,
 		NewRolebindingResource,
 		NewSubscriptionResource,
+		NewBuildResource,
 	}
 }
 
@@ -142,6 +147,25 @@ func (p *Provider) Schema(_ context.Context, _ provider.SchemaRequest, resp *pro
 				Validators: []validator.String{
 					validators.IsURL(false /* requireHTTPS */),
 				},
+			},
+			"version_stream_allows": schema.ListAttribute{
+				MarkdownDescription: `An allowlist of version streams. Can be either
+set in the provider or as the "CHAINGUARD_VERSION_ALLOW" environment
+variable. When setting via an environment variable, the list must be
+comma separated.
+
+For example, if the resource returns the following versions:
+
+- foo-1.0
+- foo-1.1
+- foo-1.2
+
+And the allowlist is set to ["foo-1.0"], then the returned results will return
+only the version stream "foo-1.0". This applies to both EOL and non EOL
+version streams, and also affects the computed "is_latest" field to
+only consider the filtered versions.`,
+				Optional:    true,
+				ElementType: types.StringType,
 			},
 		},
 		Blocks: map[string]schema.Block{
@@ -195,18 +219,20 @@ func (p *Provider) Schema(_ context.Context, _ provider.SchemaRequest, resp *pro
 }
 
 type providerData struct {
-	client      platform.Clients
-	consoleAPI  string
-	loginConfig token.LoginConfig
-	testing     bool
+	client              platform.Clients
+	consoleAPI          string
+	loginConfig         token.LoginConfig
+	testing             bool
+	versionStreamAllows map[string]struct{}
 }
 
 // Configure prepares a Chainguard API client for data sources and resources.
 func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
 	// Parse provider configs
 	var (
-		pm ProviderModel
-		lo LoginOptionsModel
+		pm                  ProviderModel
+		lo                  LoginOptionsModel
+		versionStreamAllows []string
 	)
 	if resp.Diagnostics.Append(req.Config.Get(ctx, &pm)...); resp.Diagnostics.HasError() {
 		return
@@ -216,6 +242,12 @@ func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest,
 			return
 		}
 		tflog.Info(ctx, fmt.Sprintf("login options parsed: %#v", lo))
+	}
+	if !pm.VersionStreamAllows.IsNull() {
+		if resp.Diagnostics.Append(pm.VersionStreamAllows.ElementsAs(ctx, &versionStreamAllows, false)...); resp.Diagnostics.HasError() {
+			return
+		}
+		tflog.Info(ctx, fmt.Sprintf("version stream allows parsed: %#v", versionStreamAllows))
 	}
 
 	// Load default values and environment variables
@@ -275,6 +307,13 @@ func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest,
 
 	tflog.SetField(ctx, "chainguard.console_api", consoleAPI)
 
+	// version stream allows from environment takes precedence over provider config
+	if allows, ok := os.LookupEnv(EnvChainguardVersionAllow); ok && allows == "" {
+		resp.Diagnostics.AddError(fmt.Sprintf("specified %s but no value(s) found", EnvChainguardVersionAllow), "If set, must be a comma separated list of version streams.")
+	} else if ok && allows != "" {
+		versionStreamAllows = strings.Split(allows, ",")
+	}
+
 	// Client is intentionally set to nil here in case this
 	// provider is used in an environment which does not have
 	// access to the Chainguard API. Instead, client is set by
@@ -284,6 +323,14 @@ func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest,
 		loginConfig: cfg,
 		consoleAPI:  consoleAPI,
 		testing:     p.version == "acctest",
+	}
+
+	if versionStreamAllows != nil {
+		vsAllowMap := make(map[string]struct{}, len(versionStreamAllows))
+		for _, vs := range versionStreamAllows {
+			vsAllowMap[vs] = struct{}{}
+		}
+		d.versionStreamAllows = vsAllowMap
 	}
 
 	resp.DataSourceData = d
@@ -330,7 +377,7 @@ func (pd *providerData) setupClient(ctx context.Context) error {
 		// If it doesn't exist or is expired, attempt to get a new one, depending on login_options
 		cgToken, err := token.Get(ctx, pd.loginConfig, false /* forceRefresh */)
 		if err != nil {
-			return fmt.Errorf("Failed to retrieve token. Either no token was found for audience %q or there was an error reading it.\n"+
+			return fmt.Errorf("failed to retrieve token. Either no token was found for audience %q or there was an error reading it.\n"+
 				"Please check the value of \"chainguard.console_api\" in your Terraform provider configuration: %s", pd.loginConfig.Audience, err.Error())
 		}
 

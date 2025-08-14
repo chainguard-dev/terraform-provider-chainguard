@@ -24,8 +24,10 @@ type testRepo struct {
 	readme   string
 	synced   bool
 	unique   bool
+	grace    bool
 	apks     bool
 	tier     string
+	aliases  string
 }
 
 func TestImageRepo(t *testing.T) {
@@ -37,22 +39,24 @@ func TestImageRepo(t *testing.T) {
 		name:     name,
 	}
 
-	// Add bundles and readme
+	// Add bundles and readme and aliases
 	update1 := testRepo{
 		parentID: parentID,
 		name:     name,
-		bundles:  `["a", "b", "c"]`,
+		bundles:  `["application", "base", "fips"]`,
 		readme:   "# hello",
 		tier:     "APPLICATION",
+		aliases:  `["image:1", "image:2", "image:latest"]`,
 	}
 
-	// Modify bundles and readme
+	// Modify bundles and readme and aliases
 	update2 := testRepo{
 		parentID: parentID,
 		name:     name,
-		bundles:  `["x", "y", "z"]`,
+		bundles:  `["byol", "base", "featured"]`,
 		readme:   "# goodbye",
 		tier:     "BASE",
+		aliases:  `["image:97", "image:98", "image:99"]`,
 	}
 
 	// Delete readme and bundles, add syncing
@@ -63,12 +67,13 @@ func TestImageRepo(t *testing.T) {
 		apks:     true,
 	}
 
-	// Add unique tags
+	// Add unique tags and grace period
 	update4 := testRepo{
 		parentID: parentID,
 		name:     name,
 		synced:   true,
 		unique:   true,
+		grace:    true,
 		apks:     false,
 	}
 
@@ -85,6 +90,7 @@ func TestImageRepo(t *testing.T) {
 					resource.TestCheckNoResourceAttr(`chainguard_image_repo.example`, `bundles`),
 					resource.TestCheckNoResourceAttr(`chainguard_image_repo.example`, `readme`),
 					resource.TestCheckNoResourceAttr(`chainguard_image_repo.example`, `tier`),
+					resource.TestCheckNoResourceAttr(`chainguard_image_repo.example`, `aliases`),
 				),
 			},
 
@@ -101,11 +107,14 @@ func TestImageRepo(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `parent_id`, parentID),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `name`, name),
-					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `bundles.0`, "a"),
-					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `bundles.1`, "b"),
-					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `bundles.2`, "c"),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `bundles.0`, "application"),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `bundles.1`, "base"),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `bundles.2`, "fips"),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `readme`, "# hello"),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `tier`, "APPLICATION"),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `aliases.0`, "image:1"),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `aliases.1`, "image:2"),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `aliases.2`, "image:latest"),
 				),
 			},
 
@@ -115,11 +124,14 @@ func TestImageRepo(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `parent_id`, parentID),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `name`, name),
-					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `bundles.0`, "x"),
-					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `bundles.1`, "y"),
-					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `bundles.2`, "z"),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `bundles.0`, "byol"),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `bundles.1`, "base"),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `bundles.2`, "featured"),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `readme`, "# goodbye"),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `tier`, "BASE"),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `aliases.0`, "image:97"),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `aliases.1`, "image:98"),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `aliases.2`, "image:99"),
 				),
 			},
 
@@ -141,7 +153,9 @@ func TestImageRepo(t *testing.T) {
 						return nil
 					}),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `sync_config.unique_tags`, "false"),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `sync_config.grace_period`, "false"),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `sync_config.sync_apks`, "true"),
+					resource.TestCheckNoResourceAttr(`chainguard_image_repo.example`, `aliases`),
 				),
 			},
 
@@ -161,6 +175,7 @@ func TestImageRepo(t *testing.T) {
 						return nil
 					}),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `sync_config.unique_tags`, "true"),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `sync_config.grace_period`, "true"),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `sync_config.sync_apks`, "false"),
 				),
 			},
@@ -182,6 +197,7 @@ resource "chainguard_image_repo" "example" {
   %s
   %s
   %s
+  %s
 }
 `
 	var bundlesLine string
@@ -197,11 +213,12 @@ resource "chainguard_image_repo" "example" {
 	var syncLine string
 	if repo.synced {
 		syncLine = fmt.Sprintf(`sync_config {
-  source      = chainguard_image_repo.source.id
-  expiration  = %q
-  unique_tags = %t
-  sync_apks   = %t
-}`, time.Now().Add(24*time.Hour).UTC().Format(time.RFC3339), repo.unique, repo.apks)
+  source       = chainguard_image_repo.source.id
+  expiration   = %q
+  unique_tags  = %t
+  grace_period = %t
+  sync_apks    = %t
+}`, time.Now().Add(24*time.Hour).UTC().Format(time.RFC3339), repo.unique, repo.grace, repo.apks)
 	}
 
 	var tierLine string
@@ -209,7 +226,12 @@ resource "chainguard_image_repo" "example" {
 		tierLine = fmt.Sprintf("tier = %q", repo.tier)
 	}
 
-	return fmt.Sprintf(tmpl, repo.parentID, repo.parentID, repo.name, bundlesLine, readmeLine, syncLine, tierLine)
+	var aliasesLine string
+	if repo.aliases != "" {
+		aliasesLine = fmt.Sprintf("aliases = %s", repo.aliases)
+	}
+
+	return fmt.Sprintf(tmpl, repo.parentID, repo.parentID, repo.name, bundlesLine, readmeLine, syncLine, tierLine, aliasesLine)
 }
 
 // Multiple equivalent concurrent updates should not cause errors.

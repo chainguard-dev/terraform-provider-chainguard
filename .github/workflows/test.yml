@@ -1,5 +1,5 @@
 # Terraform Provider testing workflow.
-name: Tests
+name: Acceptance Tests
 
 on:
   push:
@@ -9,9 +9,7 @@ on:
     paths-ignore:
       - 'README.md'
 
-permissions:
-  contents: read
-  id-token: write
+permissions: {}
 
 jobs:
   # Run acceptance tests in a matrix with Terraform CLI versions
@@ -19,26 +17,44 @@ jobs:
     name: Terraform Provider Acceptance Tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
+
+    permissions:
+      contents: read
+      id-token: write
+
     strategy:
       fail-fast: false
       matrix:
         # list whatever Terraform versions here you would like to support
         terraform:
-          - '1.8.*'
           - '1.9.*'
+          - '1.10.*'
+          - '1.11.*'
     steps:
-      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
-      - uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5.0.2
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@ec9f2d5744a09debf3a187a3f4f675c53b671911 # v2.13.0
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
           go-version-file: 'go.mod'
+          check-latest: true
           cache: true
-      - uses: chainguard-dev/actions/setup-chainctl@main
+
+      - uses: chainguard-dev/setup-chainctl@f4ed65b781b048c44d4f033ae854c025c5531c19 # v0.3.2
         with:
           identity: "ef127a7c0909329f04b43d845cf80eea4247a07b/66305475446bbef6/51be6000f74f6cb7/72b16b9edc62a069"
+
       - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
         with:
           terraform_version: ${{ matrix.terraform }}
           terraform_wrapper: false
+
       - run: go mod download
       - env:
           TF_ACC: "1"
