@@ -52,6 +52,7 @@ type imageRepoModel struct {
 	Readme     types.String `tfsdk:"readme"`
 	SyncConfig *syncConfig  `tfsdk:"sync_config"`
 	Tier       types.String `tfsdk:"tier"`
+	Aliases    types.List   `tfsdk:"aliases"`
 }
 
 // Metadata returns the data source type name.
@@ -128,6 +129,14 @@ func (d *imageRepoDataSource) Schema(_ context.Context, _ datasource.SchemaReque
 								"apko_overlay": types.StringType,
 							},
 						},
+						"aliases": schema.ListAttribute{
+							Description: "Known aliases for a given image.",
+							Optional:    true,
+							ElementType: types.StringType,
+							Validators: []validator.List{
+								listvalidator.ValueStringsAre(validators.ValidateStringFuncs(validAliasesValue)),
+							},
+						},
 					},
 				},
 			},
@@ -168,6 +177,14 @@ func (d *imageRepoDataSource) Read(ctx context.Context, req datasource.ReadReque
 			tflog.Error(ctx, "failed to convert bundles to basetypes.ListValue", map[string]any{"bundles": repo.GetBundles()})
 			continue
 		}
+
+		aliases, diags := types.ListValueFrom(ctx, types.StringType, repo.GetAliases())
+		resp.Diagnostics.Append(diags...)
+		if diags.HasError() {
+			tflog.Error(ctx, "failed to convert aliases to basetypes.ListValue", map[string]any{"aliases": repo.GetAliases()})
+			continue
+		}
+
 		var sc *syncConfig
 		if repo.SyncConfig != nil {
 			sc = &syncConfig{
@@ -185,6 +202,7 @@ func (d *imageRepoDataSource) Read(ctx context.Context, req datasource.ReadReque
 			Readme:     types.StringValue(repo.GetReadme()),
 			SyncConfig: sc,
 			Tier:       types.StringValue(repo.GetCatalogTier().String()),
+			Aliases:    aliases,
 		})
 	}
 	if len(items.GetItems()) == 0 {
