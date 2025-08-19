@@ -18,16 +18,17 @@ import (
 )
 
 type testRepo struct {
-	parentID string
-	name     string
-	bundles  string
-	readme   string
-	synced   bool
-	unique   bool
-	grace    bool
-	apks     bool
-	tier     string
-	aliases  string
+	parentID   string
+	name       string
+	bundles    string
+	readme     string
+	synced     bool
+	unique     bool
+	grace      bool
+	apks       bool
+	tier       string
+	aliases    string
+	activeTags string
 }
 
 func TestImageRepo(t *testing.T) {
@@ -39,24 +40,26 @@ func TestImageRepo(t *testing.T) {
 		name:     name,
 	}
 
-	// Add bundles and readme and aliases
+	// Add bundles and readme and aliases and active_tags
 	update1 := testRepo{
-		parentID: parentID,
-		name:     name,
-		bundles:  `["application", "base", "fips"]`,
-		readme:   "# hello",
-		tier:     "APPLICATION",
-		aliases:  `["image:1", "image:2", "image:latest"]`,
+		parentID:   parentID,
+		name:       name,
+		bundles:    `["application", "base", "fips"]`,
+		readme:     "# hello",
+		tier:       "APPLICATION",
+		aliases:    `["image:1", "image:2", "image:latest"]`,
+		activeTags: `["tag1", "tag2", "tag3"]`,
 	}
 
-	// Modify bundles and readme and aliases
+	// Modify bundles and readme and aliases and active_tags
 	update2 := testRepo{
-		parentID: parentID,
-		name:     name,
-		bundles:  `["byol", "base", "featured"]`,
-		readme:   "# goodbye",
-		tier:     "BASE",
-		aliases:  `["image:97", "image:98", "image:99"]`,
+		parentID:   parentID,
+		name:       name,
+		bundles:    `["byol", "base", "featured"]`,
+		readme:     "# goodbye",
+		tier:       "BASE",
+		aliases:    `["image:97", "image:98", "image:99"]`,
+		activeTags: `["tag4", "tag5", "tag6"]`,
 	}
 
 	// Delete readme and bundles, add syncing
@@ -91,6 +94,7 @@ func TestImageRepo(t *testing.T) {
 					resource.TestCheckNoResourceAttr(`chainguard_image_repo.example`, `readme`),
 					resource.TestCheckNoResourceAttr(`chainguard_image_repo.example`, `tier`),
 					resource.TestCheckNoResourceAttr(`chainguard_image_repo.example`, `aliases`),
+					resource.TestCheckNoResourceAttr(`chainguard_image_repo.example`, `active_tags`),
 				),
 			},
 
@@ -115,6 +119,9 @@ func TestImageRepo(t *testing.T) {
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `aliases.0`, "image:1"),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `aliases.1`, "image:2"),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `aliases.2`, "image:latest"),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `active_tags.0`, "tag1"),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `active_tags.1`, "tag2"),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `active_tags.2`, "tag3"),
 				),
 			},
 
@@ -132,6 +139,9 @@ func TestImageRepo(t *testing.T) {
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `aliases.0`, "image:97"),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `aliases.1`, "image:98"),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `aliases.2`, "image:99"),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `active_tags.0`, "tag4"),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `active_tags.1`, "tag5"),
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `active_tags.2`, "tag6"),
 				),
 			},
 
@@ -156,6 +166,7 @@ func TestImageRepo(t *testing.T) {
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `sync_config.grace_period`, "false"),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `sync_config.sync_apks`, "true"),
 					resource.TestCheckNoResourceAttr(`chainguard_image_repo.example`, `aliases`),
+					resource.TestCheckNoResourceAttr(`chainguard_image_repo.example`, `active_tags`),
 				),
 			},
 
@@ -198,6 +209,7 @@ resource "chainguard_image_repo" "example" {
   %s
   %s
   %s
+  %s
 }
 `
 	var bundlesLine string
@@ -231,7 +243,12 @@ resource "chainguard_image_repo" "example" {
 		aliasesLine = fmt.Sprintf("aliases = %s", repo.aliases)
 	}
 
-	return fmt.Sprintf(tmpl, repo.parentID, repo.parentID, repo.name, bundlesLine, readmeLine, syncLine, tierLine, aliasesLine)
+	var activeTagsLine string
+	if repo.activeTags != "" {
+		activeTagsLine = fmt.Sprintf("active_tags = %s", repo.activeTags)
+	}
+
+	return fmt.Sprintf(tmpl, repo.parentID, repo.parentID, repo.name, bundlesLine, readmeLine, syncLine, tierLine, aliasesLine, activeTagsLine)
 }
 
 // Multiple equivalent concurrent updates should not cause errors.

@@ -53,6 +53,7 @@ type imageRepoModel struct {
 	SyncConfig *syncConfig  `tfsdk:"sync_config"`
 	Tier       types.String `tfsdk:"tier"`
 	Aliases    types.List   `tfsdk:"aliases"`
+	ActiveTags types.List   `tfsdk:"active_tags"`
 }
 
 // Metadata returns the data source type name.
@@ -137,6 +138,14 @@ func (d *imageRepoDataSource) Schema(_ context.Context, _ datasource.SchemaReque
 								listvalidator.ValueStringsAre(validators.ValidateStringFuncs(validAliasesValue)),
 							},
 						},
+						"active_tags": schema.ListAttribute{
+							Description: "List of active tags for this repo.",
+							Optional:    true,
+							ElementType: types.StringType,
+							Validators: []validator.List{
+								listvalidator.ValueStringsAre(validators.ValidateStringFuncs(validTagsValue)),
+							},
+						},
 					},
 				},
 			},
@@ -185,6 +194,13 @@ func (d *imageRepoDataSource) Read(ctx context.Context, req datasource.ReadReque
 			continue
 		}
 
+		activeTags, diags := types.ListValueFrom(ctx, types.StringType, repo.GetActiveTags())
+		resp.Diagnostics.Append(diags...)
+		if diags.HasError() {
+			tflog.Error(ctx, "failed to convert active_tags to basetypes.ListValue", map[string]any{"active_tags": repo.GetActiveTags()})
+			continue
+		}
+
 		var sc *syncConfig
 		if repo.SyncConfig != nil {
 			sc = &syncConfig{
@@ -203,6 +219,7 @@ func (d *imageRepoDataSource) Read(ctx context.Context, req datasource.ReadReque
 			SyncConfig: sc,
 			Tier:       types.StringValue(repo.GetCatalogTier().String()),
 			Aliases:    aliases,
+			ActiveTags: activeTags,
 		})
 	}
 	if len(items.GetItems()) == 0 {
