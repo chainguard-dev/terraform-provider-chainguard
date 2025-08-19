@@ -30,6 +30,7 @@ resource "chainguard_image_repo" "example" {
 
 ### Optional
 
+- `active_tags` (List of String) List of active tags for this repo.
 - `aliases` (List of String) Known aliases for a given image.
 - `bundles` (List of String) List of bundles associated with this repo (valid ones: `application|base|byol|ai|ai-gpu|featured|fips`).
 - `readme` (String) The README for this repo.

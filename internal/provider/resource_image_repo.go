@@ -56,8 +56,9 @@ type imageRepoResourceModel struct {
 	Readme     types.String `tfsdk:"readme"`
 	SyncConfig types.Object `tfsdk:"sync_config"`
 	// Image tier (e.g. APPLICATION, BASE, etc.)
-	Tier    types.String `tfsdk:"tier"`
-	Aliases types.List   `tfsdk:"aliases"`
+	Tier       types.String `tfsdk:"tier"`
+	Aliases    types.List   `tfsdk:"aliases"`
+	ActiveTags types.List   `tfsdk:"active_tags"`
 }
 
 type syncConfig struct {
@@ -133,6 +134,14 @@ func (r *imageRepoResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 					listvalidator.ValueStringsAre(validators.ValidateStringFuncs(validAliasesValue)),
 				},
 			},
+			"active_tags": schema.ListAttribute{
+				Description: "List of active tags for this repo.",
+				Optional:    true,
+				ElementType: types.StringType,
+				Validators: []validator.List{
+					listvalidator.ValueStringsAre(validators.ValidateStringFuncs(validTagsValue)),
+				},
+			},
 		},
 		Blocks: map[string]schema.Block{
 			"sync_config": schema.SingleNestedBlock{
@@ -205,6 +214,14 @@ func validBundlesValue(s string) error {
 func validAliasesValue(s string) error {
 	if err := validation.ValidateAliases([]string{s}); err != nil {
 		return fmt.Errorf("alias %q is invalid: %w", s, err)
+	}
+	return nil
+}
+
+// validTagsValue implements validators.ValidateStringFunc.
+func validTagsValue(s string) error {
+	if err := validation.ValidateTag(s); err != nil {
+		return fmt.Errorf("tag %q is invalid: %w", s, err)
 	}
 	return nil
 }
@@ -285,6 +302,12 @@ func (r *imageRepoResource) Create(ctx context.Context, req resource.CreateReque
 		return
 	}
 
+	activeTags := make([]string, 0, len(plan.ActiveTags.Elements()))
+	resp.Diagnostics.Append(plan.ActiveTags.ElementsAs(ctx, &activeTags, false /* allowUnhandled */)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	repo, err := r.prov.client.Registry().Registry().CreateRepo(ctx, &registry.CreateRepoRequest{
 		ParentId: plan.ParentID.ValueString(),
 		Repo: &registry.Repo{
@@ -294,6 +317,7 @@ func (r *imageRepoResource) Create(ctx context.Context, req resource.CreateReque
 			SyncConfig:  sc,
 			CatalogTier: registry.CatalogTier(registry.CatalogTier_value[plan.Tier.ValueString()]),
 			Aliases:     aliases,
+			ActiveTags:  activeTags,
 		},
 	})
 	if err != nil {
@@ -391,6 +415,12 @@ func (r *imageRepoResource) Read(ctx context.Context, req resource.ReadRequest, 
 		return
 	}
 
+	state.ActiveTags, diags = types.ListValueFrom(ctx, types.StringType, repo.ActiveTags)
+	if diags.HasError() {
+		resp.Diagnostics.Append(diags...)
+		return
+	}
+
 	// Set state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
@@ -448,6 +478,12 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 		return
 	}
 
+	activeTags := make([]string, 0, len(data.ActiveTags.Elements()))
+	resp.Diagnostics.Append(data.ActiveTags.ElementsAs(ctx, &activeTags, false /* allowUnhandled */)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	repo, err := r.prov.client.Registry().Registry().UpdateRepo(ctx, &registry.Repo{
 		Id:          data.ID.ValueString(),
 		Name:        data.Name.ValueString(),
@@ -456,6 +492,7 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 		SyncConfig:  sc,
 		CatalogTier: registry.CatalogTier(registry.CatalogTier_value[data.Tier.ValueString()]),
 		Aliases:     aliases,
+		ActiveTags:  activeTags,
 	})
 	if err != nil {
 		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to update image repo"))
@@ -485,6 +522,12 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 	}
 
 	data.Aliases, diags = types.ListValueFrom(ctx, types.StringType, repo.Aliases)
+	if diags.HasError() {
+		resp.Diagnostics.Append(diags...)
+		return
+	}
+
+	data.ActiveTags, diags = types.ListValueFrom(ctx, types.StringType, repo.ActiveTags)
 	if diags.HasError() {
 		resp.Diagnostics.Append(diags...)
 		return

@@ -38,6 +38,7 @@ data "chainguard_image_repo" "nginx" {
 
 Optional:
 
+- `active_tags` (List of String) List of active tags for this repo.
 - `aliases` (List of String) Known aliases for a given image.
 - `bundles` (List of String) List of bundles associated with this repo (a-z freeform keywords for sales purposes).
 - `readme` (String) The README for this repo.
