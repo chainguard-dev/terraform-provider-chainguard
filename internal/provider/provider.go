@@ -113,6 +113,7 @@ func (p *Provider) DataSources(_ context.Context) []func() datasource.DataSource
 		NewIdentityDataSource,
 		NewRoleDataSource,
 		NewImageRepoDataSource,
+		NewImageReposDataSource,
 		NewVersionsDataSource,
 	}
 }
