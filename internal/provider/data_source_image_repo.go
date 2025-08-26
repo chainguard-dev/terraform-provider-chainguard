@@ -7,6 +7,7 @@ package provider
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	common "chainguard.dev/sdk/proto/platform/common/v1"
@@ -42,7 +43,7 @@ type imageRepoDataSourceModel struct {
 }
 
 func (d imageRepoDataSourceModel) InputParams() string {
-	return ""
+	return fmt.Sprintf("[id=%s, name=%s, parent_id=%s]", d.ID, d.Name, d.ParentID)
 }
 
 type imageRepoModel struct {
