@@ -1,0 +1,16 @@
+{
+    "configurations": [
+        {
+            "args": [
+                "-debug"
+            ],
+            "env": {},
+            "mode": "debug",
+            "name": "Debug Terraform Provider",
+            "program": "${workspaceFolder}",
+            "request": "launch",
+            "type": "go"
+        }
+    ],
+    "version": "0.2.0"
+}

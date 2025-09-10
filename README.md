@@ -36,8 +36,8 @@ Detailed documentation on all available resources can be found under `/docs`.
 
 ### Requirements
 
--	[Terraform](https://www.terraform.io/downloads.html) >= 1.5.x
--	[Go](https://golang.org/doc/install) >= 1.21
+- [Terraform](https://www.terraform.io/downloads.html) >= 1.5.x
+- [Go](https://golang.org/doc/install) >= 1.21
 
 If you wish to work on the provider, you'll first need
 [Go](http://www.golang.org) installed on your machine.
@@ -64,7 +64,12 @@ the provider binary in the `$GOPATH/bin` directory.
 
 To generate or update documentation, run `go generate`.
 
+### VSCode Debugger
+
+You can use the provided `.vscode/launch.json` to debug the provider in VSCode. This will start a process that will output the environment variable `TF_REATTACH_PROVIDERS`. Copy and paste this into the shell where you will run `terraform` commands to attach the debugger to the provider process.
+
 ### Acceptance tests
+
 In order to run the full suite of Acceptance tests, run
 
 ```sh
