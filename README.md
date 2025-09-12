@@ -53,6 +53,7 @@ provider_installation {
   dev_overrides {
     "chainguard-dev/chainguard" = "/path/to/terraform-provider-chainguard"
   }
+direct {}
 }
 EOF
 
