@@ -1,5 +1,5 @@
-chainguard.dev/apko v0.30.10 h1:ThmdCAPUTwob2q2kpttD5cA3FHn9/kmhtEFATa1NIPI=
-chainguard.dev/apko v0.30.10/go.mod h1:p/rir/zenpe4XXJksXjH9k7Jgvr2QrJTCcb87uipD1Y=
+chainguard.dev/apko v0.30.11 h1:aqI/E6nm3Xeias9ikuJ7UGichXpffZU2mZ+G2YUSEGQ=
+chainguard.dev/apko v0.30.11/go.mod h1:KHKqFwxoYKBbJX8cftV9V+Bcm9v99MzjsRsSNRZKpD8=
 chainguard.dev/go-grpc-kit v0.17.14 h1:UIjWOokCXaZSFBpTjoArAykXa0BUnjK///TjFO6ugt4=
 chainguard.dev/go-grpc-kit v0.17.14/go.mod h1:mOL0MDp7ObTqmI2edqC+qGKsHVmquc7VaqQRp9xnq0E=
 chainguard.dev/go-oidctest v0.4.0 h1:B9YTfoa1WtsrEg0wnFeSP7i9tth0LO+GICm2j8HOgWI=
@@ -373,8 +373,8 @@ golang.org/x/xerrors v0.0.0-20190717185122-a985d3407aa7/go.mod h1:I/5z698sn9Ka8T
 golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
 gonum.org/v1/gonum v0.16.0 h1:5+ul4Swaf3ESvrOnidPp4GZbzf0mxVQpDCYUQE7OJfk=
 gonum.org/v1/gonum v0.16.0/go.mod h1:fef3am4MQ93R2HHpKnLk4/Tbh/s0+wqD5nfa6Pnwy4E=
-google.golang.org/api v0.248.0 h1:hUotakSkcwGdYUqzCRc5yGYsg4wXxpkKlW5ryVqvC1Y=
-google.golang.org/api v0.248.0/go.mod h1:yAFUAF56Li7IuIQbTFoLwXTCI6XCFKueOlS7S9e4F9k=
+google.golang.org/api v0.249.0 h1:0VrsWAKzIZi058aeq+I86uIXbNhm9GxSHpbmZ92a38w=
+google.golang.org/api v0.249.0/go.mod h1:dGk9qyI0UYPwO/cjt2q06LG/EhUpwZGdAbYF14wHHrQ=
 google.golang.org/appengine v1.1.0/go.mod h1:EbEs0AVv82hx2wNQdGPgUI5lhzA/G0D9YwlJXL52JkM=
 google.golang.org/appengine v1.6.8 h1:IhEN5q69dyKagZPYMSdIjS2HqprW324FRQZJcGqPAsM=
 google.golang.org/appengine v1.6.8/go.mod h1:1jJ3jBArFh5pcgW8gCtRJnepW8FzD1V44FJffLiz/Ds=
