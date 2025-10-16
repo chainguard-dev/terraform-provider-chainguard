@@ -140,7 +140,6 @@ func (r *imageRepoResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				Validators: []validator.Object{
 					objectvalidator.AlsoRequires(
 						path.Root("sync_config").AtName("source").Expression(),
-						path.Root("sync_config").AtName("expiration").Expression(),
 					),
 				},
 				Attributes: map[string]schema.Attribute{
