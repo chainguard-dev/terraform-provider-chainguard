@@ -130,7 +130,7 @@ func (r *deploymentResource) Create(ctx context.Context, req resource.CreateRequ
 	}
 
 	// Create the deployment
-	d, err := r.prov.client.Registry().CreateDeployment(ctx, &registry.CreateDeploymentRequest{
+	d, err := r.prov.client.Registry().Registry().CreateDeployment(ctx, &registry.CreateDeploymentRequest{
 		ParentId: plan.ID.ValueString(), // The repo UIDP
 		Charts:   helmCharts,
 	})
@@ -197,7 +197,7 @@ func (r *deploymentResource) Read(ctx context.Context, req resource.ReadRequest,
 	tflog.Info(ctx, fmt.Sprintf("read deployment request: %s", state.ID))
 
 	// Get the deployment for the repository
-	d, err := r.prov.client.Registry().GetDeployment(ctx, &registry.GetDeploymentRequest{
+	d, err := r.prov.client.Registry().Registry().GetDeployment(ctx, &registry.GetDeploymentRequest{
 		RepoId: state.ID.ValueString(), // The repo UIDP
 	})
 	if err != nil {
@@ -281,7 +281,7 @@ func (r *deploymentResource) Update(ctx context.Context, req resource.UpdateRequ
 	}
 
 	// Update the deployment
-	d, err := r.prov.client.Registry().UpdateDeployment(ctx, &registry.UpdateDeploymentRequest{
+	d, err := r.prov.client.Registry().Registry().UpdateDeployment(ctx, &registry.UpdateDeploymentRequest{
 		RepoId: data.ID.ValueString(), // The repo UIDP
 		Charts: helmCharts,
 	})
@@ -343,7 +343,7 @@ func (r *deploymentResource) Delete(ctx context.Context, req resource.DeleteRequ
 
 	// Delete the deployment by setting an empty deployment
 	// Delete by clearing charts
-	_, err := r.prov.client.Registry().UpdateDeployment(ctx, &registry.UpdateDeploymentRequest{
+	_, err := r.prov.client.Registry().Registry().UpdateDeployment(ctx, &registry.UpdateDeploymentRequest{
 		RepoId: state.ID.ValueString(), // The repo UIDP
 		Charts: []*registry.HelmChart{}, // Empty charts array to clear deployment
 	})
