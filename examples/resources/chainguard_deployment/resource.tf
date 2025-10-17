@@ -1,7 +1,7 @@
 resource "chainguard_deployment" "example" {
   # The UIDP of the repository this deployment configuration applies to
   id = "example-repo-uidp-goes-here"
-  
+
   # List of Helm charts for deployment
   charts = [
     {
@@ -26,10 +26,10 @@ resource "chainguard_deployment" "example" {
 # shouldn't block other operations like image builds
 resource "chainguard_deployment" "example_with_error_handling" {
   id = "another-repo-uidp-goes-here"
-  
+
   # Enable graceful error handling
   ignore_errors = true
-  
+
   charts = [
     {
       repo   = "oci://ghcr.io/stefanprodan/charts/podinfo"

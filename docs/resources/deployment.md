@@ -15,7 +15,7 @@ Deployment configuration for a repository, containing Helm chart sources that de
 ```terraform
 resource "chainguard_deployment" "example" {
   id = "repo-uidp-here"
-  
+
   charts = [
     {
       repo   = "oci://ghcr.io/stefanprodan/charts/podinfo"
@@ -33,11 +33,11 @@ resource "chainguard_deployment" "example" {
 ```terraform
 resource "chainguard_deployment" "example_with_error_handling" {
   id = "repo-uidp-here"
-  
-  # Enable graceful error handling - useful when deployment failures 
+
+  # Enable graceful error handling - useful when deployment failures
   # shouldn't block other operations like image builds
   ignore_errors = true
-  
+
   charts = [
     {
       repo   = "oci://ghcr.io/stefanprodan/charts/podinfo"

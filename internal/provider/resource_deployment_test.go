@@ -7,7 +7,7 @@ package provider
 
 import (
 	"fmt"
-	"regexp"
+	"os"
 	"strings"
 	"testing"
 
@@ -15,11 +15,15 @@ import (
 )
 
 func testAccResourceDeployment(repoID string, charts []map[string]interface{}) string {
+	return testAccResourceDeploymentWithIgnoreErrors(repoID, charts, false)
+}
+
+func testAccResourceDeploymentWithIgnoreErrors(repoID string, charts []map[string]interface{}, ignoreErrors bool) string {
 	const tmpl = `
 resource "chainguard_deployment" "test" {
 	id = %q
 	charts = [
-%s	]
+%s	]%s
 }
 `
 	var chartConfigs []string
@@ -31,20 +35,26 @@ resource "chainguard_deployment" "test" {
 		chartConfig += "\t\t},\n"
 		chartConfigs = append(chartConfigs, chartConfig)
 	}
-	return fmt.Sprintf(tmpl, repoID, strings.Join(chartConfigs, ""))
+	var ignoreErrorsLine string
+	if ignoreErrors {
+		ignoreErrorsLine = "\n\tignore_errors = true"
+	}
+	return fmt.Sprintf(tmpl, repoID, strings.Join(chartConfigs, ""), ignoreErrorsLine)
 }
 
 func TestAccResourceDeployment_basic(t *testing.T) {
-	repoID := "" // Will need a valid repo UIDP when implemented
+	repoID := os.Getenv("TF_ACC_REPO_ID")
+	if repoID == "" {
+		t.Skip("TF_ACC_REPO_ID not set - skipping deployment acceptance test")
+		return
+	}
+
 	charts := []map[string]interface{}{
 		{
 			"repo":   "oci://ghcr.io/stefanprodan/charts/podinfo",
 			"source": "https://github.com/stefanprodan/podinfo",
 		},
 	}
-
-	// Skip this test since we need a valid repo ID and the API may need testing
-	t.Skip("Deployment resource needs a valid repo ID for testing")
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -80,32 +90,65 @@ func TestAccResourceDeployment_basic(t *testing.T) {
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("chainguard_deployment.test", "charts.#", "2"),
 					resource.TestCheckResourceAttr("chainguard_deployment.test", "charts.0.repo", "https://kyverno.github.io/kyverno/"),
+					resource.TestCheckNoResourceAttr("chainguard_deployment.test", "charts.0.source"),
 					resource.TestCheckResourceAttr("chainguard_deployment.test", "charts.1.repo", "oci://ghcr.io/stefanprodan/charts/podinfo"),
+					resource.TestCheckResourceAttr("chainguard_deployment.test", "charts.1.source", "https://github.com/stefanprodan/podinfo"),
 				),
 			},
 		},
 	})
 }
 
-func TestAccResourceDeployment_validation(t *testing.T) {
-	// Skip this test since we need a valid repo ID for proper testing
-	t.Skip("Deployment resource validation needs a valid repo ID")
+func TestAccResourceDeployment_chartsOnly(t *testing.T) {
+	repoID := os.Getenv("TF_ACC_REPO_ID")
+	if repoID == "" {
+		t.Skip("TF_ACC_REPO_ID not set - skipping deployment acceptance test")
+		return
+	}
+
+	// Test charts without source field (repo-only charts)
+	chartsNoSource := []map[string]interface{}{
+		{
+			"repo": "https://kyverno.github.io/kyverno/",
+		},
+		{
+			"repo": "https://prometheus-community.github.io/helm-charts",
+		},
+	}
+
+	// Test single chart with ignore_errors
+	chartsWithIgnoreErrors := []map[string]interface{}{
+		{
+			"repo": "https://charts.bitnami.com/bitnami",
+		},
+	}
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
-			// Test with invalid repo ID
+			// Test multiple charts without source fields
 			{
-				Config: testAccResourceDeployment(
-					"invalid-repo-id",
-					[]map[string]interface{}{
-						{
-							"repo": "oci://ghcr.io/stefanprodan/charts/podinfo",
-						},
-					},
+				Config: testAccResourceDeployment(repoID, chartsNoSource),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("chainguard_deployment.test", "id", repoID),
+					resource.TestCheckResourceAttr("chainguard_deployment.test", "charts.#", "2"),
+					resource.TestCheckResourceAttr("chainguard_deployment.test", "charts.0.repo", "https://kyverno.github.io/kyverno/"),
+					resource.TestCheckNoResourceAttr("chainguard_deployment.test", "charts.0.source"),
+					resource.TestCheckResourceAttr("chainguard_deployment.test", "charts.1.repo", "https://prometheus-community.github.io/helm-charts"),
+					resource.TestCheckNoResourceAttr("chainguard_deployment.test", "charts.1.source"),
 				),
-				ExpectError: regexp.MustCompile("Invalid UIDP format"),
+			},
+			// Test ignore_errors = true
+			{
+				Config: testAccResourceDeploymentWithIgnoreErrors(repoID, chartsWithIgnoreErrors, true),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("chainguard_deployment.test", "id", repoID),
+					resource.TestCheckResourceAttr("chainguard_deployment.test", "ignore_errors", "true"),
+					resource.TestCheckResourceAttr("chainguard_deployment.test", "charts.#", "1"),
+					resource.TestCheckResourceAttr("chainguard_deployment.test", "charts.0.repo", "https://charts.bitnami.com/bitnami"),
+					resource.TestCheckNoResourceAttr("chainguard_deployment.test", "charts.0.source"),
+				),
 			},
 		},
 	})

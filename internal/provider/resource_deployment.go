@@ -158,7 +158,7 @@ func (r *deploymentResource) Create(ctx context.Context, req resource.CreateRequ
 
 	// Update plan with returned data
 	plan.ID = types.StringValue(d.Id)
-	
+
 	// Convert returned charts back to Terraform types
 	chartElements := make([]helmChartModel, len(d.Charts))
 	for i, chart := range d.Charts {
@@ -223,7 +223,7 @@ func (r *deploymentResource) Read(ctx context.Context, req resource.ReadRequest,
 
 	// Update state with deployment data
 	state.ID = types.StringValue(d.Id)
-	
+
 	// Convert charts to Terraform types
 	chartElements := make([]helmChartModel, len(d.Charts))
 	for i, chart := range d.Charts {
@@ -303,7 +303,7 @@ func (r *deploymentResource) Update(ctx context.Context, req resource.UpdateRequ
 
 	// Update data with returned values
 	data.ID = types.StringValue(d.Id)
-	
+
 	// Convert returned charts back to Terraform types
 	chartElements := make([]helmChartModel, len(d.Charts))
 	for i, chart := range d.Charts {
@@ -341,10 +341,9 @@ func (r *deploymentResource) Delete(ctx context.Context, req resource.DeleteRequ
 	}
 	tflog.Info(ctx, fmt.Sprintf("delete deployment request: %s", state.ID))
 
-	// Delete the deployment by setting an empty deployment
 	// Delete by clearing charts
 	_, err := r.prov.client.Registry().Registry().UpdateDeployment(ctx, &registry.UpdateDeploymentRequest{
-		RepoId: state.ID.ValueString(), // The repo UIDP
+		RepoId: state.ID.ValueString(),  // The repo UIDP
 		Charts: []*registry.HelmChart{}, // Empty charts array to clear deployment
 	})
 	if err != nil {
