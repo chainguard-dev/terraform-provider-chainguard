@@ -3,39 +3,46 @@
 page_title: "chainguard_deployment Resource - terraform-provider-chainguard"
 subcategory: ""
 description: |-
-  Deployment configuration for a repository, containing Helm chart sources that define how the repository should be deployed.
+  Deployment configuration for a repository, containing Helm chart sources.
 ---
 
 # chainguard_deployment (Resource)
 
-Deployment configuration for a repository, containing Helm chart sources that define how the repository should be deployed.
+Deployment configuration for a repository, containing Helm chart sources.
 
 ## Example Usage
 
 ```terraform
 resource "chainguard_deployment" "example" {
-  id = "repo-uidp-here"
+  # The UIDP of the repository this deployment configuration applies to
+  id = "example-repo-uidp-goes-here"
 
+  # List of Helm charts for deployment
   charts = [
     {
+      # OCI-based Helm chart
       repo   = "oci://ghcr.io/stefanprodan/charts/podinfo"
       source = "https://github.com/stefanprodan/podinfo"
     },
     {
+      # Traditional Helm repository
       repo = "https://kyverno.github.io/kyverno/"
+      # source is optional - only include if you want to reference the source code
+    },
+    {
+      # Another example with a different chart
+      repo   = "oci://registry-1.docker.io/bitnamicharts/nginx"
+      source = "https://github.com/bitnami/charts/tree/main/bitnami/nginx"
     }
   ]
 }
-```
 
-## Example with Error Handling
-
-```terraform
+# Example with graceful error handling - useful when deployment failures
+# shouldn't block other operations like image builds
 resource "chainguard_deployment" "example_with_error_handling" {
-  id = "repo-uidp-here"
+  id = "another-repo-uidp-goes-here"
 
-  # Enable graceful error handling - useful when deployment failures
-  # shouldn't block other operations like image builds
+  # Enable graceful error handling
   ignore_errors = true
 
   charts = [
@@ -52,8 +59,8 @@ resource "chainguard_deployment" "example_with_error_handling" {
 
 ### Required
 
+- `charts` (Attributes List) List of Helm charts for this deployment. (see [below for nested schema](#nestedatt--charts))
 - `id` (String) The UIDP of the repository this deployment belongs to.
-- `charts` (List of Object) List of Helm charts for this deployment. (see [below for nested schema](#nestedatt--charts))
 
 ### Optional
 
@@ -69,4 +76,3 @@ Required:
 Optional:
 
 - `source` (String) Link to the Helm chart source code (e.g., 'https://github.com/kyverno/kyverno').
-
