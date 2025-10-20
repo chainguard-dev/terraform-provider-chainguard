@@ -208,7 +208,7 @@ func (d *imageRepoDataSource) Read(ctx context.Context, req datasource.ReadReque
 				Source:      types.StringValue(repo.GetSyncConfig().GetSource()),
 				Expiration:  types.StringValue(repo.GetSyncConfig().GetExpiration().AsTime().Format(time.RFC3339)),
 				UniqueTags:  types.BoolValue(repo.GetSyncConfig().GetUniqueTags()),
-				SyncAPKs:    types.BoolValue(repo.GetSyncConfig().GetSyncApks()),
+				SyncAPKs:    types.BoolValue(false), // deprecated field, always return false
 				ApkoOverlay: types.StringValue(repo.GetSyncConfig().GetApkoOverlay()),
 			}
 		}

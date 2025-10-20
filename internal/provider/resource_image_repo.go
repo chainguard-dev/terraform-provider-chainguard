@@ -281,7 +281,7 @@ func (r *imageRepoResource) Create(ctx context.Context, req resource.CreateReque
 			Expiration:  timestamppb.New(ts),
 			UniqueTags:  cfg.UniqueTags.ValueBool(),
 			GracePeriod: cfg.GracePeriod.ValueBool(),
-			SyncApks:    cfg.SyncAPKs.ValueBool(),
+			// SyncApks field is deprecated and no longer set
 			Amazon:      cfg.Amazon.ValueString(),
 			Google:      cfg.Google.ValueString(),
 			Azure:       cfg.Azure.ValueString(),
@@ -388,15 +388,15 @@ func (r *imageRepoResource) Read(ctx context.Context, req resource.ReadRequest, 
 		update := (sc.Source.ValueString() != repo.SyncConfig.Source) ||
 			(sc.Expiration.ValueString() != repo.SyncConfig.Expiration.AsTime().Format(time.RFC3339)) ||
 			(sc.UniqueTags.ValueBool() != repo.SyncConfig.UniqueTags) ||
-			(sc.GracePeriod.ValueBool() != repo.SyncConfig.GracePeriod) ||
-			(sc.SyncAPKs.ValueBool() != repo.SyncConfig.SyncApks)
+			(sc.GracePeriod.ValueBool() != repo.SyncConfig.GracePeriod)
+			// Note: SyncAPKs field is deprecated and ignored
 
 		if update {
 			sc.Source = types.StringValue(repo.SyncConfig.Source)
 			sc.Expiration = types.StringValue(repo.SyncConfig.Expiration.AsTime().Format(time.RFC3339))
 			sc.UniqueTags = types.BoolValue(repo.SyncConfig.UniqueTags)
 			sc.GracePeriod = types.BoolValue(repo.SyncConfig.GracePeriod)
-			sc.SyncAPKs = types.BoolValue(repo.SyncConfig.SyncApks)
+			sc.SyncAPKs = types.BoolValue(false) // deprecated field, always set to false
 			state.SyncConfig, diags = types.ObjectValueFrom(ctx, state.SyncConfig.AttributeTypes(ctx), sc)
 			resp.Diagnostics.Append(diags...)
 		}
@@ -457,7 +457,7 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 			Expiration:  timestamppb.New(ts),
 			UniqueTags:  cfg.UniqueTags.ValueBool(),
 			GracePeriod: cfg.GracePeriod.ValueBool(),
-			SyncApks:    cfg.SyncAPKs.ValueBool(),
+			// SyncApks field is deprecated and no longer set
 			Amazon:      cfg.Amazon.ValueString(),
 			Google:      cfg.Google.ValueString(),
 			Azure:       cfg.Azure.ValueString(),
