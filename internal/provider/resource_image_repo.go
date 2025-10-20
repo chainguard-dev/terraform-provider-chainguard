@@ -66,7 +66,6 @@ type syncConfig struct {
 	Expiration  types.String `tfsdk:"expiration"`
 	UniqueTags  types.Bool   `tfsdk:"unique_tags"`
 	GracePeriod types.Bool   `tfsdk:"grace_period"`
-	SyncAPKs    types.Bool   `tfsdk:"sync_apks"`
 	Google      types.String `tfsdk:"google"`
 	Amazon      types.String `tfsdk:"amazon"`
 	Azure       types.String `tfsdk:"azure"`
@@ -174,10 +173,6 @@ func (r *imageRepoResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 						Description: "Controls whether the image grace period functionality is enabled or not.",
 						Optional:    true,
 					},
-					"sync_apks": schema.BoolAttribute{
-						Description: "Whether the APKs for each image should also be synchronized.",
-						Optional:    true,
-					},
 					"amazon": schema.StringAttribute{
 						Description: "The Amazon repository under which to create a new repository with the same name as the source repository.",
 						Optional:    true, // This attribute is required, but only if the block is defined. See Validators.
@@ -281,7 +276,6 @@ func (r *imageRepoResource) Create(ctx context.Context, req resource.CreateReque
 			Expiration:  timestamppb.New(ts),
 			UniqueTags:  cfg.UniqueTags.ValueBool(),
 			GracePeriod: cfg.GracePeriod.ValueBool(),
-			// SyncApks field is deprecated and no longer set
 			Amazon:      cfg.Amazon.ValueString(),
 			Google:      cfg.Google.ValueString(),
 			Azure:       cfg.Azure.ValueString(),
@@ -389,14 +383,12 @@ func (r *imageRepoResource) Read(ctx context.Context, req resource.ReadRequest, 
 			(sc.Expiration.ValueString() != repo.SyncConfig.Expiration.AsTime().Format(time.RFC3339)) ||
 			(sc.UniqueTags.ValueBool() != repo.SyncConfig.UniqueTags) ||
 			(sc.GracePeriod.ValueBool() != repo.SyncConfig.GracePeriod)
-			// Note: SyncAPKs field is deprecated and ignored
 
 		if update {
 			sc.Source = types.StringValue(repo.SyncConfig.Source)
 			sc.Expiration = types.StringValue(repo.SyncConfig.Expiration.AsTime().Format(time.RFC3339))
 			sc.UniqueTags = types.BoolValue(repo.SyncConfig.UniqueTags)
 			sc.GracePeriod = types.BoolValue(repo.SyncConfig.GracePeriod)
-			sc.SyncAPKs = types.BoolValue(false) // deprecated field, always set to false
 			state.SyncConfig, diags = types.ObjectValueFrom(ctx, state.SyncConfig.AttributeTypes(ctx), sc)
 			resp.Diagnostics.Append(diags...)
 		}
@@ -457,7 +449,6 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 			Expiration:  timestamppb.New(ts),
 			UniqueTags:  cfg.UniqueTags.ValueBool(),
 			GracePeriod: cfg.GracePeriod.ValueBool(),
-			// SyncApks field is deprecated and no longer set
 			Amazon:      cfg.Amazon.ValueString(),
 			Google:      cfg.Google.ValueString(),
 			Azure:       cfg.Azure.ValueString(),
