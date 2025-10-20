@@ -53,5 +53,4 @@ Optional:
 - `google` (String) The Google repository under which to create a new repository with the same name as the source repository.
 - `grace_period` (Boolean) Controls whether the image grace period functionality is enabled or not.
 - `source` (String) The UIDP of the repository to sync images from.
-- `sync_apks` (Boolean) Whether the APKs for each image should also be synchronized.
 - `unique_tags` (Boolean) Whether each synchronized tag should be suffixed with the image timestamp.

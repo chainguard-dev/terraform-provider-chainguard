@@ -58,5 +58,4 @@ Read-Only:
 - `apko_overlay` (String)
 - `expiration` (String)
 - `source` (String)
-- `sync_apks` (Boolean)
 - `unique_tags` (Boolean)
