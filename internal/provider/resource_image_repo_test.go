@@ -164,7 +164,6 @@ func TestImageRepo(t *testing.T) {
 					}),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `sync_config.unique_tags`, "false"),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `sync_config.grace_period`, "false"),
-					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `sync_config.sync_apks`, "true"),
 					resource.TestCheckNoResourceAttr(`chainguard_image_repo.example`, `aliases`),
 					resource.TestCheckNoResourceAttr(`chainguard_image_repo.example`, `active_tags`),
 				),
@@ -187,7 +186,6 @@ func TestImageRepo(t *testing.T) {
 					}),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `sync_config.unique_tags`, "true"),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `sync_config.grace_period`, "true"),
-					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `sync_config.sync_apks`, "false"),
 				),
 			},
 		},
@@ -229,8 +227,7 @@ resource "chainguard_image_repo" "example" {
   expiration   = %q
   unique_tags  = %t
   grace_period = %t
-  sync_apks    = %t
-}`, time.Now().Add(24*time.Hour).UTC().Format(time.RFC3339), repo.unique, repo.grace, repo.apks)
+}`, time.Now().Add(24*time.Hour).UTC().Format(time.RFC3339), repo.unique, repo.grace)
 	}
 
 	var tierLine string

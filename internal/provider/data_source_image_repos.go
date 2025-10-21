@@ -106,7 +106,6 @@ func (d *imageReposDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 								"source":       types.StringType,
 								"expiration":   types.StringType,
 								"unique_tags":  types.BoolType,
-								"sync_apks":    types.BoolType,
 								"apko_overlay": types.StringType,
 							},
 						},
@@ -184,7 +183,6 @@ func (d *imageReposDataSource) Read(ctx context.Context, req datasource.ReadRequ
 				Source:      types.StringValue(repo.GetSyncConfig().GetSource()),
 				Expiration:  types.StringValue(repo.GetSyncConfig().GetExpiration().AsTime().Format(time.RFC3339)),
 				UniqueTags:  types.BoolValue(repo.GetSyncConfig().GetUniqueTags()),
-				SyncAPKs:    types.BoolValue(repo.GetSyncConfig().GetSyncApks()),
 				ApkoOverlay: types.StringValue(repo.GetSyncConfig().GetApkoOverlay()),
 			}
 		}
