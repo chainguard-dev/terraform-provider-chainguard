@@ -18,6 +18,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
+	"google.golang.org/grpc/metadata"
 
 	common "chainguard.dev/sdk/proto/platform/common/v1"
 	iam "chainguard.dev/sdk/proto/platform/iam/v1"
@@ -147,7 +148,10 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 			resp.Diagnostics.Append(errorToDiagnostic(err, "failed to refresh Chainguard token"))
 			return
 		}
-		clients, err := newPlatformClients(ctx, string(cgToken), r.prov.consoleAPI)
+		// Bypass role binding cache when refreshing token after root group creation
+		// to avoid querying stale cache data during capability computation.
+		refreshCtx := metadata.AppendToOutgoingContext(ctx, "x-chainguard-disable-cache", "true")
+		clients, err := newPlatformClients(refreshCtx, string(cgToken), r.prov.consoleAPI)
 		if err != nil {
 			resp.Diagnostics.Append(errorToDiagnostic(err, "failed to create new platform clients"))
 			return
