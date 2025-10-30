@@ -8,6 +8,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -19,6 +20,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
+	"chainguard.dev/sdk/proto/platform"
 	common "chainguard.dev/sdk/proto/platform/common/v1"
 	iam "chainguard.dev/sdk/proto/platform/iam/v1"
 	"chainguard.dev/sdk/uidp"
@@ -142,18 +144,81 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 	// has new root group in scope.
 	if uidp.InRoot(g.Id) {
 		cfg := r.prov.loginConfig
-		cgToken, err := token.Get(ctx, cfg, true /* forceRefresh */)
+		clients, err := r.waitForRoleBindingPropagation(ctx, g.Id, cfg)
 		if err != nil {
-			resp.Diagnostics.Append(errorToDiagnostic(err, "failed to refresh Chainguard token"))
-			return
-		}
-		clients, err := newPlatformClients(ctx, string(cgToken), r.prov.consoleAPI)
-		if err != nil {
-			resp.Diagnostics.Append(errorToDiagnostic(err, "failed to create new platform clients"))
+			resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to verify root group access for %q", g.Id)))
 			return
 		}
 		r.prov.client = clients
 	}
+}
+
+// waitForRoleBindingPropagation waits for role binding propagation after root group creation.
+// It polls the API with exponential backoff until the group is accessible or times out.
+func (r *groupResource) waitForRoleBindingPropagation(
+	ctx context.Context,
+	groupID string,
+	cfg token.LoginConfig,
+) (platform.Clients, error) {
+	const (
+		maxAttempts = 5
+		baseDelay   = 2 * time.Second
+		maxDelay    = 16 * time.Second
+	)
+
+	for attempt := range maxAttempts {
+		// Refresh token to pick up new capabilities
+		cgToken, err := token.Get(ctx, cfg, true /* forceRefresh */)
+		if err != nil {
+			return nil, fmt.Errorf("failed to refresh token: %w", err)
+		}
+
+		// Create new clients with refreshed token
+		clients, err := newPlatformClients(ctx, string(cgToken), r.prov.consoleAPI)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create clients: %w", err)
+		}
+
+		// Verify group is accessible by attempting to list it
+		gl, err := clients.IAM().Groups().List(ctx, &iam.GroupFilter{
+			Id: groupID,
+		})
+
+		// Return API errors immediately - they are not recoverable
+		if err != nil {
+			return nil, fmt.Errorf("failed to list group: %w", err)
+		}
+
+		// Success: group is accessible
+		if len(gl.Items) > 0 {
+			tflog.Info(ctx, "Root group accessible", map[string]any{
+				"group_id": groupID,
+				"attempts": attempt + 1,
+			})
+			return clients, nil
+		}
+
+		// Group not yet visible - retry with backoff (unless this was the last attempt)
+		if attempt < maxAttempts-1 {
+			// Exponential backoff: 2s, 4s, 8s, 16s
+			delay := min(baseDelay<<attempt, maxDelay)
+
+			tflog.Debug(ctx, "Waiting for role binding propagation", map[string]any{
+				"group_id": groupID,
+				"attempt":  attempt + 1,
+				"delay":    delay.String(),
+			})
+
+			select {
+			case <-time.After(delay):
+				// Continue to next attempt
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("group %q not found after %d attempts", groupID, maxAttempts)
 }
 
 // Read refreshes the Terraform state with the latest data.
