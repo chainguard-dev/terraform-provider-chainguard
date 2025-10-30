@@ -130,13 +130,7 @@ func (r *deploymentResource) Create(ctx context.Context, req resource.CreateRequ
 				"Deployment Creation Failed",
 				fmt.Sprintf("Failed to create deployment for repo %q: %v. Continuing due to ignore_errors=true.", plan.ID.ValueString(), err),
 			)
-			// Set empty state to indicate deployment wasn't created
-			plan.Charts = types.ListNull(types.ObjectType{
-				AttrTypes: map[string]attr.Type{
-					"source": types.StringType,
-					"repo":   types.StringType,
-				},
-			})
+			// Keep the planned charts in state for consistency between plan and apply
 			resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 			return
 		}
