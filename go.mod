@@ -3,7 +3,7 @@ module github.com/chainguard-dev/terraform-provider-chainguard
 go 1.24.6
 
 require (
-	chainguard.dev/apko v0.30.17
+	chainguard.dev/apko v0.30.18
 	chainguard.dev/sdk v0.1.43
 	github.com/chainguard-dev/clog v1.7.0
 	github.com/coreos/go-oidc/v3 v3.16.0
@@ -23,7 +23,7 @@ require (
 
 require (
 	chainguard.dev/go-grpc-kit v0.17.15 // indirect
-	cloud.google.com/go/auth v0.16.5 // indirect
+	cloud.google.com/go/auth v0.17.0 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
 	dario.cat/mergo v1.0.1 // indirect
@@ -49,7 +49,7 @@ require (
 	github.com/fatih/color v1.16.0 // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
 	github.com/go-git/go-billy/v5 v5.6.2 // indirect
-	github.com/go-git/go-git/v5 v5.16.2 // indirect
+	github.com/go-git/go-git/v5 v5.16.3 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.3 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -130,15 +130,15 @@ require (
 	golang.org/x/crypto v0.43.0 // indirect
 	golang.org/x/mod v0.28.0 // indirect
 	golang.org/x/net v0.46.0 // indirect
-	golang.org/x/oauth2 v0.31.0 // indirect
+	golang.org/x/oauth2 v0.32.0 // indirect
 	golang.org/x/sync v0.17.0 // indirect
 	golang.org/x/sys v0.37.0 // indirect
 	golang.org/x/text v0.30.0 // indirect
 	golang.org/x/tools v0.37.0 // indirect
-	google.golang.org/api v0.251.0 // indirect
+	google.golang.org/api v0.253.0 // indirect
 	google.golang.org/appengine v1.6.8 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250825161204-c5933d9347a5 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20250929231259-57b25ae835d4 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20251014184007-4626949a642f // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
