@@ -30,7 +30,9 @@ func TestAccResourceAccountAssociations(t *testing.T) {
 	newGoogleProjectID := acctest.RandString(10)
 	newGoogleProjectNumber := acctest.RandString(10)
 	newAzureTenantId := "30000000-0000-0000-0000-000000000000"
-	newAzureClientIds := map[string]string{}
+	newAzureClientIds := map[string]string{
+		"updated": "40000000-0000-0000-0000-000000000000",
+	}
 
 	group := os.Getenv("TF_ACC_GROUP_ID")
 	subgroup := acctest.RandString(10)
@@ -80,7 +82,7 @@ func TestAccResourceAccountAssociations(t *testing.T) {
 					resource.TestCheckResourceAttr(`chainguard_account_associations.example`, `google.project_id`, newGoogleProjectID),
 					resource.TestCheckResourceAttr(`chainguard_account_associations.example`, `google.project_number`, newGoogleProjectNumber),
 					resource.TestCheckResourceAttr(`chainguard_account_associations.example`, `azure.tenant_id`, newAzureTenantId),
-					resource.TestCheckResourceAttr(`chainguard_account_associations.example`, `azure.client_ids`, `{}`),
+					resource.TestCheckResourceAttr(`chainguard_account_associations.example`, `azure.client_ids.updated`, newAzureClientIds["updated"]),
 					resource.TestCheckResourceAttrWith(`chainguard_account_associations.example`, `chainguard.service_bindings.INGESTER`, func(value string) error {
 						if !uidp.Valid(value) {
 							return fmt.Errorf("not a UIDP: %q", value)
@@ -197,7 +199,7 @@ resource "chainguard_account_associations" "example" {
 
   azure {
     tenant_id = %q
-    client_ids = %q
+    client_ids = %s
   }
 
   chainguard {
@@ -263,7 +265,7 @@ resource "chainguard_account_associations" "example" {
 
   azure {
     tenant_id = %q
-    client_ids = %q
+    client_ids = %s
   }
 }
 `

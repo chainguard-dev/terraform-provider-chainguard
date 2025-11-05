@@ -607,7 +607,9 @@ func TestAccResourceIdentityUsage(t *testing.T) {
 	audience := uidp.NewUID()
 	customClaimID := "claim_" + randString(6)
 	customClaimValue := uidp.NewUID().String() + "@chainguard.dev"
-	resp, err := http.Get(fmt.Sprintf("%s/token?sub=%s&aud=%s&%s=%s", issuer, subject, audience, customClaimID, customClaimValue))
+	url := fmt.Sprintf("%s/token?sub=%s&aud=%s&%s=%s", issuer, subject, audience, customClaimID, customClaimValue)
+	t.Logf("Fetching test token from %q", url)
+	resp, err := http.Get(url)
 	if err != nil {
 		t.Fatalf("NewRequest() = %v", err)
 	}
@@ -715,7 +717,7 @@ resource "chainguard_rolebinding" "binding" {
 
 					// Assume the resulting identity.
 					rs := s.RootModule().Resources["chainguard_identity.user"]
-					tok, err := xchg.Exchange(ctx, envelope.Token, sts.WithIdentity(rs.Primary.ID))
+					resp, err := xchg.Exchange(ctx, envelope.Token, sts.WithIdentity(rs.Primary.ID))
 					if err != nil {
 						return err
 					}
@@ -725,21 +727,21 @@ resource "chainguard_rolebinding" "binding" {
 						InsecureSkipSignatureCheck: true,
 						SkipIssuerCheck:            true,
 					})
-					t, err := verifier.Verify(ctx, tok.AccessToken)
+					tok, err := verifier.Verify(ctx, resp.AccessToken)
 					if err != nil {
 						return err
 					}
 					act := struct {
 						Act map[string]interface{}
 					}{}
-					if err = t.Claims(&act); err != nil {
+					if err = tok.Claims(&act); err != nil {
 						return err
 					}
-					if got, ok := act.Act[customClaimID].(string); !ok || got != customClaimValue {
-						return fmt.Errorf("got act[%q] = %q, wanted %q", customClaimID, got, customClaimValue)
+					if got, ok := act.Act["sub"].(string); !ok || got != subject.String() {
+						return fmt.Errorf("got act[\"sub\"] = %q, wanted %q", got, subject.String())
 					}
 					// Use the token we get back to list groups.
-					cred := sdkauth.NewFromToken(ctx, fmt.Sprintf("Bearer %s", tok.AccessToken), false)
+					cred := sdkauth.NewFromToken(ctx, fmt.Sprintf("Bearer %s", resp.AccessToken), false)
 					clients, err := platform.NewPlatformClients(ctx, os.Getenv("TF_ACC_CONSOLE_API"), cred)
 					if err != nil {
 						return err
@@ -770,7 +772,7 @@ resource "chainguard_identity" "user" {
  claim_match {
    issuer   = %q
    subject  = %q
-	audience = %q
+   audience = %q
    claim_patterns = {
      %s: "^dlorenc@chainguard.dev$"
    }
@@ -786,9 +788,13 @@ resource "chainguard_rolebinding" "binding" {
 				Check: func(s *terraform.State) error {
 					ctx := context.Background()
 
+					// Due to identity caching, this may take a moment to propagate.
+					time.Sleep(5 * time.Second)
+
 					// Assume the resulting identity.
 					rs := s.RootModule().Resources["chainguard_identity.user"]
-					_, err := xchg.Exchange(ctx, envelope.Token, sts.WithIdentity(rs.Primary.ID))
+
+					_, err = xchg.Exchange(ctx, envelope.Token, sts.WithIdentity(rs.Primary.ID))
 					if err == nil {
 						return errors.New("expected err, saw none")
 					}
@@ -859,8 +865,8 @@ resource "chainguard_rolebinding" "binding" {
 					if err = t.Claims(&act); err != nil {
 						return err
 					}
-					if got, ok := act.Act[customClaimID].(string); !ok || got != customClaimValue {
-						return fmt.Errorf("got act[%q] = %q, wanted %q", customClaimID, got, customClaimValue)
+					if got, ok := act.Act["sub"].(string); !ok || got != subject.String() {
+						return fmt.Errorf("got act[\"sub\"] = %q, wanted %q", got, subject.String())
 					}
 					// Use the token we get back to list groups.
 					cred := sdkauth.NewFromToken(ctx, fmt.Sprintf("Bearer %s", tok.AccessToken), false)
@@ -894,7 +900,7 @@ resource "chainguard_identity" "user" {
  claim_match {
    issuer   = %q
    subject  = %q
-	audience = %q
+   audience = %q
    claim_patterns = {
      %s: "^dlorenc@chainguard.dev$"
    }
@@ -910,11 +916,14 @@ resource "chainguard_rolebinding" "binding" {
 				Check: func(s *terraform.State) error {
 					ctx := context.Background()
 
+					// Due to identity caching, this may take a moment to propagate.
+					time.Sleep(5 * time.Second)
+
 					// Assume the resulting identity.
 					rs := s.RootModule().Resources["chainguard_identity.user"]
 					_, err := xchg.Exchange(ctx, envelope.Token, sts.WithIdentity(rs.Primary.ID))
 					if err == nil {
-						return errors.New("expected err, saw none")
+						return fmt.Errorf("expected err, saw none")
 					}
 					if code := status.Code(err); code != codes.PermissionDenied {
 						return fmt.Errorf("expected error code %v, saw %v", codes.PermissionDenied, code)
@@ -923,6 +932,7 @@ resource "chainguard_rolebinding" "binding" {
 					if !strings.Contains(err.Error(), expectMsg) {
 						return fmt.Errorf("expected error to contain %q, saw: %w", expectMsg, err)
 					}
+
 					return nil
 				},
 			}},
@@ -983,8 +993,8 @@ resource "chainguard_rolebinding" "binding" {
 					if err = t.Claims(&act); err != nil {
 						return err
 					}
-					if got, ok := act.Act[customClaimID].(string); !ok || got != customClaimValue {
-						return fmt.Errorf("got act[%q] = %q, wanted %q", customClaimID, got, customClaimValue)
+					if got, ok := act.Act["sub"].(string); !ok || got != subject.String() {
+						return fmt.Errorf("got act[\"sub\"] = %q, wanted %q", got, subject.String())
 					}
 					// Use the token we get back to list groups.
 					cred := sdkauth.NewFromToken(ctx, fmt.Sprintf("Bearer %s", tok.AccessToken), false)
@@ -1018,7 +1028,7 @@ resource "chainguard_identity" "user" {
  claim_match {
    issuer   = %q
    subject  = %q
-	audience = %q
+   audience = %q
    claims = {
      %s: "dlorenc@chainguard.dev"
    }
@@ -1034,9 +1044,13 @@ resource "chainguard_rolebinding" "binding" {
 				Check: func(s *terraform.State) error {
 					ctx := context.Background()
 
+					// Due to identity caching, this may take a moment to propagate.
+					time.Sleep(5 * time.Second)
+
 					// Assume the resulting identity.
 					rs := s.RootModule().Resources["chainguard_identity.user"]
-					_, err := xchg.Exchange(ctx, envelope.Token, sts.WithIdentity(rs.Primary.ID))
+
+					_, err = xchg.Exchange(ctx, envelope.Token, sts.WithIdentity(rs.Primary.ID))
 					if err == nil {
 						return errors.New("expected err, saw none")
 					}
