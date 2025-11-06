@@ -37,7 +37,7 @@ func TestAccResourceIdentityProvider(t *testing.T) {
 		description: acctest.RandString(10),
 		defaultRole: "data.chainguard_role.viewer_test.items[0].id",
 		oidc: oidc{
-			issuer:           "https://example.com",
+			issuer:           "https://justtrustme.dev",
 			clientID:         acctest.RandString(10),
 			clientSecret:     acctest.RandString(10),
 			additionalScopes: `["foo", "bar"]`,
@@ -50,7 +50,7 @@ func TestAccResourceIdentityProvider(t *testing.T) {
 		description: acctest.RandString(10),
 		defaultRole: "data.chainguard_role.viewer_test.items[0].id",
 		oidc: oidc{
-			issuer:           "https://new.example.com",
+			issuer:           "https://justtrustme.dev",
 			clientID:         acctest.RandString(10),
 			clientSecret:     acctest.RandString(10),
 			additionalScopes: `["email", "bar"]`,

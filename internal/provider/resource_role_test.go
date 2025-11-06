@@ -43,7 +43,7 @@ func TestAccRoleResource(t *testing.T) {
 
 	newName := acctest.RandString(10)
 	newDescription := acctest.RandString(10)
-	newCaps := []string{"groups.list", "policy.list"}
+	newCaps := []string{"groups.list", "repo.list"}
 
 	childpattern := regexp.MustCompile(fmt.Sprintf(`%s\/[a-z0-9]{16}`, parent))
 	grandchildpattern := regexp.MustCompile(fmt.Sprintf(`%s\/[a-z0-9]{16}\/[a-z0-9]{16}`, parent))
@@ -81,7 +81,7 @@ func TestAccRoleResource(t *testing.T) {
 					resource.TestCheckResourceAttr("chainguard_role.test", "description", newDescription),
 					resource.TestCheckResourceAttr("chainguard_role.test", "capabilities.#", "2"),
 					resource.TestCheckTypeSetElemAttr("chainguard_role.test", "capabilities.*", "groups.list"),
-					resource.TestCheckTypeSetElemAttr("chainguard_role.test", "capabilities.*", "policy.list"),
+					resource.TestCheckTypeSetElemAttr("chainguard_role.test", "capabilities.*", "repo.list"),
 					resource.TestMatchResourceAttr("chainguard_role.test", "id", grandchildpattern),
 				),
 			},

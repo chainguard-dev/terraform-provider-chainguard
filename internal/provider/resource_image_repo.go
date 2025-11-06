@@ -167,7 +167,7 @@ func (r *imageRepoResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 					},
 					"unique_tags": schema.BoolAttribute{
 						Description: "Whether each synchronized tag should be suffixed with the image timestamp.",
-						Optional:    true,
+						Computed:    true,
 					},
 					"grace_period": schema.BoolAttribute{
 						Description: "Controls whether the image grace period functionality is enabled or not.",
@@ -264,17 +264,21 @@ func (r *imageRepoResource) Create(ctx context.Context, req resource.CreateReque
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		ts, err := time.Parse(time.RFC3339, cfg.Expiration.ValueString())
-		if err != nil {
-			resp.Diagnostics.Append(errorToDiagnostic(err, "failed to parse timestamp"))
-			if resp.Diagnostics.HasError() {
-				return
+		var expiration *timestamppb.Timestamp
+		if !cfg.Expiration.IsNull() && cfg.Expiration.ValueString() != "" {
+			ts, err := time.Parse(time.RFC3339, cfg.Expiration.ValueString())
+			if err != nil {
+				resp.Diagnostics.Append(errorToDiagnostic(err, "failed to parse timestamp"))
+				if resp.Diagnostics.HasError() {
+					return
+				}
 			}
+			expiration = timestamppb.New(ts)
 		}
 		sc = &registry.SyncConfig{
-			Source:      cfg.Source.ValueString(),
-			Expiration:  timestamppb.New(ts),
-			UniqueTags:  cfg.UniqueTags.ValueBool(),
+			Source:     cfg.Source.ValueString(),
+			Expiration: expiration,
+			// UniqueTags is computed (read-only), don't send to API
 			GracePeriod: cfg.GracePeriod.ValueBool(),
 			Amazon:      cfg.Amazon.ValueString(),
 			Google:      cfg.Google.ValueString(),
@@ -320,6 +324,18 @@ func (r *imageRepoResource) Create(ctx context.Context, req resource.CreateReque
 
 	// Save repo details in the state.
 	plan.ID = types.StringValue(repo.Id)
+
+	// Populate computed fields from API response
+	if repo.SyncConfig != nil && !plan.SyncConfig.IsNull() {
+		var cfg syncConfig
+		resp.Diagnostics.Append(plan.SyncConfig.As(ctx, &cfg, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		cfg.UniqueTags = types.BoolValue(repo.SyncConfig.UniqueTags)
+		plan.SyncConfig, _ = types.ObjectValueFrom(ctx, plan.SyncConfig.AttributeTypes(ctx), cfg)
+	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
@@ -374,19 +390,28 @@ func (r *imageRepoResource) Read(ctx context.Context, req resource.ReadRequest, 
 
 	var sc syncConfig
 	var diags diag.Diagnostics
-	if !state.SyncConfig.IsNull() {
+	if !state.SyncConfig.IsNull() && repo.SyncConfig != nil {
 		if diags = state.SyncConfig.As(ctx, &sc, basetypes.ObjectAsOptions{}); diags.HasError() {
 			resp.Diagnostics.Append(diags...)
 			return
 		}
+		// Convert API expiration to string, treating zero time as empty
+		apiExpiration := ""
+		if repo.SyncConfig.Expiration != nil && !repo.SyncConfig.Expiration.AsTime().IsZero() {
+			apiExpiration = repo.SyncConfig.Expiration.AsTime().Format(time.RFC3339)
+		}
 		update := (sc.Source.ValueString() != repo.SyncConfig.Source) ||
-			(sc.Expiration.ValueString() != repo.SyncConfig.Expiration.AsTime().Format(time.RFC3339)) ||
+			(sc.Expiration.ValueString() != apiExpiration) ||
 			(sc.UniqueTags.ValueBool() != repo.SyncConfig.UniqueTags) ||
 			(sc.GracePeriod.ValueBool() != repo.SyncConfig.GracePeriod)
 
 		if update {
 			sc.Source = types.StringValue(repo.SyncConfig.Source)
-			sc.Expiration = types.StringValue(repo.SyncConfig.Expiration.AsTime().Format(time.RFC3339))
+			if apiExpiration != "" {
+				sc.Expiration = types.StringValue(apiExpiration)
+			} else {
+				sc.Expiration = types.StringNull()
+			}
 			sc.UniqueTags = types.BoolValue(repo.SyncConfig.UniqueTags)
 			sc.GracePeriod = types.BoolValue(repo.SyncConfig.GracePeriod)
 			state.SyncConfig, diags = types.ObjectValueFrom(ctx, state.SyncConfig.AttributeTypes(ctx), sc)
@@ -437,17 +462,21 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		ts, err := time.Parse(time.RFC3339, cfg.Expiration.ValueString())
-		if err != nil {
-			resp.Diagnostics.Append(errorToDiagnostic(err, "failed to parse timestamp"))
-			if resp.Diagnostics.HasError() {
-				return
+		var expiration *timestamppb.Timestamp
+		if !cfg.Expiration.IsNull() && cfg.Expiration.ValueString() != "" {
+			ts, err := time.Parse(time.RFC3339, cfg.Expiration.ValueString())
+			if err != nil {
+				resp.Diagnostics.Append(errorToDiagnostic(err, "failed to parse timestamp"))
+				if resp.Diagnostics.HasError() {
+					return
+				}
 			}
+			expiration = timestamppb.New(ts)
 		}
 		sc = &registry.SyncConfig{
-			Source:      cfg.Source.ValueString(),
-			Expiration:  timestamppb.New(ts),
-			UniqueTags:  cfg.UniqueTags.ValueBool(),
+			Source:     cfg.Source.ValueString(),
+			Expiration: expiration,
+			// UniqueTags is computed (read-only), don't send to API
 			GracePeriod: cfg.GracePeriod.ValueBool(),
 			Amazon:      cfg.Amazon.ValueString(),
 			Google:      cfg.Google.ValueString(),
@@ -502,6 +531,17 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 		data.Tier = types.StringValue(repo.CatalogTier.String())
 	} else {
 		data.Tier = types.StringNull()
+	}
+
+	// Populate computed fields from API response
+	if repo.SyncConfig != nil && !data.SyncConfig.IsNull() {
+		var cfg syncConfig
+		resp.Diagnostics.Append(data.SyncConfig.As(ctx, &cfg, basetypes.ObjectAsOptions{})...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		cfg.UniqueTags = types.BoolValue(repo.SyncConfig.UniqueTags)
+		data.SyncConfig, _ = types.ObjectValueFrom(ctx, data.SyncConfig.AttributeTypes(ctx), cfg)
 	}
 
 	var diags diag.Diagnostics

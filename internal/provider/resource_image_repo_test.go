@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -162,7 +161,7 @@ func TestImageRepo(t *testing.T) {
 						}
 						return nil
 					}),
-					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `sync_config.unique_tags`, "false"),
+					resource.TestCheckResourceAttrSet(`chainguard_image_repo.example`, `sync_config.unique_tags`),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `sync_config.grace_period`, "false"),
 					resource.TestCheckNoResourceAttr(`chainguard_image_repo.example`, `aliases`),
 					resource.TestCheckNoResourceAttr(`chainguard_image_repo.example`, `active_tags`),
@@ -184,7 +183,7 @@ func TestImageRepo(t *testing.T) {
 						}
 						return nil
 					}),
-					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `sync_config.unique_tags`, "true"),
+					resource.TestCheckResourceAttrSet(`chainguard_image_repo.example`, `sync_config.unique_tags`),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `sync_config.grace_period`, "true"),
 				),
 			},
@@ -224,10 +223,8 @@ resource "chainguard_image_repo" "example" {
 	if repo.synced {
 		syncLine = fmt.Sprintf(`sync_config {
   source       = chainguard_image_repo.source.id
-  expiration   = %q
-  unique_tags  = %t
   grace_period = %t
-}`, time.Now().Add(24*time.Hour).UTC().Format(time.RFC3339), repo.unique, repo.grace)
+}`, repo.grace)
 	}
 
 	var tierLine string

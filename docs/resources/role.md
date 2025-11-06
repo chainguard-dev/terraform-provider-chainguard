@@ -19,8 +19,7 @@ resource "chainguard_role" "my-role" {
   description = "A user-managed IAM role."
   capabilities = [
     "groups.list",
-    "cluster.list",
-    "policy.list"
+    "repo.list"
   ]
 }
 ```

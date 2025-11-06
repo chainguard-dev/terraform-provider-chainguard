@@ -495,11 +495,17 @@ func populateIdentity(ctx context.Context, m identityResourceModel) (*iam.Identi
 		}
 
 		// Claims or ClaimPatterns
-		claims := make(map[string]string, len(cmModel.Claims.Elements()))
-		cmModel.Claims.ElementsAs(ctx, &claims, false /* allowUnhandled */)
+		var claims map[string]string
+		if !cmModel.Claims.IsNull() {
+			claims = make(map[string]string, len(cmModel.Claims.Elements()))
+			cmModel.Claims.ElementsAs(ctx, &claims, false /* allowUnhandled */)
+		}
 
-		claimPatterns := make(map[string]string, len(cmModel.ClaimPatterns.Elements()))
-		cmModel.ClaimPatterns.ElementsAs(ctx, &claimPatterns, false /* allowUnhandled */)
+		var claimPatterns map[string]string
+		if !cmModel.ClaimPatterns.IsNull() {
+			claimPatterns = make(map[string]string, len(cmModel.ClaimPatterns.Elements()))
+			cmModel.ClaimPatterns.ElementsAs(ctx, &claimPatterns, false /* allowUnhandled */)
+		}
 
 		cm := &iam.Identity_ClaimMatch{
 			Claims:        claims,
@@ -715,12 +721,13 @@ func (r *identityResource) Update(ctx context.Context, req resource.UpdateReques
 		return
 	}
 
-	if _, err = r.prov.client.IAM().Identities().Update(ctx, ident); err != nil {
+	updated, err := r.prov.client.IAM().Identities().Update(ctx, ident)
+	if err != nil {
 		resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to update identity %q", plan.ID.ValueString())))
 		return
 	}
 
-	resp.Diagnostics.Append(populateModel(ctx, &plan, ident)...)
+	resp.Diagnostics.Append(populateModel(ctx, &plan, updated)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
