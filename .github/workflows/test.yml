@@ -62,7 +62,24 @@ jobs:
           terraform_wrapper: false
 
       - run: go mod download
-      - env:
+
+      - name: Build provider
+        run: go build -o terraform-provider-chainguard
+
+      - name: Setup Terraform dev overrides
+        run: |
+          cat > ~/.terraformrc << EOF
+          provider_installation {
+            dev_overrides {
+              "chainguard-dev/chainguard" = "${{ github.workspace }}"
+            }
+            direct {}
+          }
+          EOF
+          terraform init
+
+      - name: Run acceptance tests
+        env:
           TF_ACC: "1"
           TF_ACC_GROUP_ID: "ef127a7c0909329f04b43d845cf80eea4247a07b/66305475446bbef6/51be6000f74f6cb7"
           TF_CHAINGUARD_IDENTITY: "ef127a7c0909329f04b43d845cf80eea4247a07b/66305475446bbef6/51be6000f74f6cb7/72b16b9edc62a069"

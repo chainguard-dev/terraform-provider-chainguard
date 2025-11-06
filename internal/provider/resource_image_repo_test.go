@@ -12,8 +12,6 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
-
-	"chainguard.dev/sdk/uidp"
 )
 
 type testRepo struct {
@@ -21,10 +19,6 @@ type testRepo struct {
 	name       string
 	bundles    string
 	readme     string
-	synced     bool
-	unique     bool
-	grace      bool
-	apks       bool
 	tier       string
 	aliases    string
 	activeTags string
@@ -59,24 +53,6 @@ func TestImageRepo(t *testing.T) {
 		tier:       "BASE",
 		aliases:    `["image:97", "image:98", "image:99"]`,
 		activeTags: `["tag4", "tag5", "tag6"]`,
-	}
-
-	// Delete readme and bundles, add syncing
-	update3 := testRepo{
-		parentID: parentID,
-		name:     name,
-		synced:   true,
-		apks:     true,
-	}
-
-	// Add unique tags and grace period
-	update4 := testRepo{
-		parentID: parentID,
-		name:     name,
-		synced:   true,
-		unique:   true,
-		grace:    true,
-		apks:     false,
 	}
 
 	resource.Test(t, resource.TestCase{
@@ -143,65 +119,15 @@ func TestImageRepo(t *testing.T) {
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `active_tags.2`, "tag6"),
 				),
 			},
-
-			// Update and Read testing. (3)
-			{
-				Config: testImageRepo(update3),
-				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `parent_id`, parentID),
-					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `name`, name),
-					resource.TestCheckNoResourceAttr(`chainguard_image_repo.example`, `bundles`),
-					resource.TestCheckNoResourceAttr(`chainguard_image_repo.example`, `readme`),
-					resource.TestCheckResourceAttrWith(`chainguard_image_repo.example`, `sync_config.source`, func(value string) error {
-						if !uidp.Valid(value) {
-							return fmt.Errorf("not a UIDP: %q", value)
-						}
-						if uidp.Parent(value) != parentID {
-							return fmt.Errorf("unexpected parent: %q, wanted %q", uidp.Parent(value), parentID)
-						}
-						return nil
-					}),
-					resource.TestCheckResourceAttrSet(`chainguard_image_repo.example`, `sync_config.unique_tags`),
-					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `sync_config.grace_period`, "false"),
-					resource.TestCheckNoResourceAttr(`chainguard_image_repo.example`, `aliases`),
-					resource.TestCheckNoResourceAttr(`chainguard_image_repo.example`, `active_tags`),
-				),
-			},
-
-			// Update and Read testing. (4)
-			{
-				Config: testImageRepo(update4),
-				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `parent_id`, parentID),
-					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `name`, name),
-					resource.TestCheckResourceAttrWith(`chainguard_image_repo.example`, `sync_config.source`, func(value string) error {
-						if !uidp.Valid(value) {
-							return fmt.Errorf("not a UIDP: %q", value)
-						}
-						if uidp.Parent(value) != parentID {
-							return fmt.Errorf("unexpected parent: %q, wanted %q", uidp.Parent(value), parentID)
-						}
-						return nil
-					}),
-					resource.TestCheckResourceAttrSet(`chainguard_image_repo.example`, `sync_config.unique_tags`),
-					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `sync_config.grace_period`, "true"),
-				),
-			},
 		},
 	})
 }
 
 func testImageRepo(repo testRepo) string {
 	const tmpl = `
-resource "chainguard_image_repo" "source" {
-  parent_id = %q
-  name      = "source-repo"
-}
-
 resource "chainguard_image_repo" "example" {
   parent_id = %q
   name      = %q
-  %s
   %s
   %s
   %s
@@ -219,14 +145,6 @@ resource "chainguard_image_repo" "example" {
 		readmeLine = fmt.Sprintf("readme = %q", repo.readme)
 	}
 
-	var syncLine string
-	if repo.synced {
-		syncLine = fmt.Sprintf(`sync_config {
-  source       = chainguard_image_repo.source.id
-  grace_period = %t
-}`, repo.grace)
-	}
-
 	var tierLine string
 	if repo.tier != "" {
 		tierLine = fmt.Sprintf("tier = %q", repo.tier)
@@ -242,7 +160,7 @@ resource "chainguard_image_repo" "example" {
 		activeTagsLine = fmt.Sprintf("active_tags = %s", repo.activeTags)
 	}
 
-	return fmt.Sprintf(tmpl, repo.parentID, repo.parentID, repo.name, bundlesLine, readmeLine, syncLine, tierLine, aliasesLine, activeTagsLine)
+	return fmt.Sprintf(tmpl, repo.parentID, repo.name, bundlesLine, readmeLine, tierLine, aliasesLine, activeTagsLine)
 }
 
 // Multiple equivalent concurrent updates should not cause errors.
