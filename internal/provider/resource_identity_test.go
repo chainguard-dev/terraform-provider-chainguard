@@ -732,7 +732,7 @@ resource "chainguard_rolebinding" "binding" {
 						return err
 					}
 					act := struct {
-						Act map[string]interface{}
+						Act map[string]any
 					}{}
 					if err = tok.Claims(&act); err != nil {
 						return err
@@ -860,7 +860,7 @@ resource "chainguard_rolebinding" "binding" {
 						return err
 					}
 					act := struct {
-						Act map[string]interface{}
+						Act map[string]any
 					}{}
 					if err = t.Claims(&act); err != nil {
 						return err
@@ -988,7 +988,7 @@ resource "chainguard_rolebinding" "binding" {
 						return err
 					}
 					act := struct {
-						Act map[string]interface{}
+						Act map[string]any
 					}{}
 					if err = t.Claims(&act); err != nil {
 						return err

@@ -490,7 +490,7 @@ func populateIdentity(ctx context.Context, m identityResourceModel) (*iam.Identi
 	if !m.ClaimMatch.IsNull() {
 		var cmModel claimMatchModel
 		if diags := m.ClaimMatch.As(ctx, &cmModel, basetypes.ObjectAsOptions{}); diags.HasError() {
-			tflog.Error(ctx, "failed to cast claim match model from state or plan", map[string]interface{}{"model": m, "error": diags[0].Detail()})
+			tflog.Error(ctx, "failed to cast claim match model from state or plan", map[string]any{"model": m, "error": diags[0].Detail()})
 			return nil, errors.New("failed to cast claim match model from plan")
 		}
 
@@ -554,7 +554,7 @@ func populateIdentity(ctx context.Context, m identityResourceModel) (*iam.Identi
 	} else if !m.AWSIdentity.IsNull() {
 		var awsModel awsIdentityModel
 		if diags := m.AWSIdentity.As(ctx, &awsModel, basetypes.ObjectAsOptions{}); diags.HasError() {
-			tflog.Error(ctx, "failed to cast aws model from state or plan", map[string]interface{}{"model": m, "error": diags[0].Detail()})
+			tflog.Error(ctx, "failed to cast aws model from state or plan", map[string]any{"model": m, "error": diags[0].Detail()})
 			return nil, errors.New("failed to cast aws model from state or plan")
 		}
 
@@ -593,7 +593,7 @@ func populateIdentity(ctx context.Context, m identityResourceModel) (*iam.Identi
 		var exp *timestamppb.Timestamp
 		var stModel staticModel
 		if diags := m.Static.As(ctx, &stModel, basetypes.ObjectAsOptions{}); diags.HasError() {
-			tflog.Error(ctx, "failed to cast static model from state or plan", map[string]interface{}{"model": m, "error": diags[0].Detail()})
+			tflog.Error(ctx, "failed to cast static model from state or plan", map[string]any{"model": m, "error": diags[0].Detail()})
 			return nil, errors.New("failed to cast aws model from state or plan")
 		}
 

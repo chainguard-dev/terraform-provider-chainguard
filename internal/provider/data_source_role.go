@@ -119,7 +119,7 @@ func (d *roleDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	tflog.Info(ctx, "read role data-source request", map[string]interface{}{"input-params": data.InputParams()})
+	tflog.Info(ctx, "read role data-source request", map[string]any{"input-params": data.InputParams()})
 
 	all, err := d.prov.client.IAM().Roles().List(ctx, &iam.RoleFilter{
 		Id:     data.ID.ValueString(),

@@ -72,7 +72,7 @@ func refreshChainguardToken(ctx context.Context, cfg LoginConfig, life time.Dura
 		return nil
 	}
 
-	tflog.Info(ctx, "refreshing Chainguard token", map[string]interface{}{
+	tflog.Info(ctx, "refreshing Chainguard token", map[string]any{
 		"UseRefreshTokens": cfg.UseRefreshTokens,
 	})
 	var (

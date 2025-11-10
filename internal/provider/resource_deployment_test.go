@@ -14,11 +14,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
-func testAccResourceDeployment(repoID string, charts []map[string]interface{}) string {
+func testAccResourceDeployment(repoID string, charts []map[string]any) string {
 	return testAccResourceDeploymentWithIgnoreErrors(repoID, charts, false)
 }
 
-func testAccResourceDeploymentWithIgnoreErrors(repoID string, charts []map[string]interface{}, ignoreErrors bool) string {
+func testAccResourceDeploymentWithIgnoreErrors(repoID string, charts []map[string]any, ignoreErrors bool) string {
 	const tmpl = `
 resource "chainguard_image_repo_deployment" "test" {
 	id = %q
@@ -49,7 +49,7 @@ func TestAccResourceDeployment_basic(t *testing.T) {
 		return
 	}
 
-	charts := []map[string]interface{}{
+	charts := []map[string]any{
 		{
 			"repo":   "oci://ghcr.io/stefanprodan/charts/podinfo",
 			"source": "https://github.com/stefanprodan/podinfo",
@@ -78,7 +78,7 @@ func TestAccResourceDeployment_basic(t *testing.T) {
 			},
 			// Update and Read testing
 			{
-				Config: testAccResourceDeployment(repoID, []map[string]interface{}{
+				Config: testAccResourceDeployment(repoID, []map[string]any{
 					{
 						"repo": "https://kyverno.github.io/kyverno/",
 					},
@@ -107,7 +107,7 @@ func TestAccResourceDeployment_chartsOnly(t *testing.T) {
 	}
 
 	// Test charts without source field (repo-only charts)
-	chartsNoSource := []map[string]interface{}{
+	chartsNoSource := []map[string]any{
 		{
 			"repo": "https://kyverno.github.io/kyverno/",
 		},
@@ -117,7 +117,7 @@ func TestAccResourceDeployment_chartsOnly(t *testing.T) {
 	}
 
 	// Test single chart with ignore_errors
-	chartsWithIgnoreErrors := []map[string]interface{}{
+	chartsWithIgnoreErrors := []map[string]any{
 		{
 			"repo": "https://charts.bitnami.com/bitnami",
 		},
