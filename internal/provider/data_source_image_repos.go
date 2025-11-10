@@ -134,7 +134,7 @@ func (d *imageReposDataSource) Read(ctx context.Context, req datasource.ReadRequ
 		return
 	}
 
-	tflog.Info(ctx, "read imageRepos data-source request", map[string]interface{}{"input-params": data.InputParams()})
+	tflog.Info(ctx, "read imageRepos data-source request", map[string]any{"input-params": data.InputParams()})
 
 	filter := &registry.RepoFilter{}
 	if !data.Name.IsNull() {
@@ -203,7 +203,7 @@ func (d *imageReposDataSource) Read(ctx context.Context, req datasource.ReadRequ
 	idHash := sha256.Sum256([]byte(data.InputParams()))
 	data.ID = types.StringValue(fmt.Sprintf("image_repos-%x", idHash[:8]))
 
-	tflog.Info(ctx, "imageRepos data-source completed", map[string]interface{}{"items_found": len(data.Items)})
+	tflog.Info(ctx, "imageRepos data-source completed", map[string]any{"items_found": len(data.Items)})
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

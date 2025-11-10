@@ -160,7 +160,7 @@ func (d *imageRepoDataSource) Read(ctx context.Context, req datasource.ReadReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	tflog.Info(ctx, "read imageRepo data-source request", map[string]interface{}{"input-params": data.InputParams()})
+	tflog.Info(ctx, "read imageRepo data-source request", map[string]any{"input-params": data.InputParams()})
 	filter := &registry.RepoFilter{}
 	if !data.ID.IsNull() {
 		filter.Id = data.ID.ValueString()

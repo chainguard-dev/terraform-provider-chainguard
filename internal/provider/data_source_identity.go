@@ -91,7 +91,7 @@ func (d *identityDataSource) Read(ctx context.Context, req datasource.ReadReques
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	tflog.Info(ctx, "read identity data-source request", map[string]interface{}{"config": data})
+	tflog.Info(ctx, "read identity data-source request", map[string]any{"config": data})
 
 	lr := &iam.LookupRequest{
 		Subject: data.Subject.ValueString(),

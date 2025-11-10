@@ -252,7 +252,7 @@ func (d *versionsDataSource) Read(ctx context.Context, req datasource.ReadReques
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	tflog.Info(ctx, "read versions data-source request", map[string]interface{}{"config": data})
+	tflog.Info(ctx, "read versions data-source request", map[string]any{"config": data})
 
 	pkg := data.Package.ValueString()
 	variant := data.Variant.ValueString()

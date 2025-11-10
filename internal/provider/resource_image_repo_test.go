@@ -188,7 +188,7 @@ func TestImageRepo_ConcurrentUpdates(t *testing.T) {
 	})
 
 	// N concurrent updates, with no changes.
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		t.Run("concurrent_updates", func(t *testing.T) {
 			t.Parallel()
 
