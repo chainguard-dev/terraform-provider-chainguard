@@ -156,8 +156,9 @@ func (r *imageRepoResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 						Optional:    true, // This attribute is required, but only if the block is defined. See Validators.
 					},
 					"expiration": schema.StringAttribute{
-						Description: "The RFC3339 encoded date and time at which this entitlement will expire.",
-						Optional:    true, // This attribute is required, but only if the block is defined. See Validators.
+						Description: "The RFC3339 encoded date and time at which this entitlement will expire. Computed by API if not provided.",
+						Computed:    true,
+						Optional:    true,
 						Validators: []validator.String{
 							validators.ValidateStringFuncs(checkRFC3339),
 						},
@@ -167,7 +168,8 @@ func (r *imageRepoResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 						Computed:    true,
 					},
 					"grace_period": schema.BoolAttribute{
-						Description: "Controls whether the image grace period functionality is enabled or not.",
+						Description: "Controls whether the image grace period functionality is enabled or not. Defaults to false if not provided.",
+						Computed:    true,
 						Optional:    true,
 					},
 					"amazon": schema.StringAttribute{
@@ -274,14 +276,17 @@ func (r *imageRepoResource) Create(ctx context.Context, req resource.CreateReque
 			expiration = timestamppb.New(ts)
 		}
 		sc = &registry.SyncConfig{
-			Source:     cfg.Source.ValueString(),
-			Expiration: expiration,
-			// UniqueTags is computed (read-only), don't send to API
-			GracePeriod: cfg.GracePeriod.ValueBool(),
+			Source:      cfg.Source.ValueString(),
+			Expiration:  expiration,
 			Amazon:      cfg.Amazon.ValueString(),
 			Google:      cfg.Google.ValueString(),
 			Azure:       cfg.Azure.ValueString(),
 			ApkoOverlay: cfg.ApkoOverlay.ValueString(),
+			// UniqueTags is computed (read-only), don't send to API
+		}
+		// Only set grace_period if provided by user
+		if !cfg.GracePeriod.IsNull() {
+			sc.GracePeriod = cfg.GracePeriod.ValueBool()
 		}
 	}
 
@@ -323,15 +328,24 @@ func (r *imageRepoResource) Create(ctx context.Context, req resource.CreateReque
 	// Save repo details in the state.
 	plan.ID = types.StringValue(repo.Id)
 
-	// Populate computed fields from API response
+	// Populate computed sync_config fields from API response
 	if repo.SyncConfig != nil && !plan.SyncConfig.IsNull() {
 		var cfg syncConfig
-		resp.Diagnostics.Append(plan.SyncConfig.As(ctx, &cfg, basetypes.ObjectAsOptions{})...)
-		if resp.Diagnostics.HasError() {
+		if diags := plan.SyncConfig.As(ctx, &cfg, basetypes.ObjectAsOptions{}); diags.HasError() {
+			resp.Diagnostics.Append(diags...)
 			return
 		}
+		cfg.Source = types.StringValue(repo.SyncConfig.Source)
+		cfg.Expiration = types.StringValue(repo.SyncConfig.Expiration.AsTime().Format(time.RFC3339))
 		cfg.UniqueTags = types.BoolValue(repo.SyncConfig.UniqueTags)
-		plan.SyncConfig, _ = types.ObjectValueFrom(ctx, plan.SyncConfig.AttributeTypes(ctx), cfg)
+		cfg.GracePeriod = types.BoolValue(repo.SyncConfig.GracePeriod)
+
+		if objVal, diags := types.ObjectValueFrom(ctx, plan.SyncConfig.AttributeTypes(ctx), cfg); diags.HasError() {
+			resp.Diagnostics.Append(diags...)
+			return
+		} else {
+			plan.SyncConfig = objVal
+		}
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
@@ -481,14 +495,17 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 			expiration = timestamppb.New(ts)
 		}
 		sc = &registry.SyncConfig{
-			Source:     cfg.Source.ValueString(),
-			Expiration: expiration,
-			// UniqueTags is computed (read-only), don't send to API
-			GracePeriod: cfg.GracePeriod.ValueBool(),
+			Source:      cfg.Source.ValueString(),
+			Expiration:  expiration,
 			Amazon:      cfg.Amazon.ValueString(),
 			Google:      cfg.Google.ValueString(),
 			Azure:       cfg.Azure.ValueString(),
 			ApkoOverlay: cfg.ApkoOverlay.ValueString(),
+			// UniqueTags is computed (read-only), don't send to API
+		}
+		// Only set grace_period if provided by user
+		if !cfg.GracePeriod.IsNull() {
+			sc.GracePeriod = cfg.GracePeriod.ValueBool()
 		}
 	}
 
