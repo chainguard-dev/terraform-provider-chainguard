@@ -335,7 +335,8 @@ func (r *imageRepoResource) Create(ctx context.Context, req resource.CreateReque
 			resp.Diagnostics.Append(diags...)
 			return
 		}
-		cfg.Source = types.StringValue(repo.SyncConfig.Source)
+		// Populate computed fields from API response
+		// Note: Source is NOT populated here to avoid overwriting user input
 		cfg.Expiration = types.StringValue(repo.SyncConfig.Expiration.AsTime().Format(time.RFC3339))
 		cfg.UniqueTags = types.BoolValue(repo.SyncConfig.UniqueTags)
 		cfg.GracePeriod = types.BoolValue(repo.SyncConfig.GracePeriod)
