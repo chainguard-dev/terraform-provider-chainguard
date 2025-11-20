@@ -336,7 +336,6 @@ func (r *imageRepoResource) Create(ctx context.Context, req resource.CreateReque
 			return
 		}
 		// Populate computed fields from API response
-		// Note: Source is NOT populated here to avoid overwriting user input
 		cfg.Expiration = types.StringValue(repo.SyncConfig.Expiration.AsTime().Format(time.RFC3339))
 		cfg.UniqueTags = types.BoolValue(repo.SyncConfig.UniqueTags)
 		cfg.GracePeriod = types.BoolValue(repo.SyncConfig.GracePeriod)
@@ -471,6 +470,13 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	// Also get current state to preserve computed values user didn't change
+	var state imageRepoResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 	tflog.Info(ctx, fmt.Sprintf("update image repo request: %s", data.ID))
 
 	// Lock to prevent concurrent update of the same repo.
@@ -484,8 +490,19 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 		if resp.Diagnostics.HasError() {
 			return
 		}
+
+		// Get current state values to preserve when user doesn't provide new ones
+		var stateCfg syncConfig
+		if !state.SyncConfig.IsNull() {
+			resp.Diagnostics.Append(state.SyncConfig.As(ctx, &stateCfg, basetypes.ObjectAsOptions{})...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+		}
+
 		var expiration *timestamppb.Timestamp
 		if !cfg.Expiration.IsNull() && cfg.Expiration.ValueString() != "" {
+			// User provided new expiration value
 			ts, err := time.Parse(time.RFC3339, cfg.Expiration.ValueString())
 			if err != nil {
 				resp.Diagnostics.Append(errorToDiagnostic(err, "failed to parse timestamp"))
@@ -494,6 +511,12 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 				}
 			}
 			expiration = timestamppb.New(ts)
+		} else if !stateCfg.Expiration.IsNull() && stateCfg.Expiration.ValueString() != "" {
+			// User didn't provide new value, preserve existing from state
+			ts, err := time.Parse(time.RFC3339, stateCfg.Expiration.ValueString())
+			if err == nil {
+				expiration = timestamppb.New(ts)
+			}
 		}
 		sc = &registry.SyncConfig{
 			Source:      cfg.Source.ValueString(),
@@ -504,9 +527,11 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 			ApkoOverlay: cfg.ApkoOverlay.ValueString(),
 			// UniqueTags is computed (read-only), don't send to API
 		}
-		// Only set grace_period if provided by user
+		// Set grace_period: use user's new value if provided, else preserve from state
 		if !cfg.GracePeriod.IsNull() {
 			sc.GracePeriod = cfg.GracePeriod.ValueBool()
+		} else if !stateCfg.GracePeriod.IsNull() {
+			sc.GracePeriod = stateCfg.GracePeriod.ValueBool()
 		}
 	}
 
@@ -558,15 +583,24 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 		data.Tier = types.StringNull()
 	}
 
-	// Populate computed fields from API response
+	// Populate computed sync_config fields from API response
 	if repo.SyncConfig != nil && !data.SyncConfig.IsNull() {
 		var cfg syncConfig
-		resp.Diagnostics.Append(data.SyncConfig.As(ctx, &cfg, basetypes.ObjectAsOptions{})...)
-		if resp.Diagnostics.HasError() {
+		if diags := data.SyncConfig.As(ctx, &cfg, basetypes.ObjectAsOptions{}); diags.HasError() {
+			resp.Diagnostics.Append(diags...)
 			return
 		}
+		// Populate all computed fields from API response (don't overwrite Source)
+		cfg.Expiration = types.StringValue(repo.SyncConfig.Expiration.AsTime().Format(time.RFC3339))
 		cfg.UniqueTags = types.BoolValue(repo.SyncConfig.UniqueTags)
-		data.SyncConfig, _ = types.ObjectValueFrom(ctx, data.SyncConfig.AttributeTypes(ctx), cfg)
+		cfg.GracePeriod = types.BoolValue(repo.SyncConfig.GracePeriod)
+
+		if objVal, diags := types.ObjectValueFrom(ctx, data.SyncConfig.AttributeTypes(ctx), cfg); diags.HasError() {
+			resp.Diagnostics.Append(diags...)
+			return
+		} else {
+			data.SyncConfig = objVal
+		}
 	}
 
 	var diags diag.Diagnostics
