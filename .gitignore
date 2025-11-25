@@ -38,3 +38,6 @@ website/vendor
 *.winfile eol=crlf
 
 terraform-provider-chainguard
+
+# Ignore local dev configurations
+dev.tfrc

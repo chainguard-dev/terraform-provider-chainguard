@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -33,12 +34,26 @@ const (
 
 var lock sync.RWMutex
 
+// withAlias returns a normalized alias to use for storing/retrieving the local Chainguard
+// token based on an attribute of the configuration. We use the identity ID as the alias to
+// allow callers to use multiple provider blocks within the same environment, given they use
+// a different identity ID. Unfortunately, we don't have programmatic access to the `alias`
+// field in the provider block, so identity ID is used as a stand in.
+// NB: WithAlias("") is a no-op, so this is backwards compatible with current implementations that
+// do not set the identity ID.
+func withAlias(cfg LoginConfig) sdktoken.Option {
+	// Since the alias will become part of a path, normalize it to use
+	// _ rather than / for delimiters.
+	a := strings.ReplaceAll(cfg.IdentityID, "/", "_")
+	return sdktoken.WithAlias(a)
+}
+
 // Get retrieves a Chainguard token, refreshing it if expired/non-existent or forceRefresh == true.
 // If automatic authentication is disabled, returns an unauthenticated error.
 func Get(ctx context.Context, cfg LoginConfig, forceRefresh bool) ([]byte, error) {
 	// Get the remaining life of the current token.
 	lock.RLock()
-	life := sdktoken.RemainingLife(sdktoken.KindAccess, cfg.Audience, tokenLifeBuffer)
+	life := sdktoken.RemainingLife(sdktoken.KindAccess, cfg.Audience, tokenLifeBuffer, withAlias(cfg))
 	lock.RUnlock()
 
 	// If token is expired or not found, or we're forcing a refresh, login and save a new one.
@@ -51,7 +66,7 @@ func Get(ctx context.Context, cfg LoginConfig, forceRefresh bool) ([]byte, error
 
 	lock.RLock()
 	defer lock.RUnlock()
-	return sdktoken.Load(sdktoken.KindAccess, cfg.Audience)
+	return sdktoken.Load(sdktoken.KindAccess, cfg.Audience, withAlias(cfg))
 }
 
 // refreshChainguardToken attempts to get a new Chainguard token either through user browser flow,
@@ -68,7 +83,7 @@ func refreshChainguardToken(ctx context.Context, cfg LoginConfig, life time.Dura
 	defer lock.Unlock()
 
 	// Check that the token wasn't refreshed by another thread
-	if sdktoken.RemainingLife(sdktoken.KindAccess, cfg.Audience, tokenLifeBuffer) > life {
+	if sdktoken.RemainingLife(sdktoken.KindAccess, cfg.Audience, tokenLifeBuffer, withAlias(cfg)) > life {
 		return nil
 	}
 
@@ -84,10 +99,10 @@ func refreshChainguardToken(ctx context.Context, cfg LoginConfig, life time.Dura
 	if cfg.UseRefreshTokens {
 		accessToken, refreshToken, err = exchangeRefreshToken(ctx, cfg)
 		if err == nil && accessToken != "" && refreshToken != "" {
-			return saveTokens(accessToken, refreshToken, cfg.Audience)
+			return saveTokens(accessToken, refreshToken, cfg)
 		}
 		// If refresh token exchange failed, fall through to login flow
-		tflog.Warn(ctx, fmt.Sprintf("failed to exchange refresh token: %s", err.Error()))
+		tflog.Warn(ctx, fmt.Sprintf("failed to exchange refresh token: %v", err))
 	}
 
 	if cfg.IdentityToken != "" {
@@ -99,15 +114,15 @@ func refreshChainguardToken(ctx context.Context, cfg LoginConfig, life time.Dura
 		return fmt.Errorf("failed to get Chainguard token: %w", err)
 	}
 
-	return saveTokens(accessToken, refreshToken, cfg.Audience)
+	return saveTokens(accessToken, refreshToken, cfg)
 }
 
-func saveTokens(accessToken, refreshToken, audience string) error {
-	if err := sdktoken.Save([]byte(accessToken), sdktoken.KindAccess, audience); err != nil {
+func saveTokens(accessToken, refreshToken string, cfg LoginConfig) error {
+	if err := sdktoken.Save([]byte(accessToken), sdktoken.KindAccess, cfg.Audience, withAlias(cfg)); err != nil {
 		return fmt.Errorf("failed to save Chainguard token: %w", err)
 	}
 	if refreshToken != "" {
-		if err := sdktoken.Save([]byte(refreshToken), sdktoken.KindRefresh, audience); err != nil {
+		if err := sdktoken.Save([]byte(refreshToken), sdktoken.KindRefresh, cfg.Audience, withAlias(cfg)); err != nil {
 			return fmt.Errorf("failed to save refresh token: %w", err)
 		}
 	}
@@ -147,7 +162,7 @@ func getChainguardToken(ctx context.Context, cfg LoginConfig) (accessToken strin
 
 func exchangeRefreshToken(ctx context.Context, cfg LoginConfig) (cgToken string, refreshToken string, err error) {
 	tflog.Info(ctx, "exchanging refresh token for access token")
-	refreshTokenBytes, err := sdktoken.Load(sdktoken.KindRefresh, cfg.Audience)
+	refreshTokenBytes, err := sdktoken.Load(sdktoken.KindRefresh, cfg.Audience, withAlias(cfg))
 	if err != nil {
 		return "", "", fmt.Errorf("failed to load refresh token: %w", err)
 	}
