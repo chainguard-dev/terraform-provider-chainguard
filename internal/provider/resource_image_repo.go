@@ -418,7 +418,9 @@ func (r *imageRepoResource) Read(ctx context.Context, req resource.ReadRequest, 
 			(sc.GracePeriod.ValueBool() != repo.SyncConfig.GracePeriod)
 
 		if update {
-			sc.Source = types.StringValue(repo.SyncConfig.Source)
+			// Don't overwrite Source - preserve user's input (friendly names like "nginx")
+			// The API accepts both friendly names and UIDPs, and we should maintain what
+			// the user declared in their config, not what the API returns internally.
 			if apiExpiration != "" {
 				sc.Expiration = types.StringValue(apiExpiration)
 			} else {
