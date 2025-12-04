@@ -47,14 +47,15 @@ func (d imageRepoDataSourceModel) InputParams() string {
 }
 
 type imageRepoModel struct {
-	ID         types.String `tfsdk:"id"`
-	Name       types.String `tfsdk:"name"`
-	Bundles    types.List   `tfsdk:"bundles"`
-	Readme     types.String `tfsdk:"readme"`
-	SyncConfig *syncConfig  `tfsdk:"sync_config"`
-	Tier       types.String `tfsdk:"tier"`
-	Aliases    types.List   `tfsdk:"aliases"`
-	ActiveTags types.List   `tfsdk:"active_tags"`
+	ID          types.String `tfsdk:"id"`
+	Name        types.String `tfsdk:"name"`
+	Bundles     types.List   `tfsdk:"bundles"`
+	Readme      types.String `tfsdk:"readme"`
+	Description types.String `tfsdk:"description"`
+	SyncConfig  *syncConfig  `tfsdk:"sync_config"`
+	Tier        types.String `tfsdk:"tier"`
+	Aliases     types.List   `tfsdk:"aliases"`
+	ActiveTags  types.List   `tfsdk:"active_tags"`
 }
 
 // Metadata returns the data source type name.
@@ -113,6 +114,10 @@ func (d *imageRepoDataSource) Schema(_ context.Context, _ datasource.SchemaReque
 							Validators: []validator.String{
 								validators.ValidateStringFuncs(validReadmeValue),
 							},
+						},
+						"description": schema.StringAttribute{
+							Description: "A brief description of this repo.",
+							Optional:    true,
 						},
 						"tier": schema.StringAttribute{
 							Description: "Image tier associated with this repo.",
@@ -211,14 +216,15 @@ func (d *imageRepoDataSource) Read(ctx context.Context, req datasource.ReadReque
 			}
 		}
 		data.Items = append(data.Items, &imageRepoModel{
-			ID:         types.StringValue(repo.GetId()),
-			Name:       types.StringValue(repo.GetName()),
-			Bundles:    bundles,
-			Readme:     types.StringValue(repo.GetReadme()),
-			SyncConfig: sc,
-			Tier:       types.StringValue(repo.GetCatalogTier().String()),
-			Aliases:    aliases,
-			ActiveTags: activeTags,
+			ID:          types.StringValue(repo.GetId()),
+			Name:        types.StringValue(repo.GetName()),
+			Bundles:     bundles,
+			Readme:      types.StringValue(repo.GetReadme()),
+			Description: types.StringValue(repo.GetDescription()),
+			SyncConfig:  sc,
+			Tier:        types.StringValue(repo.GetCatalogTier().String()),
+			Aliases:     aliases,
+			ActiveTags:  activeTags,
 		})
 	}
 	if len(items.GetItems()) == 0 {
