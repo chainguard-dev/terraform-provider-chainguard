@@ -96,6 +96,10 @@ func (d *imageReposDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 							Description: "The README for this repo.",
 							Computed:    true,
 						},
+						"description": schema.StringAttribute{
+							Description: "A brief description of this repo.",
+							Computed:    true,
+						},
 						"tier": schema.StringAttribute{
 							Description: "Image tier associated with this repo.",
 							Computed:    true,
@@ -188,14 +192,15 @@ func (d *imageReposDataSource) Read(ctx context.Context, req datasource.ReadRequ
 		}
 
 		data.Items = append(data.Items, &imageRepoModel{
-			ID:         types.StringValue(repo.GetId()),
-			Name:       types.StringValue(repo.GetName()),
-			Bundles:    bundles,
-			Readme:     types.StringValue(repo.GetReadme()),
-			SyncConfig: sc,
-			Tier:       types.StringValue(repo.GetCatalogTier().String()),
-			Aliases:    aliases,
-			ActiveTags: activeTags,
+			ID:          types.StringValue(repo.GetId()),
+			Name:        types.StringValue(repo.GetName()),
+			Bundles:     bundles,
+			Readme:      types.StringValue(repo.GetReadme()),
+			Description: types.StringValue(repo.GetDescription()),
+			SyncConfig:  sc,
+			Tier:        types.StringValue(repo.GetCatalogTier().String()),
+			Aliases:     aliases,
+			ActiveTags:  activeTags,
 		})
 	}
 

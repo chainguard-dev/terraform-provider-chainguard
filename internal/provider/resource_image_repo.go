@@ -49,12 +49,13 @@ type imageRepoResource struct {
 }
 
 type imageRepoResourceModel struct {
-	ID         types.String `tfsdk:"id"`
-	Name       types.String `tfsdk:"name"`
-	ParentID   types.String `tfsdk:"parent_id"`
-	Bundles    types.List   `tfsdk:"bundles"`
-	Readme     types.String `tfsdk:"readme"`
-	SyncConfig types.Object `tfsdk:"sync_config"`
+	ID          types.String `tfsdk:"id"`
+	Name        types.String `tfsdk:"name"`
+	ParentID    types.String `tfsdk:"parent_id"`
+	Bundles     types.List   `tfsdk:"bundles"`
+	Readme      types.String `tfsdk:"readme"`
+	Description types.String `tfsdk:"description"`
+	SyncConfig  types.Object `tfsdk:"sync_config"`
 	// Image tier (e.g. APPLICATION, BASE, etc.)
 	Tier       types.String `tfsdk:"tier"`
 	Aliases    types.List   `tfsdk:"aliases"`
@@ -117,6 +118,10 @@ func (r *imageRepoResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				Validators: []validator.String{
 					validators.ValidateStringFuncs(validReadmeValue),
 				},
+			},
+			"description": schema.StringAttribute{
+				Description: "A brief description of this repo.",
+				Optional:    true,
 			},
 			"tier": schema.StringAttribute{
 				Description: "Image tier associated with this repo.",
@@ -314,6 +319,7 @@ func (r *imageRepoResource) Create(ctx context.Context, req resource.CreateReque
 			Name:        plan.Name.ValueString(),
 			Bundles:     bundles,
 			Readme:      plan.Readme.ValueString(),
+			Description: plan.Description.ValueString(),
 			SyncConfig:  sc,
 			CatalogTier: registry.CatalogTier(registry.CatalogTier_value[plan.Tier.ValueString()]),
 			Aliases:     aliases,
@@ -394,6 +400,11 @@ func (r *imageRepoResource) Read(ctx context.Context, req resource.ReadRequest, 
 	// Only update the state readme if it started as non-null or we receive a description.
 	if !state.Readme.IsNull() || repo.Readme != "" {
 		state.Readme = types.StringValue(repo.Readme)
+	}
+
+	// Only update the state description if it started as non-null or we receive a description.
+	if !state.Description.IsNull() || repo.Description != "" {
+		state.Description = types.StringValue(repo.Description)
 	}
 
 	if !state.Tier.IsNull() || repo.CatalogTier != registry.CatalogTier_UNKNOWN {
@@ -560,6 +571,7 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 		Name:        data.Name.ValueString(),
 		Bundles:     bundles,
 		Readme:      data.Readme.ValueString(),
+		Description: data.Description.ValueString(),
 		SyncConfig:  sc,
 		CatalogTier: registry.CatalogTier(registry.CatalogTier_value[data.Tier.ValueString()]),
 		Aliases:     aliases,
@@ -577,6 +589,10 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 	// Treat empty readme as nil
 	if repo.Readme != "" {
 		data.Readme = types.StringValue(repo.Readme)
+	}
+	// Treat empty description as nil
+	if repo.Description != "" {
+		data.Description = types.StringValue(repo.Description)
 	}
 	// Treat UNKNOWN tier as null, but only if it was already null
 	if !data.Tier.IsNull() || repo.CatalogTier != registry.CatalogTier_UNKNOWN {
