@@ -19,6 +19,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	registry "chainguard.dev/sdk/proto/platform/registry/v1"
 	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
@@ -117,28 +119,21 @@ func (r *deploymentResource) Create(ctx context.Context, req resource.CreateRequ
 		return
 	}
 
-	// Check if deployment already exists for this repo
-	_, getErr := r.prov.client.Registry().Registry().GetDeployment(ctx, &registry.GetDeploymentRequest{
-		RepoId: plan.ID.ValueString(),
+	// Try to create the deployment first
+	d, err := r.prov.client.Registry().Registry().CreateDeployment(ctx, &registry.CreateDeploymentRequest{
+		ParentId: plan.ID.ValueString(), // The repo UIDP
+		Charts:   helmCharts,
 	})
 
-	var d *registry.Deployment
-	var err error
-
-	if getErr != nil {
-		// Deployment doesn't exist, create it
-		tflog.Info(ctx, fmt.Sprintf("No existing deployment found for repo %s, creating new deployment", plan.ID.ValueString()))
-		d, err = r.prov.client.Registry().Registry().CreateDeployment(ctx, &registry.CreateDeploymentRequest{
-			ParentId: plan.ID.ValueString(), // The repo UIDP
-			Charts:   helmCharts,
-		})
-	} else {
-		// Deployment exists, update it instead
-		tflog.Info(ctx, fmt.Sprintf("Existing deployment found for repo %s, updating instead of creating", plan.ID.ValueString()))
-		d, err = r.prov.client.Registry().Registry().UpdateDeployment(ctx, &registry.UpdateDeploymentRequest{
-			RepoId: plan.ID.ValueString(), // The repo UIDP
-			Charts: helmCharts,
-		})
+	// If creation fails with AlreadyExists, update the existing deployment instead
+	if err != nil {
+		if st, ok := status.FromError(err); ok && st.Code() == codes.AlreadyExists {
+			tflog.Info(ctx, fmt.Sprintf("Deployment already exists for repo %s, updating instead", plan.ID.ValueString()))
+			d, err = r.prov.client.Registry().Registry().UpdateDeployment(ctx, &registry.UpdateDeploymentRequest{
+				RepoId: plan.ID.ValueString(), // The repo UIDP
+				Charts: helmCharts,
+			})
+		}
 	}
 	if err != nil {
 		if plan.IgnoreErrors.ValueBool() {
