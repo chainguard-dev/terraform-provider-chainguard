@@ -117,11 +117,29 @@ func (r *deploymentResource) Create(ctx context.Context, req resource.CreateRequ
 		return
 	}
 
-	// Create the deployment
-	d, err := r.prov.client.Registry().Registry().CreateDeployment(ctx, &registry.CreateDeploymentRequest{
-		ParentId: plan.ID.ValueString(), // The repo UIDP
-		Charts:   helmCharts,
+	// Check if deployment already exists for this repo
+	_, getErr := r.prov.client.Registry().Registry().GetDeployment(ctx, &registry.GetDeploymentRequest{
+		RepoId: plan.ID.ValueString(),
 	})
+
+	var d *registry.Deployment
+	var err error
+
+	if getErr != nil {
+		// Deployment doesn't exist, create it
+		tflog.Info(ctx, fmt.Sprintf("No existing deployment found for repo %s, creating new deployment", plan.ID.ValueString()))
+		d, err = r.prov.client.Registry().Registry().CreateDeployment(ctx, &registry.CreateDeploymentRequest{
+			ParentId: plan.ID.ValueString(), // The repo UIDP
+			Charts:   helmCharts,
+		})
+	} else {
+		// Deployment exists, update it instead
+		tflog.Info(ctx, fmt.Sprintf("Existing deployment found for repo %s, updating instead of creating", plan.ID.ValueString()))
+		d, err = r.prov.client.Registry().Registry().UpdateDeployment(ctx, &registry.UpdateDeploymentRequest{
+			RepoId: plan.ID.ValueString(), // The repo UIDP
+			Charts: helmCharts,
+		})
+	}
 	if err != nil {
 		if plan.IgnoreErrors.ValueBool() {
 			// Log as warning instead of failing
