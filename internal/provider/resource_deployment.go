@@ -52,6 +52,7 @@ type deploymentResourceModel struct {
 type helmChartModel struct {
 	Source types.String `tfsdk:"source"`
 	Repo   types.String `tfsdk:"repo"`
+	Chart  types.String `tfsdk:"chart"`
 }
 
 func (r *deploymentResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -86,6 +87,10 @@ func (r *deploymentResource) Schema(_ context.Context, _ resource.SchemaRequest,
 						"repo": schema.StringAttribute{
 							Description: "Repository URL of the chart (e.g., 'oci://ghcr.io/stefanprodan/charts/podinfo' or 'https://kyverno.github.io/kyverno/').",
 							Required:    true,
+						},
+						"chart": schema.StringAttribute{
+							Description: "Chart name or path within the repository.",
+							Optional:    true,
 						},
 					},
 				},
@@ -300,6 +305,10 @@ func (r *deploymentResource) convertChartsToProto(ctx context.Context, charts ty
 			source := chartModel.Source.ValueString()
 			chart.Source = &source
 		}
+		if !chartModel.Chart.IsNull() {
+			chartName := chartModel.Chart.ValueString()
+			chart.Chart = &chartName
+		}
 		helmCharts = append(helmCharts, chart)
 	}
 	return helmCharts
@@ -317,12 +326,18 @@ func (r *deploymentResource) convertChartsFromProto(ctx context.Context, protoCh
 		} else {
 			chartElements[i].Source = types.StringNull()
 		}
+		if chart.Chart != nil {
+			chartElements[i].Chart = types.StringValue(*chart.Chart)
+		} else {
+			chartElements[i].Chart = types.StringNull()
+		}
 	}
 
 	chartsList, chartsDiags := types.ListValueFrom(ctx, types.ObjectType{
 		AttrTypes: map[string]attr.Type{
 			"source": types.StringType,
 			"repo":   types.StringType,
+			"chart":  types.StringType,
 		},
 	}, chartElements)
 	diags.Append(chartsDiags...)
