@@ -8,10 +8,12 @@ resource "chainguard_deployment" "example" {
       # OCI-based Helm chart
       repo   = "oci://ghcr.io/stefanprodan/charts/podinfo"
       source = "https://github.com/stefanprodan/podinfo"
+      # chart is optional - only include if the name of the specific chart used from the given repo is needed
     },
     {
       # Traditional Helm repository
-      repo = "https://kyverno.github.io/kyverno/"
+      repo  = "https://kyverno.github.io/kyverno/"
+      chart = "kyverno"
       # source is optional - only include if you want to reference the source code
     },
     {

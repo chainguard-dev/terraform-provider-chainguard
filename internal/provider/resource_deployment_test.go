@@ -32,6 +32,9 @@ resource "chainguard_image_repo_deployment" "test" {
 		if source, ok := chart["source"]; ok && source != "" {
 			chartConfig += fmt.Sprintf("\t\t\tsource = %q\n", source)
 		}
+		if chartName, ok := chart["chart"]; ok && chartName != "" {
+			chartConfig += fmt.Sprintf("\t\t\tchart = %q\n", chartName)
+		}
 		chartConfig += "\t\t},\n"
 		chartConfigs = append(chartConfigs, chartConfig)
 	}
@@ -68,6 +71,7 @@ func TestAccResourceDeployment_basic(t *testing.T) {
 					resource.TestCheckResourceAttr("chainguard_image_repo_deployment.test", "charts.#", "1"),
 					resource.TestCheckResourceAttr("chainguard_image_repo_deployment.test", "charts.0.repo", "oci://ghcr.io/stefanprodan/charts/podinfo"),
 					resource.TestCheckResourceAttr("chainguard_image_repo_deployment.test", "charts.0.source", "https://github.com/stefanprodan/podinfo"),
+					resource.TestCheckNoResourceAttr("chainguard_image_repo_deployment.test", "charts.0.chart"),
 				),
 			},
 			// ImportState testing
@@ -80,7 +84,8 @@ func TestAccResourceDeployment_basic(t *testing.T) {
 			{
 				Config: testAccResourceDeployment(repoID, []map[string]any{
 					{
-						"repo": "https://kyverno.github.io/kyverno/",
+						"repo":  "https://kyverno.github.io/kyverno/",
+						"chart": "kyverno",
 					},
 					{
 						"repo":   "oci://ghcr.io/stefanprodan/charts/podinfo",
@@ -91,8 +96,10 @@ func TestAccResourceDeployment_basic(t *testing.T) {
 					resource.TestCheckResourceAttr("chainguard_image_repo_deployment.test", "charts.#", "2"),
 					resource.TestCheckResourceAttr("chainguard_image_repo_deployment.test", "charts.0.repo", "https://kyverno.github.io/kyverno/"),
 					resource.TestCheckNoResourceAttr("chainguard_image_repo_deployment.test", "charts.0.source"),
+					resource.TestCheckResourceAttr("chainguard_image_repo_deployment.test", "charts.0.chart", "kyverno"),
 					resource.TestCheckResourceAttr("chainguard_image_repo_deployment.test", "charts.1.repo", "oci://ghcr.io/stefanprodan/charts/podinfo"),
 					resource.TestCheckResourceAttr("chainguard_image_repo_deployment.test", "charts.1.source", "https://github.com/stefanprodan/podinfo"),
+					resource.TestCheckNoResourceAttr("chainguard_image_repo_deployment.test", "charts.1.chart"),
 				),
 			},
 		},
@@ -135,8 +142,10 @@ func TestAccResourceDeployment_chartsOnly(t *testing.T) {
 					resource.TestCheckResourceAttr("chainguard_image_repo_deployment.test", "charts.#", "2"),
 					resource.TestCheckResourceAttr("chainguard_image_repo_deployment.test", "charts.0.repo", "https://kyverno.github.io/kyverno/"),
 					resource.TestCheckNoResourceAttr("chainguard_image_repo_deployment.test", "charts.0.source"),
+					resource.TestCheckNoResourceAttr("chainguard_image_repo_deployment.test", "charts.0.chart"),
 					resource.TestCheckResourceAttr("chainguard_image_repo_deployment.test", "charts.1.repo", "https://prometheus-community.github.io/helm-charts"),
 					resource.TestCheckNoResourceAttr("chainguard_image_repo_deployment.test", "charts.1.source"),
+					resource.TestCheckNoResourceAttr("chainguard_image_repo_deployment.test", "charts.1.chart"),
 				),
 			},
 			// Test ignore_errors = true
@@ -148,6 +157,7 @@ func TestAccResourceDeployment_chartsOnly(t *testing.T) {
 					resource.TestCheckResourceAttr("chainguard_image_repo_deployment.test", "charts.#", "1"),
 					resource.TestCheckResourceAttr("chainguard_image_repo_deployment.test", "charts.0.repo", "https://charts.bitnami.com/bitnami"),
 					resource.TestCheckNoResourceAttr("chainguard_image_repo_deployment.test", "charts.0.source"),
+					resource.TestCheckNoResourceAttr("chainguard_image_repo_deployment.test", "charts.0.chart"),
 				),
 			},
 		},
