@@ -5,7 +5,7 @@ go 1.25.4
 require (
 	chainguard.dev/apko v0.30.29
 	chainguard.dev/sdk v0.1.45
-	github.com/chainguard-dev/clog v1.7.0
+	github.com/chainguard-dev/clog v1.8.0
 	github.com/coreos/go-oidc/v3 v3.17.0
 	github.com/google/go-cmp v0.7.0
 	github.com/hashicorp/terraform-plugin-docs v0.24.0
