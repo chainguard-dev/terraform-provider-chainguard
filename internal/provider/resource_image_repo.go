@@ -49,12 +49,13 @@ type imageRepoResource struct {
 }
 
 type imageRepoResourceModel struct {
-	ID         types.String `tfsdk:"id"`
-	Name       types.String `tfsdk:"name"`
-	ParentID   types.String `tfsdk:"parent_id"`
-	Bundles    types.List   `tfsdk:"bundles"`
-	Readme     types.String `tfsdk:"readme"`
-	SyncConfig types.Object `tfsdk:"sync_config"`
+	ID          types.String `tfsdk:"id"`
+	Name        types.String `tfsdk:"name"`
+	ParentID    types.String `tfsdk:"parent_id"`
+	Bundles     types.List   `tfsdk:"bundles"`
+	Readme      types.String `tfsdk:"readme"`
+	SyncConfig  types.Object `tfsdk:"sync_config"`
+	Description types.String `tfsdk:"description"`
 	// Image tier (e.g. APPLICATION, BASE, etc.)
 	Tier       types.String `tfsdk:"tier"`
 	Aliases    types.List   `tfsdk:"aliases"`
@@ -116,6 +117,13 @@ func (r *imageRepoResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				Optional:    true,
 				Validators: []validator.String{
 					validators.ValidateStringFuncs(validReadmeValue),
+				},
+			},
+			"description": schema.StringAttribute{
+				Description: "The short description of this repo.",
+				Optional:    true,
+				Validators: []validator.String{
+					validators.ValidateStringFuncs(validDescriptionValue),
 				},
 			},
 			"tier": schema.StringAttribute{
@@ -235,6 +243,14 @@ func validReadmeValue(s string) error {
 	return nil
 }
 
+// validDescriptionValue implements validators.ValidateStringFunc.
+func validDescriptionValue(s string) error {
+	if diff, err := validation.ValidateDescription(s); err != nil {
+		return fmt.Errorf("description is invalid: %w. diff: %s", err, diff)
+	}
+	return nil
+}
+
 // ImportState imports resources by ID into the current Terraform state.
 func (r *imageRepoResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
@@ -318,6 +334,7 @@ func (r *imageRepoResource) Create(ctx context.Context, req resource.CreateReque
 			CatalogTier: registry.CatalogTier(registry.CatalogTier_value[plan.Tier.ValueString()]),
 			Aliases:     aliases,
 			ActiveTags:  activeTags,
+			Description: plan.Description.ValueString(),
 		},
 	})
 	if err != nil {
@@ -390,6 +407,12 @@ func (r *imageRepoResource) Read(ctx context.Context, req resource.ReadRequest, 
 	state.ID = types.StringValue(repo.Id)
 	state.ParentID = types.StringValue(uidp.Parent(repo.Id))
 	state.Name = types.StringValue(repo.Name)
+
+	// Only update the state description if it started as non-null or we get it
+	// from registry
+	if !state.Description.IsNull() || repo.Description != "" {
+		state.Description = types.StringValue(repo.Description)
+	}
 
 	// Only update the state readme if it started as non-null or we receive a description.
 	if !state.Readme.IsNull() || repo.Readme != "" {
@@ -560,6 +583,7 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 		Name:        data.Name.ValueString(),
 		Bundles:     bundles,
 		Readme:      data.Readme.ValueString(),
+		Description: data.Description.ValueString(),
 		SyncConfig:  sc,
 		CatalogTier: registry.CatalogTier(registry.CatalogTier_value[data.Tier.ValueString()]),
 		Aliases:     aliases,
