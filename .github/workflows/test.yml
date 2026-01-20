@@ -52,7 +52,7 @@ jobs:
           check-latest: true
           cache: true
 
-      - uses: chainguard-dev/setup-chainctl@be0acd273acf04bfdf91f51198327e719f6af978 # v0.4.0
+      - uses: chainguard-dev/setup-chainctl@c125f765e82b09a42af3185f3214465314d75c5d # v0.5.0
         with:
           identity: "ef127a7c0909329f04b43d845cf80eea4247a07b/66305475446bbef6/51be6000f74f6cb7/72b16b9edc62a069"
 
