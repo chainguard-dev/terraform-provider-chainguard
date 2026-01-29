@@ -127,6 +127,10 @@ func (d *imageRepoDataSource) Schema(_ context.Context, _ datasource.SchemaReque
 								"source":       types.StringType,
 								"expiration":   types.StringType,
 								"unique_tags":  types.BoolType,
+								"grace_period": types.BoolType,
+								"google":       types.StringType,
+								"amazon":       types.StringType,
+								"azure":        types.StringType,
 								"apko_overlay": types.StringType,
 							},
 						},
@@ -207,6 +211,10 @@ func (d *imageRepoDataSource) Read(ctx context.Context, req datasource.ReadReque
 				Source:      types.StringValue(repo.GetSyncConfig().GetSource()),
 				Expiration:  types.StringValue(repo.GetSyncConfig().GetExpiration().AsTime().Format(time.RFC3339)),
 				UniqueTags:  types.BoolValue(repo.GetSyncConfig().GetUniqueTags()),
+				GracePeriod: types.BoolValue(repo.GetSyncConfig().GetGracePeriod()),
+				Google:      types.StringValue(repo.GetSyncConfig().GetGoogle()),
+				Amazon:      types.StringValue(repo.GetSyncConfig().GetAmazon()),
+				Azure:       types.StringValue(repo.GetSyncConfig().GetAzure()),
 				ApkoOverlay: types.StringValue(repo.GetSyncConfig().GetApkoOverlay()),
 			}
 		}
