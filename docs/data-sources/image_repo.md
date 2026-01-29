@@ -47,6 +47,7 @@ Optional:
 
 Read-Only:
 
+- `description` (String) The short description of this repo.
 - `id` (String) The UIDP of this repo.
 - `name` (String) The name of this repo.
 
