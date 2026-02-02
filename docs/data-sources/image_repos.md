@@ -33,6 +33,7 @@ Read-Only:
 - `active_tags` (List of String) List of active tags for this repo.
 - `aliases` (List of String) Known aliases for a given image.
 - `bundles` (List of String) List of bundles associated with this repo (a-z freeform keywords for sales purposes).
+- `description` (String) The short description of this repo.
 - `id` (String) The UIDP of this repo.
 - `name` (String) The name of this repo.
 - `readme` (String) The README for this repo.
