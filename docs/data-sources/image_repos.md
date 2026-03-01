@@ -45,7 +45,11 @@ Read-Only:
 
 Read-Only:
 
+- `amazon` (String)
 - `apko_overlay` (String)
+- `azure` (String)
 - `expiration` (String)
+- `google` (String)
+- `grace_period` (Boolean)
 - `source` (String)
 - `unique_tags` (Boolean)
