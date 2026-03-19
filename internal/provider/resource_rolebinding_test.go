@@ -69,6 +69,27 @@ func TestAccRolebindingResource(t *testing.T) {
 
 }
 
+func TestAccRolebindingResource_InvalidRole(t *testing.T) {
+	group := os.Getenv(EnvAccGroupID)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: fmt.Sprintf(`
+resource "chainguard_rolebinding" "bad" {
+  identity = %q
+  group    = %q
+  role     = "not-a-valid-uidp"
+}
+`, group+"/"+acctest.RandString(16), group),
+				ExpectError: regexp.MustCompile(`valid UIDP`),
+			},
+		},
+	})
+}
+
 func testAccResourceRoleBinding(groupID, subgroup, roleID string) string {
 	tmpl := `
 resource "chainguard_identity" "user" {

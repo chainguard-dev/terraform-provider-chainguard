@@ -8,6 +8,7 @@ package provider
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -123,6 +124,24 @@ func TestImageRepo(t *testing.T) {
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `active_tags.1`, "tag5"),
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `active_tags.2`, "tag6"),
 				),
+			},
+		},
+	})
+}
+
+func TestImageRepo_InvalidParentID(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: `
+resource "chainguard_image_repo" "bad" {
+  parent_id = "not-a-valid-uidp"
+  name      = "test"
+}
+`,
+				ExpectError: regexp.MustCompile(`valid UIDP`),
 			},
 		},
 	})
