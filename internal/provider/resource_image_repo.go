@@ -387,7 +387,9 @@ func (r *imageRepoResource) Create(ctx context.Context, req resource.CreateReque
 			return
 		}
 		// Populate computed fields from API response
-		cfg.Expiration = types.StringValue(repo.SyncConfig.Expiration.AsTime().Format(time.RFC3339))
+		if repo.SyncConfig.Expiration != nil && !repo.SyncConfig.Expiration.AsTime().IsZero() {
+			cfg.Expiration = types.StringValue(repo.SyncConfig.Expiration.AsTime().Format(time.RFC3339))
+		}
 		cfg.UniqueTags = types.BoolValue(repo.SyncConfig.UniqueTags)
 		cfg.GracePeriod = types.BoolValue(repo.SyncConfig.GracePeriod)
 
@@ -651,7 +653,9 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 			return
 		}
 		// Populate all computed fields from API response (don't overwrite Source)
-		cfg.Expiration = types.StringValue(repo.SyncConfig.Expiration.AsTime().Format(time.RFC3339))
+		if repo.SyncConfig.Expiration != nil && !repo.SyncConfig.Expiration.AsTime().IsZero() {
+			cfg.Expiration = types.StringValue(repo.SyncConfig.Expiration.AsTime().Format(time.RFC3339))
+		}
 		cfg.UniqueTags = types.BoolValue(repo.SyncConfig.UniqueTags)
 		cfg.GracePeriod = types.BoolValue(repo.SyncConfig.GracePeriod)
 

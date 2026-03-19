@@ -453,7 +453,7 @@ func calculate(ctx context.Context, client registry.RegistryClient, pkg string, 
 
 // returns whether we are eol, whether we are in the grace period window, and any error.
 func checkEOLGracePeriodWindow(eolDate string, gracePeriodMonths int64) (bool, bool, error) {
-	t, err := time.Parse(time.DateOnly, eolDate)
+	t, err := time.ParseInLocation(time.DateOnly, eolDate, time.UTC)
 	if err != nil {
 		return false, false, err
 	}

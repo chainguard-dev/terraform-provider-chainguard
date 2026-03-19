@@ -208,9 +208,13 @@ func (d *imageRepoDataSource) Read(ctx context.Context, req datasource.ReadReque
 
 		var sc *syncConfig
 		if repo.SyncConfig != nil {
+			expiration := types.StringNull()
+			if repo.GetSyncConfig().GetExpiration() != nil && !repo.GetSyncConfig().GetExpiration().AsTime().IsZero() {
+				expiration = types.StringValue(repo.GetSyncConfig().GetExpiration().AsTime().Format(time.RFC3339))
+			}
 			sc = &syncConfig{
 				Source:      types.StringValue(repo.GetSyncConfig().GetSource()),
-				Expiration:  types.StringValue(repo.GetSyncConfig().GetExpiration().AsTime().Format(time.RFC3339)),
+				Expiration:  expiration,
 				UniqueTags:  types.BoolValue(repo.GetSyncConfig().GetUniqueTags()),
 				ApkoOverlay: types.StringValue(repo.GetSyncConfig().GetApkoOverlay()),
 			}
