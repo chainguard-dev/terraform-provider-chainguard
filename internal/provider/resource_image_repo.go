@@ -256,7 +256,41 @@ func (r *imageRepoResource) ImportState(ctx context.Context, req resource.Import
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
-var mu sync.Mutex
+// repoLocks provides per-key locking so that operations on different repos
+// can proceed concurrently while operations on the same repo are serialized.
+var repoLocks = struct {
+	sync.Mutex
+	refs map[string]*repoLock
+}{refs: make(map[string]*repoLock)}
+
+type repoLock struct {
+	sync.Mutex
+	refCount int
+}
+
+// lockRepo acquires a per-key lock and returns an unlock function.
+// Different keys can proceed concurrently; the same key serializes.
+func lockRepo(key string) func() {
+	repoLocks.Lock()
+	rl, ok := repoLocks.refs[key]
+	if !ok {
+		rl = &repoLock{}
+		repoLocks.refs[key] = rl
+	}
+	rl.refCount++
+	repoLocks.Unlock()
+
+	rl.Lock()
+	return func() {
+		rl.Unlock()
+		repoLocks.Lock()
+		rl.refCount--
+		if rl.refCount == 0 {
+			delete(repoLocks.refs, key)
+		}
+		repoLocks.Unlock()
+	}
+}
 
 // Create creates the resource and sets the initial Terraform state.
 func (r *imageRepoResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -269,8 +303,8 @@ func (r *imageRepoResource) Create(ctx context.Context, req resource.CreateReque
 	tflog.Info(ctx, fmt.Sprintf("create image repo request: name=%s, parent_id=%s", plan.Name, plan.ParentID))
 
 	// Lock to prevent concurrent creation of the same repo.
-	mu.Lock()
-	defer mu.Unlock()
+	unlock := lockRepo(plan.ParentID.ValueString() + "/" + plan.Name.ValueString())
+	defer unlock()
 
 	var sc *registry.SyncConfig
 	// Skip sync_config during acceptance tests to avoid permission issues
@@ -378,9 +412,9 @@ func (r *imageRepoResource) Read(ctx context.Context, req resource.ReadRequest, 
 	}
 	tflog.Info(ctx, fmt.Sprintf("read image repo request: %s", state.ID))
 
-	// Lock to prevent concurrent update of the same repo.
-	mu.Lock()
-	defer mu.Unlock()
+	// Lock to prevent concurrent operations on the same repo.
+	unlock := lockRepo(state.ID.ValueString())
+	defer unlock()
 
 	// Query for the repo to update state
 	id := state.ID.ValueString()
@@ -504,9 +538,9 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 	}
 	tflog.Info(ctx, fmt.Sprintf("update image repo request: %s", data.ID))
 
-	// Lock to prevent concurrent update of the same repo.
-	mu.Lock()
-	defer mu.Unlock()
+	// Lock to prevent concurrent operations on the same repo.
+	unlock := lockRepo(data.ID.ValueString())
+	defer unlock()
 
 	var sc *registry.SyncConfig
 	if !data.SyncConfig.IsNull() {
@@ -678,9 +712,9 @@ func (r *imageRepoResource) Delete(ctx context.Context, req resource.DeleteReque
 	}
 	tflog.Info(ctx, fmt.Sprintf("ACCEPTANCE TEST: delete image repo request: %s", state.ID))
 
-	// Lock to prevent concurrent creation of the same repo.
-	mu.Lock()
-	defer mu.Unlock()
+	// Lock to prevent concurrent operations on the same repo.
+	unlock := lockRepo(state.ID.ValueString())
+	defer unlock()
 
 	id := state.ID.ValueString()
 	_, err := r.prov.client.Registry().Registry().DeleteRepo(ctx, &registry.DeleteRepoRequest{
