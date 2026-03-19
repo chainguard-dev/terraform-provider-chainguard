@@ -33,7 +33,6 @@ jobs:
       matrix:
         # list whatever Terraform versions here you would like to support
         terraform:
-          - "1.12.*"
           - "1.13.*"
           - "1.14.*"
     steps:
