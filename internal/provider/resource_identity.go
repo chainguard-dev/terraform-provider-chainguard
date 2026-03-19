@@ -368,12 +368,18 @@ func populateModel(ctx context.Context, model *identityResourceModel, id *iam.Id
 	}
 	if id.CreatedAt != nil {
 		model.CreatedAt = types.StringValue(id.CreatedAt.AsTime().Format(time.RFC3339))
+	} else {
+		model.CreatedAt = types.StringNull()
 	}
 	if id.UpdatedAt != nil {
 		model.UpdatedAt = types.StringValue(id.UpdatedAt.AsTime().Format(time.RFC3339))
+	} else {
+		model.UpdatedAt = types.StringNull()
 	}
 	if id.LastSeen != nil {
 		model.LastSeen = types.StringValue(id.LastSeen.AsTime().Format(time.RFC3339))
+	} else {
+		model.LastSeen = types.StringNull()
 	}
 
 	if lit, ok := id.Relationship.(*iam.Identity_ClaimMatch_); ok {

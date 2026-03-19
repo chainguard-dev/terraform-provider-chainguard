@@ -217,6 +217,23 @@ func TestGroupResource_update(t *testing.T) {
 
 }
 
+func TestGroupResourceModel_ComputedFieldsAreKnown(t *testing.T) {
+	// Verify that setting ResourceLimits to null (as done in Create/Read)
+	// produces a known value, not unknown. Unknown values after apply
+	// cause "Provider returned invalid result object after apply" errors.
+	m := groupResourceModel{
+		ID:             types.StringValue("test"),
+		Name:           types.StringValue("test"),
+		ResourceLimits: types.MapNull(types.Int32Type),
+	}
+	if m.ResourceLimits.IsUnknown() {
+		t.Error("ResourceLimits should be known (null) after explicit set, got unknown")
+	}
+	if !m.ResourceLimits.IsNull() {
+		t.Error("ResourceLimits should be null when no limits exist")
+	}
+}
+
 func TestAccGroupResource(t *testing.T) {
 	name := acctest.RandString(10)
 	description := acctest.RandString(10)
