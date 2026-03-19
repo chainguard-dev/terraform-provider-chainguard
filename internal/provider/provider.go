@@ -186,6 +186,7 @@ only consider the filtered versions.`,
 					"identity_token": schema.StringAttribute{
 						Description: "A path to an OIDC identity token, or explicit identity token.",
 						Optional:    true,
+						Sensitive:   true,
 						Validators: []validator.String{
 							stringvalidator.ConflictsWith(
 								path.Root("login_options").AtName("identity_provider_id").Expression(),
