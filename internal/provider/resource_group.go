@@ -190,7 +190,7 @@ func (r *groupResource) waitForRoleBindingPropagation(
 		}
 
 		// Success: group is accessible
-		if len(gl.Items) > 0 {
+		if len(gl.GetItems()) > 0 {
 			tflog.Info(ctx, "Root group accessible", map[string]any{
 				"group_id": groupID,
 				"attempts": attempt + 1,
