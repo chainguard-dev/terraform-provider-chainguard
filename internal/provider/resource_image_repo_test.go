@@ -8,7 +8,10 @@ package provider
 import (
 	"fmt"
 	"os"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -161,6 +164,60 @@ resource "chainguard_image_repo" "example" {
 	}
 
 	return fmt.Sprintf(tmpl, repo.parentID, repo.name, bundlesLine, readmeLine, tierLine, aliasesLine, activeTagsLine)
+}
+
+func TestLockRepo_SameKeySerializes(t *testing.T) {
+	var counter atomic.Int32
+
+	var wg sync.WaitGroup
+	for range 10 {
+		wg.Go(func() {
+			unlock := lockRepo("same-key")
+			defer unlock()
+
+			// If the lock works, only one goroutine is in this section at a time.
+			cur := counter.Add(1)
+			if cur != 1 {
+				t.Errorf("expected exclusive access, got %d concurrent holders", cur)
+			}
+			time.Sleep(time.Millisecond)
+			counter.Add(-1)
+		})
+	}
+	wg.Wait()
+}
+
+func TestLockRepo_DifferentKeysConcurrent(t *testing.T) {
+	// Two different keys should not block each other.
+	unlock1 := lockRepo("key-a")
+
+	done := make(chan struct{})
+	go func() {
+		unlock2 := lockRepo("key-b")
+		unlock2()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// key-b acquired while key-a held — correct.
+	case <-time.After(time.Second):
+		t.Fatal("different keys blocked each other")
+	}
+	unlock1()
+}
+
+func TestLockRepo_CleansUpEntries(t *testing.T) {
+	unlock := lockRepo("ephemeral-key")
+	unlock()
+
+	repoLocks.Lock()
+	_, exists := repoLocks.refs["ephemeral-key"]
+	repoLocks.Unlock()
+
+	if exists {
+		t.Error("expected map entry to be cleaned up after unlock")
+	}
 }
 
 // Multiple equivalent concurrent updates should not cause errors.
