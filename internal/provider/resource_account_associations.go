@@ -54,6 +54,7 @@ type accountAssociationsResourceModel struct {
 	Google      types.Object `tfsdk:"google"`
 	Azure       types.Object `tfsdk:"azure"`
 	Chainguard  types.Object `tfsdk:"chainguard"`
+	Github      types.Object `tfsdk:"github"`
 }
 
 type amazonAccountModel struct {
@@ -72,6 +73,13 @@ type googleAccountModel struct {
 type azureAccountModel struct {
 	TenantID  types.String `tfsdk:"tenant_id"`
 	ClientIDs types.Map    `tfsdk:"client_ids"`
+}
+
+type githubAccountModel struct {
+	Host           types.String `tfsdk:"host"`
+	AppID          types.Int64  `tfsdk:"app_id"`
+	InstallationID types.Int64  `tfsdk:"installation_id"`
+	Name           types.String `tfsdk:"name"`
 }
 
 func (r *accountAssociationsResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -124,6 +132,7 @@ func (r *accountAssociationsResource) Schema(_ context.Context, _ resource.Schem
 						path.MatchRoot("google"),
 						path.MatchRoot("azure"),
 						path.MatchRoot("chainguard"),
+						path.MatchRoot("github"),
 					),
 				},
 				Attributes: map[string]schema.Attribute{
@@ -193,6 +202,32 @@ func (r *accountAssociationsResource) Schema(_ context.Context, _ resource.Schem
 					},
 				},
 			},
+			"github": schema.SingleNestedBlock{
+				Description: "GitHub App installation configuration",
+				Validators: []validator.Object{
+					objectvalidator.AlsoRequires(
+						path.Root("github").AtName("installation_id").Expression(),
+					),
+				},
+				Attributes: map[string]schema.Attribute{
+					"host": schema.StringAttribute{
+						Description: "GitHub hostname the app is associated with.",
+						Computed:    true,
+					},
+					"app_id": schema.Int64Attribute{
+						Description: "GitHub App ID.",
+						Computed:    true,
+					},
+					"installation_id": schema.Int64Attribute{
+						Description: "GitHub App Installation ID.",
+						Optional:    true,
+					},
+					"name": schema.StringAttribute{
+						Description: "GitHub user/org name the installation is installed on.",
+						Optional:    true,
+					},
+				},
+			},
 		},
 	}
 }
@@ -246,6 +281,18 @@ func populateAccountAssociation(ctx context.Context, m accountAssociationsResour
 		assoc.Google = &iam.AccountAssociations_Google{
 			ProjectId:     gm.ProjectID.ValueString(),
 			ProjectNumber: gm.ProjectNumber.ValueString(),
+		}
+	}
+
+	if !m.Github.IsNull() {
+		var gm githubAccountModel
+		if diags = m.Github.As(ctx, &gm, basetypes.ObjectAsOptions{}); diags.HasError() {
+			return nil, diags
+		}
+
+		assoc.Github = &iam.AccountAssociations_GitHubInstallation{
+			InstallationId: gm.InstallationID.ValueInt64(),
+			Name:           gm.Name.ValueString(),
 		}
 	}
 
@@ -427,6 +474,17 @@ func (r *accountAssociationsResource) Read(ctx context.Context, req resource.Rea
 			state.Azure, diags = types.ObjectValueFrom(ctx, state.Azure.AttributeTypes(ctx), am)
 			resp.Diagnostics.Append(diags...)
 		}
+	}
+
+	if assoc.Github != nil {
+		gm := githubAccountModel{
+			Host:           types.StringValue(assoc.Github.Host),
+			AppID:          types.Int64Value(assoc.Github.AppId),
+			InstallationID: types.Int64Value(assoc.Github.InstallationId),
+			Name:           types.StringValue(assoc.Github.Name),
+		}
+		state.Github, diags = types.ObjectValueFrom(ctx, state.Github.AttributeTypes(ctx), gm)
+		resp.Diagnostics.Append(diags...)
 	}
 
 	if resp.Diagnostics.HasError() {

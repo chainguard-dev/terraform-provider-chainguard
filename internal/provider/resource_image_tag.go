@@ -8,6 +8,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -43,10 +44,13 @@ type imageTagResource struct {
 }
 
 type imageTagResourceModel struct {
-	ID      types.String `tfsdk:"id"`
-	Name    types.String `tfsdk:"name"`
-	RepoID  types.String `tfsdk:"repo_id"`
-	Bundles types.List   `tfsdk:"bundles"`
+	ID          types.String `tfsdk:"id"`
+	Name        types.String `tfsdk:"name"`
+	RepoID      types.String `tfsdk:"repo_id"`
+	Bundles     types.List   `tfsdk:"bundles"`
+	Digest      types.String `tfsdk:"digest"`
+	Deprecated  types.Bool   `tfsdk:"deprecated"`
+	LastUpdated types.String `tfsdk:"last_updated"`
 }
 
 func (r *imageTagResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -88,6 +92,19 @@ func (r *imageTagResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 					listvalidator.ValueStringsAre(validators.ValidateStringFuncs(validBundlesValue)),
 				},
 			},
+			"digest": schema.StringAttribute{
+				Description: "The digest of the manifest with this tag.",
+				Computed:    true,
+			},
+			"deprecated": schema.BoolAttribute{
+				Description: "Whether the tag is deprecated.",
+				Optional:    true,
+				Computed:    true,
+			},
+			"last_updated": schema.StringAttribute{
+				Description: "The RFC3339 encoded time this tag was last updated.",
+				Computed:    true,
+			},
 		},
 	}
 }
@@ -112,12 +129,14 @@ func (r *imageTagResource) Create(ctx context.Context, req resource.CreateReques
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	tag := &registry.Tag{
+		Name:       plan.Name.ValueString(),
+		Bundles:    bundles,
+		Deprecated: plan.Deprecated.ValueBool(),
+	}
 	repo, err := r.prov.client.Registry().Registry().CreateTag(ctx, &registry.CreateTagRequest{
 		RepoId: plan.RepoID.ValueString(),
-		Tag: &registry.Tag{
-			Name:    plan.Name.ValueString(),
-			Bundles: bundles,
-		},
+		Tag:    tag,
 	})
 	if err != nil {
 		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to create image tag"))
@@ -126,6 +145,11 @@ func (r *imageTagResource) Create(ctx context.Context, req resource.CreateReques
 
 	// Save tag details in the state.
 	plan.ID = types.StringValue(repo.Id)
+	plan.Digest = types.StringValue(repo.Digest)
+	plan.Deprecated = types.BoolValue(repo.Deprecated)
+	if repo.LastUpdated != nil {
+		plan.LastUpdated = types.StringValue(repo.LastUpdated.AsTime().Format(time.RFC3339))
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
@@ -164,6 +188,11 @@ func (r *imageTagResource) Read(ctx context.Context, req resource.ReadRequest, r
 	state.ID = types.StringValue(tag.Id)
 	state.RepoID = types.StringValue(uidp.Parent(tag.Id))
 	state.Name = types.StringValue(tag.Name)
+	state.Digest = types.StringValue(tag.Digest)
+	state.Deprecated = types.BoolValue(tag.Deprecated)
+	if tag.LastUpdated != nil {
+		state.LastUpdated = types.StringValue(tag.LastUpdated.AsTime().Format(time.RFC3339))
+	}
 
 	var diags diag.Diagnostics
 	state.Bundles, diags = types.ListValueFrom(ctx, types.StringType, tag.Bundles)
@@ -191,10 +220,11 @@ func (r *imageTagResource) Update(ctx context.Context, req resource.UpdateReques
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	tag, err := r.prov.client.Registry().Registry().UpdateTag(ctx, &registry.Tag{
-		Id:      data.ID.ValueString(),
-		Name:    data.Name.ValueString(),
-		Bundles: bundles,
+	updatedTag, err := r.prov.client.Registry().Registry().UpdateTag(ctx, &registry.Tag{
+		Id:         data.ID.ValueString(),
+		Name:       data.Name.ValueString(),
+		Bundles:    bundles,
+		Deprecated: data.Deprecated.ValueBool(),
 	})
 	if err != nil {
 		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to update image tag"))
@@ -202,11 +232,16 @@ func (r *imageTagResource) Update(ctx context.Context, req resource.UpdateReques
 	}
 
 	// Update the state with values returned from the API.
-	data.ID = types.StringValue(tag.Id)
-	data.Name = types.StringValue(tag.Name)
+	data.ID = types.StringValue(updatedTag.Id)
+	data.Name = types.StringValue(updatedTag.Name)
+	data.Digest = types.StringValue(updatedTag.Digest)
+	data.Deprecated = types.BoolValue(updatedTag.Deprecated)
+	if updatedTag.LastUpdated != nil {
+		data.LastUpdated = types.StringValue(updatedTag.LastUpdated.AsTime().Format(time.RFC3339))
+	}
 
 	var diags diag.Diagnostics
-	data.Bundles, diags = types.ListValueFrom(ctx, types.StringType, tag.Bundles)
+	data.Bundles, diags = types.ListValueFrom(ctx, types.StringType, updatedTag.Bundles)
 	if diags.HasError() {
 		resp.Diagnostics.Append(diags...)
 		return

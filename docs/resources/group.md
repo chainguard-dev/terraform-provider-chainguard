@@ -44,6 +44,7 @@ resource "chainguard_group" "example_sub" {
 ### Read-Only
 
 - `id` (String) The exact UIDP of this IAM group.
+- `resource_limits` (Map of Number) Maximum number of resources allowed by type.
 
 ## Import
 

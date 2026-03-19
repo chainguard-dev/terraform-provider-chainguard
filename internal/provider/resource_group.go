@@ -53,6 +53,7 @@ type groupResourceModel struct {
 	ParentID           types.String `tfsdk:"parent_id"`
 	Verified           types.Bool   `tfsdk:"verified"`
 	VerifiedProtection types.Bool   `tfsdk:"verified_protection"`
+	ResourceLimits     types.Map    `tfsdk:"resource_limits"`
 }
 
 func (r *groupResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -96,6 +97,11 @@ func (r *groupResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 			"verified_protection": schema.BoolAttribute{
 				Description: "Prevent the group from being unverified through Terraform. Null is treated as true.",
 				Optional:    true,
+			},
+			"resource_limits": schema.MapAttribute{
+				Description: "Maximum number of resources allowed by type.",
+				Computed:    true,
+				ElementType: types.Int32Type,
 			},
 		},
 	}
@@ -269,6 +275,15 @@ func (r *groupResource) Read(ctx context.Context, req resource.ReadRequest, resp
 		// if it hasn't changed upstream.
 		if !state.Verified.IsNull() || g.Verified {
 			state.Verified = types.BoolValue(g.Verified)
+		}
+
+		if len(g.ResourceLimits) > 0 {
+			rl, diags := types.MapValueFrom(ctx, types.Int32Type, g.ResourceLimits)
+			resp.Diagnostics.Append(diags...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			state.ResourceLimits = rl
 		}
 
 		// Set state
