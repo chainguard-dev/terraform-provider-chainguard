@@ -246,7 +246,7 @@ func (r *identityProviderResource) Read(ctx context.Context, req resource.ReadRe
 		return
 	}
 
-	idp := idpList.Items[0]
+	idp := idpList.GetItems()[0]
 	state.ID = types.StringValue(idp.Id)
 	state.Name = types.StringValue(idp.Name)
 	if !state.Description.IsNull() || idp.Description != "" {

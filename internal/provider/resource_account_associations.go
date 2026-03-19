@@ -329,7 +329,7 @@ func (r *accountAssociationsResource) Read(ctx context.Context, req resource.Rea
 		return
 	}
 
-	assoc := assocList.Items[0]
+	assoc := assocList.GetItems()[0]
 
 	// Only update the state model if there are differences returned from the API
 	// to prevent Terraform reporting extraneous drift.

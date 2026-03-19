@@ -138,7 +138,7 @@ func (r *subscriptionResource) Read(ctx context.Context, req resource.ReadReques
 		resp.State.RemoveResource(ctx)
 
 	case 1:
-		sub := subList.Items[0]
+		sub := subList.GetItems()[0]
 		state.ID = types.StringValue(sub.Id)
 		state.Sink = types.StringValue(sub.Sink)
 		state.ParentID = types.StringValue(uidp.Parent(sub.Id))

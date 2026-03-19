@@ -694,7 +694,7 @@ func (r *identityResource) Read(ctx context.Context, req resource.ReadRequest, r
 		return
 	}
 
-	ident := identityList.Items[0]
+	ident := identityList.GetItems()[0]
 
 	// If any errors were encountered, exit before updating the state.
 	if resp.Diagnostics.Append(populateModel(ctx, &state, ident)...); resp.Diagnostics.HasError() {
