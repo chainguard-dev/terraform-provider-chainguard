@@ -226,7 +226,7 @@ type providerData struct {
 	client   platform.Clients
 	clientMu sync.Mutex
 
-	consoleAPI string
+	consoleAPI          string
 	loginConfig         token.LoginConfig
 	testing             bool
 	versionStreamAllows map[string]struct{}
