@@ -21,6 +21,7 @@ type testTag struct {
 }
 
 func TestImageTag(t *testing.T) {
+	clients := testAccPlatformClient(t)
 	parentID := os.Getenv("TF_ACC_GROUP_ID")
 	name := acctest.RandString(10)
 
@@ -39,6 +40,7 @@ func TestImageTag(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             checkImageTagDestroy(clients),
 		Steps: []resource.TestStep{
 			// Create and Read testing.
 			{

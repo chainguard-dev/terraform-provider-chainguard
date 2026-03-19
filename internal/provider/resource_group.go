@@ -144,6 +144,16 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 
 	// Save group details in the state.
 	plan.ID = types.StringValue(g.Id)
+	if len(g.ResourceLimits) > 0 {
+		rl, diags := types.MapValueFrom(ctx, types.Int32Type, g.ResourceLimits)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		plan.ResourceLimits = rl
+	} else {
+		plan.ResourceLimits = types.MapNull(types.Int32Type)
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 
 	// Attempt to reauthenticate if root group was created so token
@@ -284,6 +294,8 @@ func (r *groupResource) Read(ctx context.Context, req resource.ReadRequest, resp
 				return
 			}
 			state.ResourceLimits = rl
+		} else {
+			state.ResourceLimits = types.MapNull(types.Int32Type)
 		}
 
 		// Set state

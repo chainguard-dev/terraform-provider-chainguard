@@ -386,6 +386,8 @@ func (r *imageRepoResource) Create(ctx context.Context, req resource.CreateReque
 	plan.ID = types.StringValue(repo.Id)
 	if repo.CreateTime != nil {
 		plan.CreateTime = types.StringValue(repo.CreateTime.AsTime().Format(time.RFC3339))
+	} else {
+		plan.CreateTime = types.StringNull()
 	}
 
 	// Populate computed sync_config fields from API response

@@ -217,7 +217,25 @@ func TestGroupResource_update(t *testing.T) {
 
 }
 
+func TestGroupResourceModel_ComputedFieldsAreKnown(t *testing.T) {
+	// Verify that setting ResourceLimits to null (as done in Create/Read)
+	// produces a known value, not unknown. Unknown values after apply
+	// cause "Provider returned invalid result object after apply" errors.
+	m := groupResourceModel{
+		ID:             types.StringValue("test"),
+		Name:           types.StringValue("test"),
+		ResourceLimits: types.MapNull(types.Int32Type),
+	}
+	if m.ResourceLimits.IsUnknown() {
+		t.Error("ResourceLimits should be known (null) after explicit set, got unknown")
+	}
+	if !m.ResourceLimits.IsNull() {
+		t.Error("ResourceLimits should be null when no limits exist")
+	}
+}
+
 func TestAccGroupResource(t *testing.T) {
+	clients := testAccPlatformClient(t)
 	name := acctest.RandString(10)
 	description := acctest.RandString(10)
 	parent := os.Getenv(EnvAccGroupID)
@@ -230,6 +248,7 @@ func TestAccGroupResource(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             checkGroupDestroy(clients),
 		Steps: []resource.TestStep{
 			// Create and Read testing.
 			{
@@ -269,6 +288,7 @@ func TestAccRootGroupResource(t *testing.T) {
 	if os.Getenv(EnvAccAmbient) == "" && os.Getenv("TF_CHAINGUARD_IDENTITY_TOKEN") == "" {
 		t.Skip("TF_CHAINGUARD_IDENTITY_TOKEN or TF_ACC_AMBIENT required for root group acceptance test")
 	}
+	clients := testAccPlatformClient(t)
 	name := acctest.RandString(10)
 	description := acctest.RandString(10)
 
@@ -280,6 +300,7 @@ func TestAccRootGroupResource(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             checkGroupDestroy(clients),
 		Steps: []resource.TestStep{
 			// Create and Read testing.
 			{

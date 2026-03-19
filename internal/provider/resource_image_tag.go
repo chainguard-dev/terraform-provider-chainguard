@@ -149,6 +149,8 @@ func (r *imageTagResource) Create(ctx context.Context, req resource.CreateReques
 	plan.Deprecated = types.BoolValue(repo.Deprecated)
 	if repo.LastUpdated != nil {
 		plan.LastUpdated = types.StringValue(repo.LastUpdated.AsTime().Format(time.RFC3339))
+	} else {
+		plan.LastUpdated = types.StringNull()
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
@@ -192,6 +194,8 @@ func (r *imageTagResource) Read(ctx context.Context, req resource.ReadRequest, r
 	state.Deprecated = types.BoolValue(tag.Deprecated)
 	if tag.LastUpdated != nil {
 		state.LastUpdated = types.StringValue(tag.LastUpdated.AsTime().Format(time.RFC3339))
+	} else {
+		state.LastUpdated = types.StringNull()
 	}
 
 	var diags diag.Diagnostics
@@ -238,6 +242,8 @@ func (r *imageTagResource) Update(ctx context.Context, req resource.UpdateReques
 	data.Deprecated = types.BoolValue(updatedTag.Deprecated)
 	if updatedTag.LastUpdated != nil {
 		data.LastUpdated = types.StringValue(updatedTag.LastUpdated.AsTime().Format(time.RFC3339))
+	} else {
+		data.LastUpdated = types.StringNull()
 	}
 
 	var diags diag.Diagnostics
