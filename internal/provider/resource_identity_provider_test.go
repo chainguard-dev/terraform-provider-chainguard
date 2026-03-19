@@ -31,8 +31,14 @@ type testIDP struct {
 }
 
 func TestAccResourceIdentityProvider(t *testing.T) {
+	parentID := os.Getenv("TF_ACC_GROUP_ID")
+	subgroupName := acctest.RandString(10)
+
 	original := testIDP{
-		parentID:    os.Getenv("TF_ACC_GROUP_ID"),
+		// Use a reference to the child group created in the HCL below,
+		// not the root test group, to avoid "already has an IDP" collisions
+		// when multiple matrix jobs run in parallel.
+		parentID:    "chainguard_group.idp_test.id",
 		name:        acctest.RandString(10),
 		description: acctest.RandString(10),
 		defaultRole: "data.chainguard_role.viewer_test.items[0].id",
@@ -45,7 +51,7 @@ func TestAccResourceIdentityProvider(t *testing.T) {
 	}
 
 	update := testIDP{
-		parentID:    os.Getenv("TF_ACC_GROUP_ID"),
+		parentID:    "chainguard_group.idp_test.id",
 		name:        acctest.RandString(10),
 		description: acctest.RandString(10),
 		defaultRole: "data.chainguard_role.viewer_test.items[0].id",
@@ -57,16 +63,23 @@ func TestAccResourceIdentityProvider(t *testing.T) {
 		},
 	}
 
-	childpattern := regexp.MustCompile(fmt.Sprintf(`%s\/[a-z0-9]{16}`, original.parentID))
+	childpattern := regexp.MustCompile(fmt.Sprintf(`%s\/[a-z0-9]{16}`, parentID))
+
+	subgroupHCL := fmt.Sprintf(`
+resource "chainguard_group" "idp_test" {
+  parent_id = %q
+  name      = %q
+}
+`, parentID, subgroupName)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: accDataRoleViewer + testAccResourceIdentityProvider(original),
+				Config: accDataRoleViewer + subgroupHCL + testAccResourceIdentityProviderRef(original),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr(`chainguard_identity_provider.example`, `parent_id`, original.parentID),
+					resource.TestCheckResourceAttrSet(`chainguard_identity_provider.example`, `parent_id`),
 					resource.TestCheckResourceAttr(`chainguard_identity_provider.example`, `name`, original.name),
 					resource.TestCheckResourceAttr(`chainguard_identity_provider.example`, `description`, original.description),
 					resource.TestCheckResourceAttr(`chainguard_identity_provider.example`, `oidc.issuer`, original.oidc.issuer),
@@ -83,9 +96,9 @@ func TestAccResourceIdentityProvider(t *testing.T) {
 				ImportStateVerifyIgnore: []string{"oidc.client_secret"},
 			},
 			{
-				Config: accDataRoleViewer + testAccResourceIdentityProvider(update),
+				Config: accDataRoleViewer + subgroupHCL + testAccResourceIdentityProviderRef(update),
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr(`chainguard_identity_provider.example`, `parent_id`, update.parentID),
+					resource.TestCheckResourceAttrSet(`chainguard_identity_provider.example`, `parent_id`),
 					resource.TestCheckResourceAttr(`chainguard_identity_provider.example`, `name`, update.name),
 					resource.TestCheckResourceAttr(`chainguard_identity_provider.example`, `description`, update.description),
 					resource.TestCheckResourceAttr(`chainguard_identity_provider.example`, `oidc.issuer`, update.oidc.issuer),
@@ -98,10 +111,12 @@ func TestAccResourceIdentityProvider(t *testing.T) {
 	})
 }
 
-func testAccResourceIdentityProvider(idp testIDP) string {
-	const tmpl = `	
+// testAccResourceIdentityProviderRef generates HCL where parent_id is a Terraform
+// reference (e.g. chainguard_group.idp_test.id) rather than a literal string.
+func testAccResourceIdentityProviderRef(idp testIDP) string {
+	const tmpl = `
 resource "chainguard_identity_provider" "example" {
-  parent_id    = %q
+  parent_id    = %s
   name         = %q
   description  = %q
   default_role = %s
