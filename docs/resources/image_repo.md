@@ -40,6 +40,7 @@ resource "chainguard_image_repo" "example" {
 
 ### Read-Only
 
+- `create_time` (String) The RFC3339 encoded time this repo was created.
 - `id` (String) The UIDP of this repo.
 
 <a id="nestedblock--sync_config"></a>

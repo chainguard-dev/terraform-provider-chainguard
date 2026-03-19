@@ -60,6 +60,7 @@ type imageRepoResourceModel struct {
 	Tier       types.String `tfsdk:"tier"`
 	Aliases    types.List   `tfsdk:"aliases"`
 	ActiveTags types.List   `tfsdk:"active_tags"`
+	CreateTime types.String `tfsdk:"create_time"`
 }
 
 type syncConfig struct {
@@ -148,6 +149,11 @@ func (r *imageRepoResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				Validators: []validator.List{
 					listvalidator.ValueStringsAre(validators.ValidateStringFuncs(validTagsValue)),
 				},
+			},
+			"create_time": schema.StringAttribute{
+				Description:   "The RFC3339 encoded time this repo was created.",
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 		},
 		Blocks: map[string]schema.Block{
@@ -378,6 +384,9 @@ func (r *imageRepoResource) Create(ctx context.Context, req resource.CreateReque
 
 	// Save repo details in the state.
 	plan.ID = types.StringValue(repo.Id)
+	if repo.CreateTime != nil {
+		plan.CreateTime = types.StringValue(repo.CreateTime.AsTime().Format(time.RFC3339))
+	}
 
 	// Populate computed sync_config fields from API response
 	if repo.SyncConfig != nil && !plan.SyncConfig.IsNull() {
@@ -441,6 +450,9 @@ func (r *imageRepoResource) Read(ctx context.Context, req resource.ReadRequest, 
 	state.ID = types.StringValue(repo.Id)
 	state.ParentID = types.StringValue(uidp.Parent(repo.Id))
 	state.Name = types.StringValue(repo.Name)
+	if repo.CreateTime != nil {
+		state.CreateTime = types.StringValue(repo.CreateTime.AsTime().Format(time.RFC3339))
+	}
 
 	// Only update the state description if it started as non-null or we get it
 	// from registry

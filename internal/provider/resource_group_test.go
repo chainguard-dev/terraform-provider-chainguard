@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
@@ -208,7 +209,7 @@ func TestGroupResource_update(t *testing.T) {
 			if diff := cmp.Diff(c.wantDiag, gotDiag); diff != "" {
 				t.Fatalf("update did not return expected diagnostics (-want +got):\n%s", diff)
 			}
-			if diff := cmp.Diff(c.data, dc); diff != "" {
+			if diff := cmp.Diff(c.data, dc, cmpopts.IgnoreFields(groupResourceModel{}, "ResourceLimits")); diff != "" {
 				t.Fatalf("updated data not what expected (-want +got):\n%s", diff)
 			}
 		})

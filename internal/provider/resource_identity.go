@@ -60,6 +60,9 @@ type identityResourceModel struct {
 	ClaimMatch       types.Object `tfsdk:"claim_match"`
 	Static           types.Object `tfsdk:"static"`
 	ServicePrincipal types.String `tfsdk:"service_principal"`
+	CreatedAt        types.String `tfsdk:"created_at"`
+	UpdatedAt        types.String `tfsdk:"updated_at"`
+	LastSeen         types.String `tfsdk:"last_seen"`
 }
 
 type awsIdentityModel struct {
@@ -140,6 +143,19 @@ func (r *identityResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 						path.MatchRoot("service_principal"),
 					),
 				},
+			},
+			"created_at": schema.StringAttribute{
+				Description:   "The RFC3339 encoded time this identity was created.",
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"updated_at": schema.StringAttribute{
+				Description: "The RFC3339 encoded time this identity was last updated.",
+				Computed:    true,
+			},
+			"last_seen": schema.StringAttribute{
+				Description: "The RFC3339 encoded time this identity was last used to federate.",
+				Computed:    true,
 			},
 		},
 		Blocks: map[string]schema.Block{
@@ -349,6 +365,15 @@ func populateModel(ctx context.Context, model *identityResourceModel, id *iam.Id
 	model.Name = types.StringValue(id.Name)
 	if model.Description.IsNull() && id.Description != "" {
 		model.Description = types.StringValue(id.Description)
+	}
+	if id.CreatedAt != nil {
+		model.CreatedAt = types.StringValue(id.CreatedAt.AsTime().Format(time.RFC3339))
+	}
+	if id.UpdatedAt != nil {
+		model.UpdatedAt = types.StringValue(id.UpdatedAt.AsTime().Format(time.RFC3339))
+	}
+	if id.LastSeen != nil {
+		model.LastSeen = types.StringValue(id.LastSeen.AsTime().Format(time.RFC3339))
 	}
 
 	if lit, ok := id.Relationship.(*iam.Identity_ClaimMatch_); ok {

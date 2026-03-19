@@ -47,6 +47,7 @@ resource "chainguard_account_associations" "example" {
 - `azure` (Block, Optional) Azure account association configuration (see [below for nested schema](#nestedblock--azure))
 - `chainguard` (Block, Optional) Association of Chainguard services to the service principals they should assume when talking to Chainguard APIs. (see [below for nested schema](#nestedblock--chainguard))
 - `description` (String) Description of the account association.
+- `github` (Block, Optional) GitHub App installation configuration (see [below for nested schema](#nestedblock--github))
 - `google` (Block, Optional) Google Cloud Platform account association configuration (see [below for nested schema](#nestedblock--google))
 
 ### Read-Only
@@ -76,6 +77,20 @@ Optional:
 Optional:
 
 - `service_bindings` (Map of String) A map of service bindings where the key is the service name and the value is the Id of the service principal identity.
+
+
+<a id="nestedblock--github"></a>
+### Nested Schema for `github`
+
+Optional:
+
+- `installation_id` (Number) GitHub App Installation ID.
+- `name` (String) GitHub user/org name the installation is installed on.
+
+Read-Only:
+
+- `app_id` (Number) GitHub App ID.
+- `host` (String) GitHub hostname the app is associated with.
 
 
 <a id="nestedblock--google"></a>

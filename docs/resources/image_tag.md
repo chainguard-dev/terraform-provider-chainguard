@@ -31,7 +31,10 @@ resource "chainguard_image_tag" "example" {
 ### Optional
 
 - `bundles` (List of String) List of bundles associated with this repo (valid ones: `application|base|byol|ai|ai-gpu|featured|fips`).
+- `deprecated` (Boolean) Whether the tag is deprecated.
 
 ### Read-Only
 
+- `digest` (String) The digest of the manifest with this tag.
 - `id` (String) The UIDP of this tag.
+- `last_updated` (String) The RFC3339 encoded time this tag was last updated.

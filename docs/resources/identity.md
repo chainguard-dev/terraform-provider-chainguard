@@ -55,7 +55,10 @@ resource "chainguard_identity" "aws-user" {
 
 ### Read-Only
 
+- `created_at` (String) The RFC3339 encoded time this identity was created.
 - `id` (String) The id of this identity.
+- `last_seen` (String) The RFC3339 encoded time this identity was last used to federate.
+- `updated_at` (String) The RFC3339 encoded time this identity was last updated.
 
 <a id="nestedblock--aws_identity"></a>
 ### Nested Schema for `aws_identity`
