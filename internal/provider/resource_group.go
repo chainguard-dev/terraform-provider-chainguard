@@ -336,6 +336,15 @@ func (r *groupResource) update(ctx context.Context, data *groupResourceModel, st
 	if !data.Verified.IsNull() || g.Verified {
 		data.Verified = types.BoolValue(g.Verified)
 	}
+	if len(g.ResourceLimits) > 0 {
+		rl, diags := types.MapValueFrom(ctx, types.Int32Type, g.ResourceLimits)
+		if diags.HasError() {
+			return diags[0]
+		}
+		data.ResourceLimits = rl
+	} else {
+		data.ResourceLimits = types.MapNull(types.Int32Type)
+	}
 	return nil
 }
 
