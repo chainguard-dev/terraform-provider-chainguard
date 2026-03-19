@@ -96,7 +96,7 @@ func (r *deploymentResource) Schema(_ context.Context, _ resource.SchemaRequest,
 				},
 			},
 			"ignore_errors": schema.BoolAttribute{
-				Description: "If true, deployment errors (like permission denied) will be logged as warnings instead of blocking the operation. Useful to prevent deployment failures from blocking image builds.",
+				Description: "If true, read errors (e.g. permission denied) will be logged as warnings and the resource removed from state. Create, update, and delete errors are never ignored to prevent state corruption.",
 				Optional:    true,
 			},
 		},
@@ -141,17 +141,8 @@ func (r *deploymentResource) Create(ctx context.Context, req resource.CreateRequ
 		}
 	}
 	if err != nil {
-		if plan.IgnoreErrors.ValueBool() {
-			// Log as warning instead of failing
-			tflog.Warn(ctx, fmt.Sprintf("deployment creation failed but continuing due to ignore_errors=true: %v", err))
-			resp.Diagnostics.AddWarning(
-				"Deployment Creation Failed",
-				fmt.Sprintf("Failed to create deployment for repo %q: %v. Continuing due to ignore_errors=true.", plan.ID.ValueString(), err),
-			)
-			// Keep the planned charts in state for consistency between plan and apply
-			resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
-			return
-		}
+		// Never save ghost state on create failure — even with ignore_errors,
+		// the resource doesn't exist on the platform and must not appear in state.
 		resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to create deployment for repo %q", plan.ID.ValueString())))
 		return
 	}
@@ -233,17 +224,6 @@ func (r *deploymentResource) Update(ctx context.Context, req resource.UpdateRequ
 		Charts: helmCharts,
 	})
 	if err != nil {
-		if data.IgnoreErrors.ValueBool() {
-			// Log as warning and keep existing state
-			tflog.Warn(ctx, fmt.Sprintf("deployment update failed but continuing due to ignore_errors=true: %v", err))
-			resp.Diagnostics.AddWarning(
-				"Deployment Update Failed",
-				fmt.Sprintf("Failed to update deployment for repo %q: %v. Keeping existing state due to ignore_errors=true.", data.ID.ValueString(), err),
-			)
-			// Keep the planned state as-is
-			resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
-			return
-		}
 		resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to update deployment for repo %q", data.ID.ValueString())))
 		return
 	}
@@ -274,15 +254,8 @@ func (r *deploymentResource) Delete(ctx context.Context, req resource.DeleteRequ
 		Charts: []*registry.HelmChart{}, // Empty charts array to clear deployment
 	})
 	if err != nil {
-		if state.IgnoreErrors.ValueBool() {
-			// Log as warning and consider deletion successful
-			tflog.Warn(ctx, fmt.Sprintf("deployment deletion failed but continuing due to ignore_errors=true: %v", err))
-			resp.Diagnostics.AddWarning(
-				"Deployment Deletion Failed",
-				fmt.Sprintf("Failed to delete deployment for repo %q: %v. Considering deletion successful due to ignore_errors=true.", state.ID.ValueString(), err),
-			)
-			return
-		}
+		// Never ignore delete failures — if deletion fails, the resource still
+		// exists on the platform and must remain in state.
 		resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to delete deployment for repo %q", state.ID.ValueString())))
 		return
 	}
