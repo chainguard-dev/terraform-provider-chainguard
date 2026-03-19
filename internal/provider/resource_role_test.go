@@ -35,6 +35,7 @@ resource "chainguard_role" "test" {
 }
 
 func TestAccRoleResource(t *testing.T) {
+	clients := testAccPlatformClient(t)
 	name := acctest.RandString(10)
 	description := acctest.RandString(10)
 	parent := os.Getenv(EnvAccGroupID)
@@ -51,6 +52,7 @@ func TestAccRoleResource(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             checkRoleDestroy(clients),
 		Steps: []resource.TestStep{
 			// Create and Read testing.
 			{

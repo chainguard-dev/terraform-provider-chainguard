@@ -46,6 +46,7 @@ func checkRegexp(r string) error {
 }
 
 func TestAccResourceClaimMatchIdentity(t *testing.T) {
+	clients := testAccPlatformClient(t)
 	group := os.Getenv("TF_ACC_GROUP_ID")
 
 	childpattern := regexp.MustCompile(fmt.Sprintf(`%s\/[a-z0-9]{16}`, group))
@@ -69,6 +70,7 @@ func TestAccResourceClaimMatchIdentity(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             checkIdentityDestroy(clients),
 		Steps: []resource.TestStep{
 			// Create and Read
 			{
@@ -123,6 +125,7 @@ func TestAccResourceClaimMatchIdentity(t *testing.T) {
 }
 
 func TestAccResourceLiteralIdentity(t *testing.T) {
+	clients := testAccPlatformClient(t)
 	group := os.Getenv("TF_ACC_GROUP_ID")
 
 	childpattern := regexp.MustCompile(fmt.Sprintf(`%s\/[a-z0-9]{16}`, group))
@@ -136,6 +139,7 @@ func TestAccResourceLiteralIdentity(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             checkIdentityDestroy(clients),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccResourceIdentityLiteral(group, "bill", issuer, subject),
@@ -158,6 +162,7 @@ func TestAccResourceLiteralIdentity(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             checkIdentityDestroy(clients),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccResourceIdentityLiteral(group, "bill", issuer, subject),
@@ -182,6 +187,7 @@ func TestAccResourceLiteralIdentity(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             checkIdentityDestroy(clients),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccResourceIdentityLiteral(group, "bill", issuer, subject),
@@ -206,6 +212,7 @@ func TestAccResourceLiteralIdentity(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             checkIdentityDestroy(clients),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccResourceIdentityLiteral(group, "bill", issuer, subject),
@@ -237,6 +244,7 @@ func TestAccResourceLiteralIdentity(t *testing.T) {
 }
 
 func TestAccResourceStaticIdentity(t *testing.T) {
+	clients := testAccPlatformClient(t)
 	group := os.Getenv("TF_ACC_GROUP_ID")
 
 	childpattern := regexp.MustCompile(fmt.Sprintf(`%s\/[a-z0-9]{16}`, group))
@@ -254,6 +262,7 @@ func TestAccResourceStaticIdentity(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             checkIdentityDestroy(clients),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccResourceIdentityStaticKeys(group, "bill", issuer, subject, issuerKeys, expiration),
@@ -282,6 +291,7 @@ func TestAccResourceStaticIdentity(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             checkIdentityDestroy(clients),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccResourceIdentityStaticKeys(group, "bill", issuer, subject, issuerKeys, expiration),
@@ -308,6 +318,7 @@ func TestAccResourceStaticIdentity(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             checkIdentityDestroy(clients),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccResourceIdentityStaticKeys(group, "bill", issuer, subject, issuerKeys, expiration),
@@ -334,6 +345,7 @@ func TestAccResourceStaticIdentity(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             checkIdentityDestroy(clients),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccResourceIdentityStaticKeys(group, "bill", issuer, subject, issuerKeys, expiration),
@@ -360,6 +372,7 @@ func TestAccResourceStaticIdentity(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             checkIdentityDestroy(clients),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccResourceIdentityStaticKeys(group, "bill", issuer, subject, issuerKeys, expiration),
@@ -384,6 +397,7 @@ func TestAccResourceStaticIdentity(t *testing.T) {
 }
 
 func TestAccResourceAWSIdentity(t *testing.T) {
+	clients := testAccPlatformClient(t)
 	group := os.Getenv("TF_ACC_GROUP_ID")
 
 	childpattern := regexp.MustCompile(fmt.Sprintf(`%s\/[a-z0-9]{16}`, group))
@@ -399,6 +413,7 @@ func TestAccResourceAWSIdentity(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             checkIdentityDestroy(clients),
 		Steps: []resource.TestStep{
 			{
 				Config: fmt.Sprintf(`
@@ -443,6 +458,7 @@ resource "chainguard_identity" "aws-user" {
 }
 
 func TestAccResourceServicePrincipal(t *testing.T) {
+	clients := testAccPlatformClient(t)
 	group := os.Getenv("TF_ACC_GROUP_ID")
 
 	childpattern := regexp.MustCompile(fmt.Sprintf(`%s\/[a-z0-9]{16}`, group))
@@ -454,6 +470,7 @@ func TestAccResourceServicePrincipal(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             checkIdentityDestroy(clients),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccResourceIdentityServicePrincipal(group, "bill", service),
@@ -478,6 +495,7 @@ func TestAccResourceServicePrincipal(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             checkIdentityDestroy(clients),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccResourceIdentityServicePrincipal(group, "bill", service),
@@ -498,6 +516,7 @@ func TestAccResourceServicePrincipal(t *testing.T) {
 }
 
 func TestAccResourceIdentityTypeChange(t *testing.T) {
+	clients := testAccPlatformClient(t)
 	group := os.Getenv("TF_ACC_GROUP_ID")
 
 	childpattern := regexp.MustCompile(fmt.Sprintf(`%s\/[a-z0-9]{16}`, group))
@@ -512,6 +531,7 @@ func TestAccResourceIdentityTypeChange(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             checkIdentityDestroy(clients),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccResourceIdentityLiteral(group, "bill", issuer, subject),
@@ -538,6 +558,7 @@ func TestAccResourceIdentityTypeChange(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             checkIdentityDestroy(clients),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccResourceIdentityServicePrincipal(group, "bill", service),
@@ -565,6 +586,7 @@ func TestAccResourceIdentityTypeChange(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             checkIdentityDestroy(clients),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccResourceIdentityStaticKeys(group, "bill", issuer, subject, issuerKeys, expiration),
@@ -600,6 +622,7 @@ func randString(n int) string {
 }
 
 func TestAccResourceIdentityUsage(t *testing.T) {
+	clients := testAccPlatformClient(t)
 	group := os.Getenv("TF_ACC_GROUP_ID")
 
 	issuer := "https://justtrustme.dev"
@@ -635,6 +658,7 @@ func TestAccResourceIdentityUsage(t *testing.T) {
 		resource.Test(t, resource.TestCase{
 			PreCheck:                 func() { testAccPreCheck(t) },
 			ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+			CheckDestroy:             checkIdentityDestroy(clients),
 			Steps: []resource.TestStep{{
 				Config: fmt.Sprintf(`
 data "chainguard_role" "owner" {
@@ -815,6 +839,7 @@ resource "chainguard_rolebinding" "binding" {
 		resource.Test(t, resource.TestCase{
 			PreCheck:                 func() { testAccPreCheck(t) },
 			ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+			CheckDestroy:             checkIdentityDestroy(clients),
 			Steps: []resource.TestStep{{
 				Config: fmt.Sprintf(`
 data "chainguard_role" "owner" {
@@ -943,6 +968,7 @@ resource "chainguard_rolebinding" "binding" {
 		resource.Test(t, resource.TestCase{
 			PreCheck:                 func() { testAccPreCheck(t) },
 			ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+			CheckDestroy:             checkIdentityDestroy(clients),
 			Steps: []resource.TestStep{{
 				Config: fmt.Sprintf(`
 data "chainguard_role" "owner" {

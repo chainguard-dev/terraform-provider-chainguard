@@ -15,6 +15,7 @@ import (
 )
 
 func TestAccResourceSubscription(t *testing.T) {
+	clients := testAccPlatformClient(t)
 	parent := os.Getenv("TF_ACC_GROUP_ID")
 	sink := `https://localhost/callback`
 	childpattern := regexp.MustCompile(fmt.Sprintf(`%s\/[a-z0-9]{16}`, parent))
@@ -22,6 +23,7 @@ func TestAccResourceSubscription(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             checkSubscriptionDestroy(clients),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccResourceSubscription(parent, sink),

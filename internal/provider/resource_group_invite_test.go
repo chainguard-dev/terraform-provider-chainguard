@@ -16,6 +16,7 @@ import (
 )
 
 func TestAccResourceGroupInvite(t *testing.T) {
+	clients := testAccPlatformClient(t)
 	group := os.Getenv("TF_ACC_GROUP_ID")
 
 	role := "viewer"
@@ -30,6 +31,7 @@ func TestAccResourceGroupInvite(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             checkGroupInviteDestroy(clients),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccResourceGroupInvite(group, role, expiration),

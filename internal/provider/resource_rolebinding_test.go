@@ -16,6 +16,7 @@ import (
 )
 
 func TestAccRolebindingResource(t *testing.T) {
+	clients := testAccPlatformClient(t)
 	group := os.Getenv(EnvAccGroupID)
 	subgroup := acctest.RandString(10)
 
@@ -31,6 +32,7 @@ func TestAccRolebindingResource(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             checkRolebindingDestroy(clients),
 		Steps: []resource.TestStep{
 			// Create and Read testing.
 			{

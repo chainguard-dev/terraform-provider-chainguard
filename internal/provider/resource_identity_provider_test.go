@@ -31,6 +31,7 @@ type testIDP struct {
 }
 
 func TestAccResourceIdentityProvider(t *testing.T) {
+	clients := testAccPlatformClient(t)
 	parentID := os.Getenv("TF_ACC_GROUP_ID")
 	subgroupName := acctest.RandString(10)
 
@@ -75,6 +76,7 @@ resource "chainguard_group" "idp_test" {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             checkIdentityProviderDestroy(clients),
 		Steps: []resource.TestStep{
 			{
 				Config: accDataRoleViewer + subgroupHCL + testAccResourceIdentityProviderRef(original),

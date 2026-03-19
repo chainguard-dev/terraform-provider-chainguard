@@ -18,6 +18,7 @@ import (
 )
 
 func TestAccResourceAccountAssociations(t *testing.T) {
+	clients := testAccPlatformClient(t)
 	awsAccount := "123456789012"
 	googleProjectID := acctest.RandString(10)
 	googleProjectNumber := acctest.RandString(10)
@@ -41,6 +42,7 @@ func TestAccResourceAccountAssociations(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             checkAccountAssociationsDestroy(clients),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccResourceAccountAssociations("example", group, subgroup, awsAccount, googleProjectID, googleProjectNumber, azureTenantId, azureClientIds),
@@ -102,6 +104,7 @@ func TestAccResourceAccountAssociations(t *testing.T) {
 }
 
 func TestAccResourceAccountAssociationsProviderChange(t *testing.T) {
+	clients := testAccPlatformClient(t)
 	awsAccount := "123456789012"
 	googleProjectID := acctest.RandString(10)
 	googleProjectNumber := acctest.RandString(10)
@@ -117,6 +120,7 @@ func TestAccResourceAccountAssociationsProviderChange(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             checkAccountAssociationsDestroy(clients),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccResourceAWSAccountAssociation("example", group, subgroup, awsAccount),
