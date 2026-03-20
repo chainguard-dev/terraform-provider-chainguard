@@ -11,7 +11,6 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
-	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 // dataModel is an interface for data source data structures.
@@ -59,13 +58,10 @@ func (ds *dataSource) configure(ctx context.Context, req datasource.ConfigureReq
 		return
 	}
 
-	// If the client hasn't been configured yet, configure it
-	if pd.client == nil {
-		tflog.Info(ctx, "initializing Chainguard API client (data source)")
-		if err := pd.setupClient(ctx); err != nil {
-			resp.Diagnostics.Append(errorToDiagnostic(err, "unable to setup client"))
-			return
-		}
+	// Ensure the client is initialized exactly once, even under concurrent access.
+	if err := pd.setupClient(ctx); err != nil {
+		resp.Diagnostics.Append(errorToDiagnostic(err, "unable to setup client"))
+		return
 	}
 
 	ds.prov = pd
