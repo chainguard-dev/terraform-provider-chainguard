@@ -55,6 +55,7 @@ func (v capability) ValidateString(_ context.Context, req validator.StringReques
 	c, err := capabilities.Parse(sc)
 	if err != nil {
 		resp.Diagnostics.AddError(fmt.Sprintf("failed to parse capability %q", sc), err.Error())
+		return
 	}
 	if c == capabilities.Capability_UNKNOWN {
 		resp.Diagnostics.AddError(fmt.Sprintf("failed to parse capability %q", sc),

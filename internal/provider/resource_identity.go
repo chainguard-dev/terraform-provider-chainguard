@@ -487,11 +487,15 @@ func populateModel(ctx context.Context, model *identityResourceModel, id *iam.Id
 	}
 
 	if st, ok := id.Relationship.(*iam.Identity_Static); ok {
+		expiration := types.StringNull()
+		if st.Static.Expiration != nil {
+			expiration = types.StringValue(st.Static.Expiration.AsTime().Format(time.RFC3339))
+		}
 		static := &staticModel{
 			Issuer:     types.StringValue(st.Static.Issuer),
 			Subject:    types.StringValue(st.Static.Subject),
 			IssuerKeys: types.StringValue(st.Static.IssuerKeys),
-			Expiration: types.StringValue(st.Static.Expiration.AsTime().Format(time.RFC3339)),
+			Expiration: expiration,
 		}
 
 		var diags diag.Diagnostics
