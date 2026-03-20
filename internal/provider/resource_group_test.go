@@ -366,6 +366,19 @@ func TestAccGroupResource(t *testing.T) {
 	})
 }
 
+func TestAccGroupResource_InvalidParentID(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config:      testAccResourceGroup("not-a-valid-uidp", "name", "desc"),
+				ExpectError: regexp.MustCompile(`valid UIDP`),
+			},
+		},
+	})
+}
+
 func TestAccRootGroupResource(t *testing.T) {
 	if os.Getenv(EnvAccAmbient) == "" && os.Getenv("TF_CHAINGUARD_IDENTITY_TOKEN") == "" {
 		t.Skip("TF_CHAINGUARD_IDENTITY_TOKEN or TF_ACC_AMBIENT required for root group acceptance test")
