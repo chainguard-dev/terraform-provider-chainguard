@@ -167,22 +167,19 @@ func (d *imageReposDataSource) Read(ctx context.Context, req datasource.ReadRequ
 		bundles, diags := types.ListValueFrom(ctx, types.StringType, repo.GetBundles())
 		resp.Diagnostics.Append(diags...)
 		if diags.HasError() {
-			tflog.Error(ctx, "failed to convert bundles to basetypes.ListValue", map[string]any{"bundles": repo.GetBundles()})
-			continue
+			return
 		}
 
 		aliases, diags := types.ListValueFrom(ctx, types.StringType, repo.GetAliases())
 		resp.Diagnostics.Append(diags...)
 		if diags.HasError() {
-			tflog.Error(ctx, "failed to convert aliases to basetypes.ListValue", map[string]any{"aliases": repo.GetAliases()})
-			continue
+			return
 		}
 
 		activeTags, diags := types.ListValueFrom(ctx, types.StringType, repo.GetActiveTags())
 		resp.Diagnostics.Append(diags...)
 		if diags.HasError() {
-			tflog.Error(ctx, "failed to convert active_tags to basetypes.ListValue", map[string]any{"active_tags": repo.GetActiveTags()})
-			continue
+			return
 		}
 
 		var sc *syncConfig
