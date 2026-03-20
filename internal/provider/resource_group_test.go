@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
@@ -69,9 +68,10 @@ func TestGroupResource_update(t *testing.T) {
 			},
 		},
 		data: groupResourceModel{
-			ID:          types.StringValue("id"),
-			Name:        types.StringValue("name"),
-			Description: types.StringValue("foo"),
+			ID:             types.StringValue("id"),
+			Name:           types.StringValue("name"),
+			Description:    types.StringValue("foo"),
+			ResourceLimits: types.MapNull(types.Int32Type),
 		},
 		state: groupResourceModel{
 			ID:   types.StringValue("id"),
@@ -92,9 +92,10 @@ func TestGroupResource_update(t *testing.T) {
 			},
 		},
 		data: groupResourceModel{
-			ID:       types.StringValue("id"),
-			Name:     types.StringValue("name"),
-			Verified: types.BoolValue(true),
+			ID:             types.StringValue("id"),
+			Name:           types.StringValue("name"),
+			Verified:       types.BoolValue(true),
+			ResourceLimits: types.MapNull(types.Int32Type),
 		},
 		state: groupResourceModel{
 			ID:   types.StringValue("id"),
@@ -115,9 +116,10 @@ func TestGroupResource_update(t *testing.T) {
 			},
 		},
 		data: groupResourceModel{
-			ID:       types.StringValue("id"),
-			Name:     types.StringValue("name"),
-			Verified: types.BoolValue(true),
+			ID:             types.StringValue("id"),
+			Name:           types.StringValue("name"),
+			Verified:       types.BoolValue(true),
+			ResourceLimits: types.MapNull(types.Int32Type),
 		},
 		state: groupResourceModel{
 			ID:       types.StringValue("id"),
@@ -143,6 +145,7 @@ func TestGroupResource_update(t *testing.T) {
 			Name:               types.StringValue("name"),
 			Verified:           types.BoolValue(false),
 			VerifiedProtection: types.BoolValue(false),
+			ResourceLimits:     types.MapNull(types.Int32Type),
 		},
 		state: groupResourceModel{
 			ID:                 types.StringValue("id"),
@@ -178,6 +181,27 @@ func TestGroupResource_update(t *testing.T) {
 			Verified: types.BoolValue(true),
 		},
 		wantDiag: diag.NewErrorDiagnostic("cannot unverify group", "group id is verified and verified_protection is true or null; apply verified_protection = false before attempting to unverify this group"),
+	}, {
+		name: "update sets resource_limits to null when empty",
+		onUpdate: iamtest.GroupOnUpdate{
+			Given: &iam.Group{
+				Id:   "id",
+				Name: "name",
+			},
+			Updated: &iam.Group{
+				Id:   "id",
+				Name: "name",
+			},
+		},
+		data: groupResourceModel{
+			ID:             types.StringValue("id"),
+			Name:           types.StringValue("name"),
+			ResourceLimits: types.MapNull(types.Int32Type),
+		},
+		state: groupResourceModel{
+			ID:   types.StringValue("id"),
+			Name: types.StringValue("name"),
+		},
 	}} {
 		t.Run(c.name, func(t *testing.T) {
 			ctx := slogtest.Context(t)
@@ -201,6 +225,7 @@ func TestGroupResource_update(t *testing.T) {
 				Description:        c.data.Description,
 				Verified:           c.data.Verified,
 				VerifiedProtection: c.data.VerifiedProtection,
+				ResourceLimits:     c.data.ResourceLimits,
 			}
 			gotDiag := r.update(ctx, &dc, c.state)
 			if (gotDiag == nil) != (c.wantDiag == nil) {
@@ -209,8 +234,10 @@ func TestGroupResource_update(t *testing.T) {
 			if diff := cmp.Diff(c.wantDiag, gotDiag); diff != "" {
 				t.Fatalf("update did not return expected diagnostics (-want +got):\n%s", diff)
 			}
-			if diff := cmp.Diff(c.data, dc, cmpopts.IgnoreFields(groupResourceModel{}, "ResourceLimits")); diff != "" {
-				t.Fatalf("updated data not what expected (-want +got):\n%s", diff)
+			if c.wantDiag == nil {
+				if diff := cmp.Diff(c.data, dc); diff != "" {
+					t.Fatalf("updated data not what expected (-want +got):\n%s", diff)
+				}
 			}
 		})
 	}
@@ -231,6 +258,61 @@ func TestGroupResourceModel_ComputedFieldsAreKnown(t *testing.T) {
 	}
 	if !m.ResourceLimits.IsNull() {
 		t.Error("ResourceLimits should be null when no limits exist")
+	}
+}
+
+func TestGroupResource_updateResourceLimits(t *testing.T) {
+	ctx := slogtest.Context(t)
+	r := &groupResource{
+		managedResource: managedResource{
+			prov: &providerData{
+				client: platformtest.MockPlatformClients{
+					IAMClient: iamtest.MockIAMClient{
+						GroupsClient: iamtest.MockGroupsClient{
+							OnUpdate: []iamtest.GroupOnUpdate{{
+								Given: &iam.Group{
+									Id:   "id",
+									Name: "name",
+								},
+								Updated: &iam.Group{
+									Id:             "id",
+									Name:           "name",
+									ResourceLimits: map[string]int32{"identities": 100},
+								},
+							}},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	dc := groupResourceModel{
+		ID:   types.StringValue("id"),
+		Name: types.StringValue("name"),
+	}
+	gotDiag := r.update(ctx, &dc, groupResourceModel{
+		ID:   types.StringValue("id"),
+		Name: types.StringValue("name"),
+	})
+	if gotDiag != nil {
+		t.Fatalf("unexpected error: %v", gotDiag)
+	}
+
+	if dc.ResourceLimits.IsUnknown() {
+		t.Fatal("ResourceLimits should be known after update")
+	}
+	if dc.ResourceLimits.IsNull() {
+		t.Fatal("ResourceLimits should not be null when API returns limits")
+	}
+
+	var got map[string]int32
+	diags := dc.ResourceLimits.ElementsAs(ctx, &got, false)
+	if diags.HasError() {
+		t.Fatalf("failed to extract ResourceLimits: %v", diags.Errors())
+	}
+	if got["identities"] != 100 {
+		t.Fatalf("expected identities=100, got %d", got["identities"])
 	}
 }
 
