@@ -612,6 +612,32 @@ func TestAccResourceIdentityTypeChange(t *testing.T) {
 	})
 }
 
+// waitForExchangeFailure polls STS exchange until it fails with the expected error,
+// retrying to account for the server-side identity cache TTL (~5s).
+func waitForExchangeFailure(ctx context.Context, xchg sts.Exchanger, token, identityID, customClaimID string) error {
+	const (
+		timeout  = 30 * time.Second
+		interval = 2 * time.Second
+	)
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		_, err := xchg.Exchange(ctx, token, sts.WithIdentity(identityID))
+		if err != nil {
+			// Verify it's the expected error.
+			if code := status.Code(err); code != codes.PermissionDenied {
+				return fmt.Errorf("expected error code %v, saw %v", codes.PermissionDenied, code)
+			}
+			expectMsg := fmt.Sprintf("invalid %q", customClaimID)
+			if !strings.Contains(err.Error(), expectMsg) {
+				return fmt.Errorf("expected error to contain %q, saw: %w", expectMsg, err)
+			}
+			return nil
+		}
+		time.Sleep(interval)
+	}
+	return errors.New("timed out waiting for STS exchange to fail after identity update")
+}
+
 func randString(n int) string {
 	var letters = []rune("abcdefghijklmnopqrstuvwxyz")
 	b := make([]rune, n)
@@ -654,7 +680,7 @@ func TestAccResourceIdentityUsage(t *testing.T) {
 	xchg := sts.New(os.Getenv("TF_ACC_ISSUER"), os.Getenv("TF_ACC_AUDIENCE"))
 
 	t.Run("issuer,subject,audience match", func(t *testing.T) {
-		// Check changing claim_match to static_keys.
+		// Test STS exchange with issuer, subject, and audience matching.
 		resource.Test(t, resource.TestCase{
 			PreCheck:                 func() { testAccPreCheck(t) },
 			ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -811,25 +837,8 @@ resource "chainguard_rolebinding" "binding" {
 `, group, "test", issuer, subject, audience, customClaimID, group),
 				Check: func(s *terraform.State) error {
 					ctx := context.Background()
-
-					// Due to identity caching, this may take a moment to propagate.
-					time.Sleep(5 * time.Second)
-
-					// Assume the resulting identity.
 					rs := s.RootModule().Resources["chainguard_identity.user"]
-
-					_, err = xchg.Exchange(ctx, envelope.Token, sts.WithIdentity(rs.Primary.ID))
-					if err == nil {
-						return errors.New("expected err, saw none")
-					}
-					if code := status.Code(err); code != codes.PermissionDenied {
-						return fmt.Errorf("expected error code %v, saw %v", codes.PermissionDenied, code)
-					}
-					expectMsg := fmt.Sprintf("invalid %q", customClaimID)
-					if !strings.Contains(err.Error(), expectMsg) {
-						return fmt.Errorf("expected error to contain %q, saw: %w", expectMsg, err)
-					}
-					return nil
+					return waitForExchangeFailure(ctx, xchg, envelope.Token, rs.Primary.ID, customClaimID)
 				},
 			}},
 		})
@@ -940,25 +949,8 @@ resource "chainguard_rolebinding" "binding" {
 `, group, "test", issuer, subject, audience, customClaimID, group),
 				Check: func(s *terraform.State) error {
 					ctx := context.Background()
-
-					// Due to identity caching, this may take a moment to propagate.
-					time.Sleep(5 * time.Second)
-
-					// Assume the resulting identity.
 					rs := s.RootModule().Resources["chainguard_identity.user"]
-					_, err := xchg.Exchange(ctx, envelope.Token, sts.WithIdentity(rs.Primary.ID))
-					if err == nil {
-						return fmt.Errorf("expected err, saw none")
-					}
-					if code := status.Code(err); code != codes.PermissionDenied {
-						return fmt.Errorf("expected error code %v, saw %v", codes.PermissionDenied, code)
-					}
-					expectMsg := fmt.Sprintf("invalid %q", customClaimID)
-					if !strings.Contains(err.Error(), expectMsg) {
-						return fmt.Errorf("expected error to contain %q, saw: %w", expectMsg, err)
-					}
-
-					return nil
+					return waitForExchangeFailure(ctx, xchg, envelope.Token, rs.Primary.ID, customClaimID)
 				},
 			}},
 		})
@@ -1069,25 +1061,8 @@ resource "chainguard_rolebinding" "binding" {
 `, group, "test", issuer, subject, audience, customClaimID, group),
 				Check: func(s *terraform.State) error {
 					ctx := context.Background()
-
-					// Due to identity caching, this may take a moment to propagate.
-					time.Sleep(5 * time.Second)
-
-					// Assume the resulting identity.
 					rs := s.RootModule().Resources["chainguard_identity.user"]
-
-					_, err = xchg.Exchange(ctx, envelope.Token, sts.WithIdentity(rs.Primary.ID))
-					if err == nil {
-						return errors.New("expected err, saw none")
-					}
-					if code := status.Code(err); code != codes.PermissionDenied {
-						return fmt.Errorf("expected error code %v, saw %v", codes.PermissionDenied, code)
-					}
-					expectMsg := fmt.Sprintf("invalid %q", customClaimID)
-					if !strings.Contains(err.Error(), expectMsg) {
-						return fmt.Errorf("expected error to contain %q, saw: %w", expectMsg, err)
-					}
-					return nil
+					return waitForExchangeFailure(ctx, xchg, envelope.Token, rs.Primary.ID, customClaimID)
 				},
 			}},
 		})
