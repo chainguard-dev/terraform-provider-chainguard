@@ -8,8 +8,7 @@ on:
       - "releases/**"
     paths-ignore:
       - "README.md"
-  pull_request_target:
-    # We need real github credentials. This is fine because we are testing on an sample test org.
+  pull_request:
     branches:
       - "main"
     paths-ignore:
@@ -23,6 +22,12 @@ jobs:
     name: Terraform Provider Acceptance Tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
+
+    # For pull requests, require reviewer approval via the acceptance-tests
+    # environment before credentials are available. Push events (main/releases)
+    # run without approval since the code is already merged.
+    # See: docs/design/secure-acceptance-tests.md
+    environment: ${{ github.event_name == 'pull_request' && 'acceptance-tests' || '' }}
 
     permissions:
       contents: read
@@ -75,7 +80,6 @@ jobs:
             direct {}
           }
           EOF
-          terraform init
 
       - name: Run acceptance tests
         env:
@@ -86,5 +90,5 @@ jobs:
           TF_ACC_AUDIENCE: "https://console-api.enforce.dev"
           TF_ACC_ISSUER: "https://issuer.enforce.dev"
           TF_ACC_AMBIENT: "1"
-        run: go test -v -cover ./internal/...
+        run: go test -v -cover -count=1 -race ./internal/...
         timeout-minutes: 10
