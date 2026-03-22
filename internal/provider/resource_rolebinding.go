@@ -58,7 +58,7 @@ func (r *rolebindingResource) Metadata(_ context.Context, req resource.MetadataR
 // Schema defines the schema for the resource.
 func (r *rolebindingResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "IAM Rolebidning in the Chainguard platform.",
+		Description: "IAM role-binding on the Chainguard platform.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description:   "The UIDP of this rolebinding.",
