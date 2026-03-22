@@ -331,7 +331,11 @@ func (r *accountAssociationsResource) Create(ctx context.Context, req resource.C
 		return
 	}
 
-	created, err := r.prov.client.IAM().AccountAssociations().Create(ctx, assoc)
+	// Retry on PermissionDenied to handle eventual consistency when the
+	// parent group was just created in the same apply.
+	created, err := retryOnPermissionDenied(ctx, func() (*iam.AccountAssociations, error) {
+		return r.prov.client.IAM().AccountAssociations().Create(ctx, assoc)
+	})
 	if err != nil {
 		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to create account association"))
 		return

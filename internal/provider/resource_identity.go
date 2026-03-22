@@ -680,10 +680,13 @@ func (r *identityResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	// Create the identity.
-	ident, err := r.prov.client.IAM().Identities().Create(ctx, &iam.CreateIdentityRequest{
-		ParentId: plan.ParentID.ValueString(),
-		Identity: identity,
+	// Create the identity. Retry on PermissionDenied to handle eventual
+	// consistency when the parent group was just created in the same apply.
+	ident, err := retryOnPermissionDenied(ctx, func() (*iam.Identity, error) {
+		return r.prov.client.IAM().Identities().Create(ctx, &iam.CreateIdentityRequest{
+			ParentId: plan.ParentID.ValueString(),
+			Identity: identity,
+		})
 	})
 	if err != nil {
 		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to create identity"))
