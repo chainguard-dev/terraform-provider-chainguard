@@ -202,9 +202,13 @@ func (r *identityProviderResource) Create(ctx context.Context, req resource.Crea
 		return
 	}
 
-	idp, err = r.prov.client.IAM().IdentityProviders().Create(ctx, &iam.CreateIdentityProviderRequest{
-		ParentId:         plan.ParentID.ValueString(),
-		IdentityProvider: idp,
+	// Retry on PermissionDenied to handle eventual consistency when the
+	// parent group was just created in the same apply.
+	idp, err = retryOnPermissionDenied(ctx, func() (*iam.IdentityProvider, error) {
+		return r.prov.client.IAM().IdentityProviders().Create(ctx, &iam.CreateIdentityProviderRequest{
+			ParentId:         plan.ParentID.ValueString(),
+			IdentityProvider: idp,
+		})
 	})
 	if err != nil {
 		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to create identity provider"))
