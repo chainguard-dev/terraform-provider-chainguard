@@ -37,8 +37,8 @@ resource "chainguard_group" "example_sub" {
 ### Optional
 
 - `description` (String) Description of this IAM group.
-- `parent_id` (String) Parent IAM group of this group. If not set, this group is assumed to be a root group.
-- `verified` (Boolean) Whether the organization has been verified by a Chainguardian. Only applicable to root groups.
+- `parent_id` (String) Parent group (organization or folder) of this group. If not set, this group is an organization.
+- `verified` (Boolean) Whether the organization has been verified by a Chainguardian. Only applicable to organizations (top-level groups).
 - `verified_protection` (Boolean) Prevent the group from being unverified through Terraform. Null is treated as true.
 
 ### Read-Only

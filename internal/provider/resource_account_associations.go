@@ -94,7 +94,7 @@ func (r *accountAssociationsResource) Metadata(_ context.Context, req resource.M
 // Schema defines the schema for the resource.
 func (r *accountAssociationsResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "IAM group invite on the Chainguard platform.",
+		Description: "Account associations for a Chainguard group.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description:   "The id of the account association.",

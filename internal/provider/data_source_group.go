@@ -108,13 +108,13 @@ func (d *groupDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 		return
 	}
 
-	// Remove non-root groups if parent_id is root sentinel
+	// Remove non-organization groups if parent_id is root sentinel
 	if data.ParentID.ValueString() == "/" {
 		tflog.Info(ctx, "filtering by root")
 		groups := make([]*iam.Group, 0, len(groupList.GetItems()))
 		for _, g := range groupList.GetItems() {
 			if uidp.InRoot(g.Id) {
-				tflog.Info(ctx, fmt.Sprintf("found a root group: %s", g.Id))
+				tflog.Info(ctx, fmt.Sprintf("found an organization: %s", g.Id))
 				groups = append(groups, g)
 			}
 		}

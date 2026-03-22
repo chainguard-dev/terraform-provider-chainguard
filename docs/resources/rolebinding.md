@@ -3,12 +3,12 @@
 page_title: "chainguard_rolebinding Resource - terraform-provider-chainguard"
 subcategory: ""
 description: |-
-  IAM Rolebidning in the Chainguard platform.
+  IAM role-binding on the Chainguard platform.
 ---
 
 # chainguard_rolebinding (Resource)
 
-IAM Rolebidning in the Chainguard platform.
+IAM role-binding on the Chainguard platform.
 
 ## Example Usage
 
