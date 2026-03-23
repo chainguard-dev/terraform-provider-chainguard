@@ -10,6 +10,9 @@ import (
 	"fmt"
 	"time"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -200,13 +203,23 @@ func (r *groupResource) waitForRoleBindingPropagation(
 			Id: groupID,
 		})
 
-		// Return API errors immediately - they are not recoverable
+		// Auth errors during propagation are transient — the role binding
+		// hasn't propagated yet, so the refreshed token may not have
+		// capabilities for the new group. Retry these like empty results.
 		if err != nil {
-			return nil, fmt.Errorf("failed to list group: %w", err)
-		}
-
-		// Success: group is accessible
-		if len(gl.GetItems()) > 0 {
+			code := status.Code(err)
+			if code != codes.Unauthenticated && code != codes.PermissionDenied {
+				// Non-auth errors are not recoverable.
+				return nil, fmt.Errorf("failed to list group: %w", err)
+			}
+			tflog.Debug(ctx, "Auth error during propagation (retrying)", map[string]any{
+				"group_id": groupID,
+				"attempt":  attempt + 1,
+				"error":    err.Error(),
+			})
+			// Fall through to retry with backoff below.
+		} else if len(gl.GetItems()) > 0 {
+			// Success: group is accessible.
 			tflog.Info(ctx, "Root group accessible", map[string]any{
 				"group_id": groupID,
 				"attempts": attempt + 1,
