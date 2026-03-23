@@ -30,7 +30,7 @@ func (mr *managedResource) configure(ctx context.Context, req resource.Configure
 		return
 	}
 
-	// Ensure the client is initialized exactly once, even under concurrent access.
+	// Ensure the client is initialized (thread-safe, retries on failure).
 	if err := pd.setupClient(ctx); err != nil {
 		resp.Diagnostics.Append(errorToDiagnostic(err, "unable to setup client"))
 		return

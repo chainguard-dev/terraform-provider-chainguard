@@ -400,3 +400,11 @@ func (pd *providerData) setupClient(ctx context.Context) error {
 	pd.client = clients
 	return nil
 }
+
+// setClient replaces the platform client under the mutex.
+// Used by resource_group after re-authenticating with a new organization scope.
+func (pd *providerData) setClient(clients platform.Clients) {
+	pd.clientMu.Lock()
+	defer pd.clientMu.Unlock()
+	pd.client = clients
+}
