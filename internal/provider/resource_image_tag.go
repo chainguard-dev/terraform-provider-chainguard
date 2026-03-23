@@ -246,11 +246,15 @@ func (r *imageTagResource) Update(ctx context.Context, req resource.UpdateReques
 		data.LastUpdated = types.StringNull()
 	}
 
-	var diags diag.Diagnostics
-	data.Bundles, diags = types.ListValueFrom(ctx, types.StringType, updatedTag.Bundles)
-	if diags.HasError() {
-		resp.Diagnostics.Append(diags...)
-		return
+	// Only overwrite bundles if the API returns non-empty. The UpdateTag
+	// response may not echo back all fields; preserve plan values to avoid drift.
+	if len(updatedTag.Bundles) > 0 {
+		var diags diag.Diagnostics
+		data.Bundles, diags = types.ListValueFrom(ctx, types.StringType, updatedTag.Bundles)
+		if diags.HasError() {
+			resp.Diagnostics.Append(diags...)
+			return
+		}
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

@@ -648,11 +648,14 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 	data.ID = types.StringValue(repo.Id)
 	data.Name = types.StringValue(repo.Name)
 
-	// Treat empty readme as nil
+	// Preserve create_time from prior state (not returned by UpdateRepo).
+	data.CreateTime = state.CreateTime
+
+	// Only overwrite readme/tier if the API returns non-empty values.
+	// The UpdateRepo response may not echo back all fields.
 	if repo.Readme != "" {
 		data.Readme = types.StringValue(repo.Readme)
 	}
-	// Treat UNKNOWN tier as null, but only if it was already null
 	if !data.Tier.IsNull() || repo.CatalogTier != registry.CatalogTier_UNKNOWN {
 		data.Tier = types.StringValue(repo.CatalogTier.String())
 	} else {
@@ -682,8 +685,10 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 	}
 
 	var diags diag.Diagnostics
-	// Only update Bundles if it was originally set or API returns non-empty
-	if !data.Bundles.IsNull() || len(repo.Bundles) > 0 {
+	// Only overwrite list fields from the API response if it returns non-empty.
+	// The UpdateRepo response may not echo back all fields; preserve plan values
+	// when the API returns empty to avoid perpetual drift.
+	if len(repo.Bundles) > 0 {
 		data.Bundles, diags = types.ListValueFrom(ctx, types.StringType, repo.Bundles)
 		if diags.HasError() {
 			resp.Diagnostics.Append(diags...)
@@ -691,8 +696,7 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 		}
 	}
 
-	// Only update Aliases if it was originally set or API returns non-empty
-	if !data.Aliases.IsNull() || len(repo.Aliases) > 0 {
+	if len(repo.Aliases) > 0 {
 		data.Aliases, diags = types.ListValueFrom(ctx, types.StringType, repo.Aliases)
 		if diags.HasError() {
 			resp.Diagnostics.Append(diags...)
@@ -700,8 +704,7 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 		}
 	}
 
-	// Only update ActiveTags if it was originally set or API returns non-empty
-	if !data.ActiveTags.IsNull() || len(repo.ActiveTags) > 0 {
+	if len(repo.ActiveTags) > 0 {
 		data.ActiveTags, diags = types.ListValueFrom(ctx, types.StringType, repo.ActiveTags)
 		if diags.HasError() {
 			resp.Diagnostics.Append(diags...)
