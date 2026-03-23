@@ -615,12 +615,12 @@ func TestAccResourceIdentityTypeChange(t *testing.T) {
 // waitForExchangeFailure polls STS exchange until it fails with the expected error,
 // retrying to account for the server-side identity cache TTL (~5s).
 func waitForExchangeFailure(ctx context.Context, xchg sts.Exchanger, token, identityID, customClaimID string) error {
-	const (
-		timeout  = 30 * time.Second
-		interval = 2 * time.Second
-	)
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
+	const interval = 2 * time.Second
+
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	for {
 		_, err := xchg.Exchange(ctx, token, sts.WithIdentity(identityID))
 		if err != nil {
 			// Verify it's the expected error.
@@ -633,9 +633,12 @@ func waitForExchangeFailure(ctx context.Context, xchg sts.Exchanger, token, iden
 			}
 			return nil
 		}
-		time.Sleep(interval)
+		select {
+		case <-time.After(interval):
+		case <-ctx.Done():
+			return errors.New("timed out waiting for STS exchange to fail after identity update")
+		}
 	}
-	return errors.New("timed out waiting for STS exchange to fail after identity update")
 }
 
 func randString(n int) string {
