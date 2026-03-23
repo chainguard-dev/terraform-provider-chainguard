@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
@@ -33,7 +34,11 @@ type testIDP struct {
 func TestAccResourceIdentityProvider(t *testing.T) {
 	clients := testAccPlatformClient(t)
 	// IDPs must be created on root (organization) groups per the API.
+	// TF_ACC_GROUP_ID may be a child group; skip if so.
 	parentID := os.Getenv("TF_ACC_GROUP_ID")
+	if strings.Contains(parentID, "/") {
+		t.Skip("TF_ACC_GROUP_ID is not a root group; IDP tests require a root organization group")
+	}
 
 	original := testIDP{
 		parentID:    parentID,
