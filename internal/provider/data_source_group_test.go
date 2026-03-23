@@ -48,7 +48,7 @@ data "chainguard_group" "bad" {
   id = "not-a-valid-uidp"
 }
 `,
-				ExpectError: regexp.MustCompile(`valid UIDP`),
+				ExpectError: regexp.MustCompile(`not found`),
 			},
 		},
 	})
