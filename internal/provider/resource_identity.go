@@ -533,13 +533,17 @@ func populateIdentity(ctx context.Context, m identityResourceModel) (*iam.Identi
 		var claims map[string]string
 		if !cmModel.Claims.IsNull() {
 			claims = make(map[string]string, len(cmModel.Claims.Elements()))
-			cmModel.Claims.ElementsAs(ctx, &claims, false /* allowUnhandled */)
+			if diags := cmModel.Claims.ElementsAs(ctx, &claims, false /* allowUnhandled */); diags.HasError() {
+				return nil, fmt.Errorf("failed to convert claims: %s", diags[0].Detail())
+			}
 		}
 
 		var claimPatterns map[string]string
 		if !cmModel.ClaimPatterns.IsNull() {
 			claimPatterns = make(map[string]string, len(cmModel.ClaimPatterns.Elements()))
-			cmModel.ClaimPatterns.ElementsAs(ctx, &claimPatterns, false /* allowUnhandled */)
+			if diags := cmModel.ClaimPatterns.ElementsAs(ctx, &claimPatterns, false /* allowUnhandled */); diags.HasError() {
+				return nil, fmt.Errorf("failed to convert claim_patterns: %s", diags[0].Detail())
+			}
 		}
 
 		cm := &iam.Identity_ClaimMatch{
@@ -629,7 +633,7 @@ func populateIdentity(ctx context.Context, m identityResourceModel) (*iam.Identi
 		var stModel staticModel
 		if diags := m.Static.As(ctx, &stModel, basetypes.ObjectAsOptions{}); diags.HasError() {
 			tflog.Error(ctx, "failed to cast static model from state or plan", map[string]any{"model": m, "error": diags[0].Detail()})
-			return nil, errors.New("failed to cast aws model from state or plan")
+			return nil, errors.New("failed to cast static model from state or plan")
 		}
 
 		ts, err := time.Parse(time.RFC3339, stModel.Expiration.ValueString())
