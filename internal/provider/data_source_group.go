@@ -121,13 +121,30 @@ func (d *groupDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 		groupList.Items = groups
 	}
 
-	switch c := len(groupList.GetItems()); c {
+	// When looking up by name, prefer verified groups. This avoids
+	// "too many found" errors when multiple groups share a name but
+	// only one is verified (verified names are globally unique).
+	items := groupList.GetItems()
+	if data.Name.ValueString() != "" && len(items) > 1 {
+		verified := make([]*iam.Group, 0, len(items))
+		for _, g := range items {
+			if g.GetVerified() {
+				verified = append(verified, g)
+			}
+		}
+		if len(verified) > 0 {
+			tflog.Info(ctx, fmt.Sprintf("narrowed %d groups to %d verified group(s)", len(items), len(verified)))
+			items = verified
+		}
+	}
+
+	switch c := len(items); c {
 	case 0:
 		// Group was not found (either never existed, or was deleted).
 		resp.Diagnostics.Append(dataNotFound("group", "" /* extra */, data))
 
 	case 1:
-		g := groupList.GetItems()[0]
+		g := items[0]
 		data.ID = types.StringValue(g.Id)
 		data.Name = types.StringValue(g.Name)
 		data.Description = types.StringValue(g.Description)
