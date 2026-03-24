@@ -3,12 +3,12 @@
 page_title: "chainguard_account_associations Resource - terraform-provider-chainguard"
 subcategory: ""
 description: |-
-  IAM group invite on the Chainguard platform.
+  Account associations for a Chainguard group.
 ---
 
 # chainguard_account_associations (Resource)
 
-IAM group invite on the Chainguard platform.
+Account associations for a Chainguard group.
 
 ## Example Usage
 

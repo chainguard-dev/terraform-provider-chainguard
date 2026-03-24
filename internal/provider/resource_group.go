@@ -77,7 +77,7 @@ func (r *groupResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"parent_id": schema.StringAttribute{
-				Description:   "Parent IAM group of this group. If not set, this group is assumed to be a root group.",
+				Description:   "Parent group (organization or folder) of this group. If not set, this group is an organization.",
 				Optional:      true,
 				Validators:    []validator.String{validators.UIDP(false /* allowRootSentinel */)},
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
@@ -91,7 +91,7 @@ func (r *groupResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 				Optional:    true,
 			},
 			"verified": schema.BoolAttribute{
-				Description: "Whether the organization has been verified by a Chainguardian. Only applicable to root groups.",
+				Description: "Whether the organization has been verified by a Chainguardian. Only applicable to organizations (top-level groups).",
 				Optional:    true,
 			},
 			"verified_protection": schema.BoolAttribute{
@@ -130,7 +130,7 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 			Verified:    plan.Verified.ValueBool(),
 		},
 	}
-	// Only include Parent UIDP for non-root groups.
+	// Only include Parent UIDP for non-organization (folder) groups.
 	// Due to validation, we are guaranteed ParentID is either a valid UIDP or "/".
 	if uidp.Valid(plan.ParentID.ValueString()) {
 		cr.Parent = plan.ParentID.ValueString()
@@ -156,8 +156,8 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 
-	// Attempt to reauthenticate if root group was created so token
-	// has new root group in scope.
+	// Attempt to reauthenticate if an organization was created so token
+	// has new organization in scope.
 	if uidp.InRoot(g.Id) {
 		cfg := r.prov.loginConfig
 		clients, err := r.waitForRoleBindingPropagation(ctx, g.Id, cfg)
@@ -169,7 +169,7 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 	}
 }
 
-// waitForRoleBindingPropagation waits for role binding propagation after root group creation.
+// waitForRoleBindingPropagation waits for role binding propagation after organization creation.
 // It polls the API with exponential backoff until the group is accessible or times out.
 func (r *groupResource) waitForRoleBindingPropagation(
 	ctx context.Context,
@@ -276,8 +276,8 @@ func (r *groupResource) Read(ctx context.Context, req resource.ReadRequest, resp
 		if !state.Description.IsNull() || g.Description != "" {
 			state.Description = types.StringValue(g.Description)
 		}
-		// Allow ParentID to remain null for root groups, but ensure it is populated
-		// for when importing non-root groups.
+		// Allow ParentID to remain null for organizations, but ensure it is populated
+		// for when importing folders.
 		if !state.ParentID.IsNull() || !uidp.InRoot(g.Id) {
 			state.ParentID = types.StringValue(uidp.Parent(g.Id))
 		}
