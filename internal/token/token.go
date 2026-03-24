@@ -58,8 +58,7 @@ func Get(ctx context.Context, cfg LoginConfig, forceRefresh bool) ([]byte, error
 
 	// If token is expired or not found, or we're forcing a refresh, login and save a new one.
 	if life <= 0 || forceRefresh {
-		err := refreshChainguardToken(ctx, cfg, life)
-		if err != nil {
+		if err := refreshChainguardToken(ctx, cfg, forceRefresh); err != nil {
 			return nil, err
 		}
 	}
@@ -71,19 +70,20 @@ func Get(ctx context.Context, cfg LoginConfig, forceRefresh bool) ([]byte, error
 
 // refreshChainguardToken attempts to get a new Chainguard token either through user browser flow,
 // or by exchanging a given OIDC token, unless auto-login is disabled.
-func refreshChainguardToken(ctx context.Context, cfg LoginConfig, life time.Duration) error {
+func refreshChainguardToken(ctx context.Context, cfg LoginConfig, forceRefresh bool) error {
 	// Bail if auto-login is disabled.
 	if cfg.Disabled {
 		tflog.Info(ctx, "automatic authentication disabled")
 		return status.Error(codes.Unauthenticated, "automatic auth disabled")
 	}
 
-	// Obtain a write lock since we may be updating the token
+	// Obtain a write lock since we may be updating the token.
 	lock.Lock()
 	defer lock.Unlock()
 
-	// Check that the token wasn't refreshed by another thread
-	if sdktoken.RemainingLife(sdktoken.KindAccess, cfg.Audience, tokenLifeBuffer, withAlias(cfg)) > life {
+	// Re-check under write lock: if another goroutine already refreshed the token
+	// and it's now valid, skip the refresh. Always refresh if explicitly forced.
+	if !forceRefresh && sdktoken.RemainingLife(sdktoken.KindAccess, cfg.Audience, tokenLifeBuffer, withAlias(cfg)) > 0 {
 		return nil
 	}
 
@@ -133,7 +133,7 @@ func saveTokens(accessToken, refreshToken string, cfg LoginConfig) error {
 // through the configured OIDC identity provider.
 func getChainguardToken(ctx context.Context, cfg LoginConfig) (accessToken string, refreshToken string, err error) {
 	tflog.Info(ctx, "launching browser login flow")
-	loginCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	loginCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 
 	opts := []login.Option{
