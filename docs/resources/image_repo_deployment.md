@@ -66,7 +66,7 @@ resource "chainguard_image_repo_deployment" "example_with_error_handling" {
 
 ### Optional
 
-- `ignore_errors` (Boolean) If true, deployment errors (like permission denied) will be logged as warnings instead of blocking the operation. Useful to prevent deployment failures from blocking image builds.
+- `ignore_errors` (Boolean) If true, read errors (e.g. permission denied) will be logged as warnings and the resource removed from state. Create, update, and delete errors are never ignored to prevent state corruption.
 
 <a id="nestedatt--charts"></a>
 ### Nested Schema for `charts`
