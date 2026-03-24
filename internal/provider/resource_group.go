@@ -165,7 +165,7 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 			resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to verify root group access for %q", g.Id)))
 			return
 		}
-		r.prov.client = clients
+		r.prov.setClient(clients)
 	}
 }
 

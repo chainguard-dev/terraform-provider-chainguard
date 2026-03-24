@@ -11,6 +11,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -222,7 +223,9 @@ only consider the filtered versions.`,
 }
 
 type providerData struct {
-	client              platform.Clients
+	client   platform.Clients
+	clientMu sync.Mutex
+
 	consoleAPI          string
 	loginConfig         token.LoginConfig
 	testing             bool
@@ -371,27 +374,37 @@ func errorToDiagnostic(err error, summary string) diag.Diagnostic {
 }
 
 func (pd *providerData) setupClient(ctx context.Context) error {
-	tflog.Info(ctx, "configuring chainguard client")
+	pd.clientMu.Lock()
+	defer pd.clientMu.Unlock()
 
-	// Configure API clients
-	var clients platform.Clients
-	{
-		// Get the Chainguard token
-		// If it doesn't exist or is expired, attempt to get a new one, depending on login_options
-		cgToken, err := token.Get(ctx, pd.loginConfig, false /* forceRefresh */)
-		if err != nil {
-			return fmt.Errorf("failed to retrieve token. Either no token was found for audience %q or there was an error reading it.\n"+
-				"Please check the value of \"chainguard.console_api\" in your Terraform provider configuration: %s", pd.loginConfig.Audience, err.Error())
-		}
-
-		// Generate platform clients.
-		clients, err = newPlatformClients(ctx, string(cgToken), pd.consoleAPI)
-		if err != nil {
-			return fmt.Errorf("failed to create API clients: %s", err.Error())
-		}
+	if pd.client != nil {
+		return nil
 	}
 
-	// Finally, set client on providerData struct
+	tflog.Info(ctx, "configuring chainguard client")
+
+	// Get the Chainguard token
+	// If it doesn't exist or is expired, attempt to get a new one, depending on login_options
+	cgToken, err := token.Get(ctx, pd.loginConfig, false /* forceRefresh */)
+	if err != nil {
+		return fmt.Errorf("failed to retrieve token. Either no token was found for audience %q or there was an error reading it.\n"+
+			"Please check the value of \"chainguard.console_api\" in your Terraform provider configuration: %s", pd.loginConfig.Audience, err.Error())
+	}
+
+	// Generate platform clients.
+	clients, err := newPlatformClients(ctx, string(cgToken), pd.consoleAPI)
+	if err != nil {
+		return fmt.Errorf("failed to create API clients: %s", err.Error())
+	}
+
 	pd.client = clients
 	return nil
+}
+
+// setClient replaces the platform client under the mutex.
+// Used by resource_group after re-authenticating with a new organization scope.
+func (pd *providerData) setClient(clients platform.Clients) {
+	pd.clientMu.Lock()
+	defer pd.clientMu.Unlock()
+	pd.client = clients
 }

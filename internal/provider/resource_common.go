@@ -10,7 +10,6 @@ import (
 	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
-	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 type managedResource struct {
@@ -31,13 +30,10 @@ func (mr *managedResource) configure(ctx context.Context, req resource.Configure
 		return
 	}
 
-	// If the client hasn't been configured yet, configure it
-	if pd.client == nil {
-		tflog.Info(ctx, "initializing Chainguard API client (managed resource)")
-		if err := pd.setupClient(ctx); err != nil {
-			resp.Diagnostics.Append(errorToDiagnostic(err, "unable to setup client"))
-			return
-		}
+	// Ensure the client is initialized (thread-safe, retries on failure).
+	if err := pd.setupClient(ctx); err != nil {
+		resp.Diagnostics.Append(errorToDiagnostic(err, "unable to setup client"))
+		return
 	}
 
 	mr.prov = pd
