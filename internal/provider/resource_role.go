@@ -117,13 +117,17 @@ func (r *roleResource) Create(ctx context.Context, req resource.CreateRequest, r
 		return
 	}
 
-	role, err := r.prov.client.IAM().Roles().Create(ctx, &iam.CreateRoleRequest{
-		ParentId: plan.ParentID.ValueString(),
-		Role: &iam.Role{
-			Name:         plan.Name.ValueString(),
-			Description:  plan.Description.ValueString(),
-			Capabilities: caps,
-		},
+	// Retry on PermissionDenied to handle eventual consistency when the
+	// parent group was just created in the same apply.
+	role, err := retryOnPermissionDenied(ctx, func() (*iam.Role, error) {
+		return r.prov.client.IAM().Roles().Create(ctx, &iam.CreateRoleRequest{
+			ParentId: plan.ParentID.ValueString(),
+			Role: &iam.Role{
+				Name:         plan.Name.ValueString(),
+				Description:  plan.Description.ValueString(),
+				Capabilities: caps,
+			},
+		})
 	})
 	if err != nil {
 		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to create role"))

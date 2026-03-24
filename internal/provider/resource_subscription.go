@@ -98,11 +98,15 @@ func (r *subscriptionResource) Create(ctx context.Context, req resource.CreateRe
 	}
 	tflog.Info(ctx, fmt.Sprintf("create subscription request: parent_id=%s, sink=%s", plan.ParentID, plan.Sink))
 
-	sub, err := r.prov.client.IAM().Subscriptions().Create(ctx, &events.CreateSubscriptionRequest{
-		ParentId: plan.ParentID.ValueString(),
-		Subscription: &events.Subscription{
-			Sink: plan.Sink.ValueString(),
-		},
+	// Retry on PermissionDenied to handle eventual consistency when the
+	// parent group was just created in the same apply.
+	sub, err := retryOnPermissionDenied(ctx, func() (*events.Subscription, error) {
+		return r.prov.client.IAM().Subscriptions().Create(ctx, &events.CreateSubscriptionRequest{
+			ParentId: plan.ParentID.ValueString(),
+			Subscription: &events.Subscription{
+				Sink: plan.Sink.ValueString(),
+			},
+		})
 	})
 	if err != nil {
 		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to create subscription"))

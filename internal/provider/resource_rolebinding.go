@@ -100,13 +100,16 @@ func (r *rolebindingResource) Create(ctx context.Context, req resource.CreateReq
 	}
 	tflog.Info(ctx, fmt.Sprintf("create rolebinding request: group=%s, role=%s, identity=%s", plan.Group, plan.Role, plan.Identity))
 
-	// Create the rolebinding.
-	binding, err := r.prov.client.IAM().RoleBindings().Create(ctx, &iam.CreateRoleBindingRequest{
-		Parent: plan.Group.ValueString(),
-		RoleBinding: &iam.RoleBinding{
-			Identity: plan.Identity.ValueString(),
-			Role:     plan.Role.ValueString(),
-		},
+	// Create the rolebinding. Retry on PermissionDenied to handle eventual
+	// consistency when the parent group was just created in the same apply.
+	binding, err := retryOnPermissionDenied(ctx, func() (*iam.RoleBinding, error) {
+		return r.prov.client.IAM().RoleBindings().Create(ctx, &iam.CreateRoleBindingRequest{
+			Parent: plan.Group.ValueString(),
+			RoleBinding: &iam.RoleBinding{
+				Identity: plan.Identity.ValueString(),
+				Role:     plan.Role.ValueString(),
+			},
+		})
 	})
 	if err != nil {
 		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to create rolebinding"))

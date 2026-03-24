@@ -146,11 +146,15 @@ func (r *groupInviteResource) Create(ctx context.Context, req resource.CreateReq
 		return
 	}
 
-	invite, err := r.prov.client.IAM().GroupInvites().Create(ctx, &iam.GroupInviteRequest{
-		Group: plan.Group.ValueString(),
-		Ttl:   durationpb.New(time.Until(ts)),
-		Role:  plan.Role.ValueString(),
-		Email: plan.Email.ValueString(),
+	// Retry on PermissionDenied to handle eventual consistency when the
+	// parent group was just created in the same apply.
+	invite, err := retryOnPermissionDenied(ctx, func() (*iam.GroupInvite, error) {
+		return r.prov.client.IAM().GroupInvites().Create(ctx, &iam.GroupInviteRequest{
+			Group: plan.Group.ValueString(),
+			Ttl:   durationpb.New(time.Until(ts)),
+			Role:  plan.Role.ValueString(),
+			Email: plan.Email.ValueString(),
+		})
 	})
 	if err != nil {
 		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to create group invite"))
