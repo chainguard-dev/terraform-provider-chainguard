@@ -64,6 +64,20 @@ func TestRetryOnPermissionDenied_NonRetryableError(t *testing.T) {
 	}
 }
 
+func TestRetryOnPermissionDenied_ExhaustsAttempts(t *testing.T) {
+	calls := 0
+	_, err := retryOnPermissionDenied(t.Context(), func() (string, error) {
+		calls++
+		return "", status.Error(codes.PermissionDenied, "denied")
+	})
+	if err == nil {
+		t.Fatal("expected error after exhausting retries")
+	}
+	if calls != 5 {
+		t.Errorf("expected 5 calls, got %d", calls)
+	}
+}
+
 func TestRetryOnPermissionDenied_ContextCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
