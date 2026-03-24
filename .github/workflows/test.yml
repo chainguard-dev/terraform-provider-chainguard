@@ -9,7 +9,6 @@ on:
     paths-ignore:
       - "README.md"
   pull_request_target:
-    # We need real github credentials. This is fine because we are testing on an sample test org.
     branches:
       - "main"
     paths-ignore:
@@ -23,6 +22,22 @@ jobs:
     name: Terraform Provider Acceptance Tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
+
+    # The acceptance-tests environment requires reviewer approval before
+    # the job runs. This prevents untrusted fork PRs from accessing OIDC
+    # credentials without maintainer review.
+    #
+    # We use pull_request_target (not pull_request) because fork PRs
+    # cannot receive id-token:write with pull_request events, even with
+    # environment approval. pull_request_target runs in the base repo
+    # context where OIDC tokens are available.
+    #
+    # The ref override in the checkout step ensures we test the PR code,
+    # not the base branch.
+    #
+    # Push events (main/releases) run without environment approval since
+    # the code is already merged.
+    environment: ${{ github.event_name == 'pull_request_target' && 'acceptance-tests' || '' }}
 
     permissions:
       contents: read
@@ -44,6 +59,8 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
+          # For pull_request_target, checkout the PR code, not the base branch.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:
@@ -75,7 +92,6 @@ jobs:
             direct {}
           }
           EOF
-          terraform init
 
       - name: Run acceptance tests
         env:
@@ -86,5 +102,5 @@ jobs:
           TF_ACC_AUDIENCE: "https://console-api.enforce.dev"
           TF_ACC_ISSUER: "https://issuer.enforce.dev"
           TF_ACC_AMBIENT: "1"
-        run: go test -v -cover ./internal/...
+        run: go test -v -cover -count=1 -race ./internal/...
         timeout-minutes: 10
