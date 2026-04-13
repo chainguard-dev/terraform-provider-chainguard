@@ -60,11 +60,8 @@ func TestImageTag(t *testing.T) {
 				ImportStateVerify: true,
 			},
 			// Update and Read testing.
-			// ExpectNonEmptyPlan is set because computed fields (digest, last_updated)
-			// legitimately change on every update and show as (known after apply) in the plan.
 			{
-				Config:             testImageTag(update),
-				ExpectNonEmptyPlan: true,
+				Config: testImageTag(update),
 				Check: resource.ComposeTestCheckFunc(
 					// We do not check the repo_id because it will be dynamic based on chainguard_image_repo.tag_example
 					resource.TestCheckResourceAttr(`chainguard_image_tag.tag_example`, `name`, name),
