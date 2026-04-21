@@ -47,7 +47,8 @@ resource "chainguard_account_associations" "example" {
 - `azure` (Block, Optional) Azure account association configuration (see [below for nested schema](#nestedblock--azure))
 - `chainguard` (Block, Optional) Association of Chainguard services to the service principals they should assume when talking to Chainguard APIs. (see [below for nested schema](#nestedblock--chainguard))
 - `description` (String) Description of the account association.
-- `github` (Block, Optional) GitHub App installation configuration (see [below for nested schema](#nestedblock--github))
+- `github` (Block, Optional, Deprecated) GitHub App installation configuration (deprecated: use github_installation instead). (see [below for nested schema](#nestedblock--github))
+- `github_installation` (Block List) GitHub App installation associations. Each block associates one (app_id, installation_id) pair with this group. Supports multiple installations. (see [below for nested schema](#nestedblock--github_installation))
 - `google` (Block, Optional) Google Cloud Platform account association configuration (see [below for nested schema](#nestedblock--google))
 
 ### Read-Only
@@ -84,13 +85,26 @@ Optional:
 
 Optional:
 
+- `app_id` (Number) GitHub App ID.
 - `installation_id` (Number) GitHub App Installation ID.
 - `name` (String) GitHub user/org name the installation is installed on.
 
 Read-Only:
 
+- `host` (String, Deprecated) Deprecated: no longer populated by the API.
+
+
+<a id="nestedblock--github_installation"></a>
+### Nested Schema for `github_installation`
+
+Required:
+
 - `app_id` (Number) GitHub App ID.
-- `host` (String) GitHub hostname the app is associated with.
+- `installation_id` (Number) GitHub App Installation ID.
+
+Optional:
+
+- `name` (String) GitHub user/org name the installation is installed on.
 
 
 <a id="nestedblock--google"></a>

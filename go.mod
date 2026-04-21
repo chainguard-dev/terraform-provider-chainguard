@@ -4,7 +4,7 @@ go 1.25.8
 
 require (
 	chainguard.dev/apko v1.2.3
-	chainguard.dev/sdk v0.1.52
+	chainguard.dev/sdk v0.1.53
 	github.com/chainguard-dev/clog v1.8.0
 	github.com/coreos/go-oidc/v3 v3.17.0
 	github.com/google/go-cmp v0.7.0
@@ -22,7 +22,7 @@ require (
 )
 
 require (
-	chainguard.dev/go-grpc-kit v0.17.16 // indirect
+	chainguard.dev/go-grpc-kit v0.17.17 // indirect
 	cloud.google.com/go/auth v0.20.0 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
