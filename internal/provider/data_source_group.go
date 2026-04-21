@@ -15,8 +15,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
+	iamv2 "chainguard.dev/sdk/proto/chainguard/platform/iam/v2beta1"
 	common "chainguard.dev/sdk/proto/platform/common/v1"
-	iam "chainguard.dev/sdk/proto/platform/iam/v1"
 	"chainguard.dev/sdk/uidp"
 	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
 )
@@ -93,16 +93,30 @@ func (d *groupDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 	}
 	tflog.Info(ctx, fmt.Sprintf("read group data-source request: name=%s, parent_id=%s", data.Name, data.ParentID))
 
+	if data.ID.ValueString() != "" {
+		g, err := d.prov.clientV2.IAM().GroupsService().GetGroup(ctx, &iamv2.GetGroupRequest{
+			Uid: data.ID.ValueString(),
+		})
+		if err != nil {
+			resp.Diagnostics.Append(errorToDiagnostic(err, "failed to get group"))
+			return
+		}
+		data.ID = types.StringValue(g.GetUid())
+		data.Name = types.StringValue(g.GetName())
+		data.Description = types.StringValue(g.GetDescription())
+		data.ParentID = types.StringValue(uidp.Parent(g.GetUid()))
+		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+		return
+	}
+
 	uf := &common.UIDPFilter{}
 	if data.ParentID.ValueString() != "" && data.ParentID.ValueString() != "/" {
 		uf.ChildrenOf = data.ParentID.ValueString()
 	}
-	f := &iam.GroupFilter{
-		Id:   data.ID.ValueString(),
-		Name: data.Name.ValueString(),
+	groups, err := d.prov.clientV2.IAM().ListGroupsAll(ctx, &iamv2.ListGroupsRequest{
 		Uidp: uf,
-	}
-	groupList, err := d.prov.client.IAM().Groups().List(ctx, f)
+		Name: data.Name.ValueString(),
+	})
 	if err != nil {
 		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to list groups"))
 		return
@@ -111,50 +125,46 @@ func (d *groupDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 	// Remove non-organization groups if parent_id is root sentinel
 	if data.ParentID.ValueString() == "/" {
 		tflog.Info(ctx, "filtering by root")
-		groups := make([]*iam.Group, 0, len(groupList.GetItems()))
-		for _, g := range groupList.GetItems() {
-			if uidp.InRoot(g.Id) {
-				tflog.Info(ctx, fmt.Sprintf("found an organization: %s", g.Id))
-				groups = append(groups, g)
+		orgs := make([]*iamv2.Group, 0, len(groups))
+		for _, g := range groups {
+			if uidp.InRoot(g.GetUid()) {
+				tflog.Info(ctx, fmt.Sprintf("found an organization: %s", g.GetUid()))
+				orgs = append(orgs, g)
 			}
 		}
-		groupList.Items = groups
+		groups = orgs
 	}
 
 	// When looking up by name, prefer verified groups. This avoids
 	// "too many found" errors when multiple groups share a name but
 	// only one is verified (verified names are globally unique).
-	items := groupList.GetItems()
-	if data.Name.ValueString() != "" && len(items) > 1 {
-		verified := make([]*iam.Group, 0, len(items))
-		for _, g := range items {
+	if data.Name.ValueString() != "" && len(groups) > 1 {
+		verified := make([]*iamv2.Group, 0, len(groups))
+		for _, g := range groups {
 			if g.GetVerified() {
 				verified = append(verified, g)
 			}
 		}
 		if len(verified) > 0 {
-			tflog.Info(ctx, fmt.Sprintf("narrowed %d groups to %d verified group(s)", len(items), len(verified)))
-			items = verified
+			tflog.Info(ctx, fmt.Sprintf("narrowed %d groups to %d verified group(s)", len(groups), len(verified)))
+			groups = verified
 		}
 	}
 
-	switch c := len(items); c {
+	switch c := len(groups); c {
 	case 0:
-		// Group was not found (either never existed, or was deleted).
 		resp.Diagnostics.Append(dataNotFound("group", "" /* extra */, data))
 
 	case 1:
-		g := items[0]
-		data.ID = types.StringValue(g.Id)
-		data.Name = types.StringValue(g.Name)
-		data.Description = types.StringValue(g.Description)
-		data.ParentID = types.StringValue(uidp.Parent(g.Id))
-
-		// Set state
+		g := groups[0]
+		data.ID = types.StringValue(g.GetUid())
+		data.Name = types.StringValue(g.GetName())
+		data.Description = types.StringValue(g.GetDescription())
+		data.ParentID = types.StringValue(uidp.Parent(g.GetUid()))
 		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 
 	default:
-		tflog.Error(ctx, fmt.Sprintf("group list returned %d groups for filter %v", c, f))
+		tflog.Error(ctx, fmt.Sprintf("group list returned %d groups for %s", c, data.InputParams()))
 		resp.Diagnostics.Append(dataTooManyFound("group", "Please provide more context to narrow query (e.g. parent_id).", data))
 	}
 }

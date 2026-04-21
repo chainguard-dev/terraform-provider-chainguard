@@ -9,10 +9,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
-	"time"
 
+	regv2 "chainguard.dev/sdk/proto/chainguard/platform/registry/v2beta1"
 	common "chainguard.dev/sdk/proto/platform/common/v1"
-	registry "chainguard.dev/sdk/proto/platform/registry/v1"
 	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -144,73 +143,32 @@ func (d *imageReposDataSource) Read(ctx context.Context, req datasource.ReadRequ
 
 	tflog.Info(ctx, "read imageRepos data-source request", map[string]any{"input-params": data.InputParams()})
 
-	filter := &registry.RepoFilter{}
+	listReq := &regv2.ListReposRequest{}
 	if !data.Name.IsNull() {
-		filter.Name = data.Name.ValueString()
+		name := data.Name.ValueString()
+		listReq.Name = &name
 	}
 	if !data.ParentID.IsNull() {
-		filter.Uidp = &common.UIDPFilter{
+		listReq.Uidp = &common.UIDPFilter{
 			ChildrenOf: data.ParentID.ValueString(),
 		}
 	}
 
-	items, err := d.prov.client.Registry().Registry().ListRepos(ctx, filter)
+	repos, err := d.prov.clientV2.Registry().ListReposAll(ctx, listReq)
 	if err != nil {
 		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to list repos"))
 		return
 	}
 
-	// Initialize items slice to ensure it's not nil even if no repos found
 	data.Items = make([]*imageRepoModel, 0)
 
-	for _, repo := range items.GetItems() {
-		bundles, diags := types.ListValueFrom(ctx, types.StringType, repo.GetBundles())
+	for _, repo := range repos {
+		repoModel, diags := repoToModel(ctx, repo)
 		resp.Diagnostics.Append(diags...)
-		if diags.HasError() {
+		if resp.Diagnostics.HasError() {
 			return
 		}
-
-		aliases, diags := types.ListValueFrom(ctx, types.StringType, repo.GetAliases())
-		resp.Diagnostics.Append(diags...)
-		if diags.HasError() {
-			return
-		}
-
-		activeTags, diags := types.ListValueFrom(ctx, types.StringType, repo.GetActiveTags())
-		resp.Diagnostics.Append(diags...)
-		if diags.HasError() {
-			return
-		}
-
-		var sc *syncConfig
-		if repo.SyncConfig != nil {
-			expiration := types.StringNull()
-			if repo.GetSyncConfig().GetExpiration() != nil && !repo.GetSyncConfig().GetExpiration().AsTime().IsZero() {
-				expiration = types.StringValue(repo.GetSyncConfig().GetExpiration().AsTime().Format(time.RFC3339))
-			}
-			sc = &syncConfig{
-				Source:      types.StringValue(repo.GetSyncConfig().GetSource()),
-				Expiration:  expiration,
-				UniqueTags:  types.BoolValue(repo.GetSyncConfig().GetUniqueTags()),
-				GracePeriod: types.BoolValue(repo.GetSyncConfig().GetGracePeriod()),
-				Google:      types.StringValue(repo.GetSyncConfig().GetGoogle()),
-				Amazon:      types.StringValue(repo.GetSyncConfig().GetAmazon()),
-				Azure:       types.StringValue(repo.GetSyncConfig().GetAzure()),
-				ApkoOverlay: types.StringValue(repo.GetSyncConfig().GetApkoOverlay()),
-			}
-		}
-
-		data.Items = append(data.Items, &imageRepoModel{
-			ID:          types.StringValue(repo.GetId()),
-			Name:        types.StringValue(repo.GetName()),
-			Bundles:     bundles,
-			Readme:      types.StringValue(repo.GetReadme()),
-			SyncConfig:  sc,
-			Tier:        types.StringValue(repo.GetCatalogTier().String()),
-			Description: types.StringValue(repo.GetDescription()),
-			Aliases:     aliases,
-			ActiveTags:  activeTags,
-		})
+		data.Items = append(data.Items, repoModel)
 	}
 
 	// Generate a unique ID based on the filter parameters

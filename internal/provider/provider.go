@@ -29,6 +29,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"chainguard.dev/sdk/auth"
+	clientsv2 "chainguard.dev/sdk/proto/chainguard/platform/clients/v2beta1"
 	"chainguard.dev/sdk/proto/platform"
 	"github.com/chainguard-dev/terraform-provider-chainguard/internal/protoutil"
 	"github.com/chainguard-dev/terraform-provider-chainguard/internal/token"
@@ -224,6 +225,7 @@ only consider the filtered versions.`,
 
 type providerData struct {
 	client   platform.Clients
+	clientV2 clientsv2.Clients
 	clientMu sync.Mutex
 
 	consoleAPI          string
@@ -397,7 +399,14 @@ func (pd *providerData) setupClient(ctx context.Context) error {
 		return fmt.Errorf("failed to create API clients: %s", err.Error())
 	}
 
+	cred := auth.NewFromToken(ctx, fmt.Sprintf("Bearer %s", string(cgToken)), false)
+	v2, err := clientsv2.NewClients(ctx, pd.consoleAPI, UserAgent, cred)
+	if err != nil {
+		return fmt.Errorf("failed to create v2beta1 API clients: %s", err.Error())
+	}
+
 	pd.client = clients
+	pd.clientV2 = v2
 	return nil
 }
 
