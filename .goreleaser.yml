@@ -49,11 +49,14 @@ signs:
       - "${signature}"
       - "--detach-sign"
       - "${artifact}"
+snapshot:
+  name_template: "{{ .Tag }}-next"
 release:
+  draft: false
+  prerelease: auto
+  name_template: "Release {{ .Tag }}"
   extra_files:
     - glob: 'terraform-registry-manifest.json'
       name_template: '{{ .ProjectName }}_{{ .Version }}_manifest.json'
-  # If you want to manually examine the release before its live, uncomment this line:
-  # draft: true
 changelog:
   disable: true
