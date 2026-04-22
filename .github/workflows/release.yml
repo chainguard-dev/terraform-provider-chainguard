@@ -17,7 +17,7 @@ jobs:
 
     steps:
       - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@f808768d1510423e83855289c910610ca9b43176 # v2.17.0
+        uses: step-security/harden-runner@8d3c67de8e2fe68ef647c8db1e6a09f647780f40 # v2.19.0
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -97,7 +97,7 @@ jobs:
           check-latest: true
 
       # This is provisioned here: https://github.com/chainguard-dev/secrets/blob/main/terraform-provider-chainguard.tf
-      - uses: step-security/google-github-auth@57c51210cb4d85d8a5d39dc4c576c79bd693f914 # v3.0.1
+      - uses: step-security/google-github-auth@775fc4c80760272ef389c9f9f8d98de7db0c170d # v3.0.2
         if: steps.check.outputs.need_release == 'yes'
         id: auth
         with:
@@ -128,7 +128,7 @@ jobs:
         run: |
           gpg --keyserver keys.openpgp.org --send-keys "$GPG_FINGERPRINT"
 
-      - uses: goreleaser/goreleaser-action@ec59f474b9834571250b370d4735c50f8e2d1e29 # v7.0.0
+      - uses: goreleaser/goreleaser-action@e24998b8b67b290c2fa8b7c14fcfa7de2c5c9b8c # v7.1.0
         if: steps.check.outputs.need_release == 'yes'
         with:
           version: "latest"
