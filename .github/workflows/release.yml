@@ -16,11 +16,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Harden the runner (Audit all outbound calls)
+      - name: Harden the runner
         uses: step-security/harden-runner@8d3c67de8e2fe68ef647c8db1e6a09f647780f40 # v2.19.0
         with:
-          egress-policy: audit
+          egress-policy: block
           allowed-endpoints: >
+            _pgpkey-http._tcp.keys.openpgp.org:443
             *.blob.core.windows.net:443
             *.githubapp.com:443
             api.github.com:443
@@ -32,6 +33,7 @@ jobs:
             iamcredentials.googleapis.com:443
             keys.openpgp.org:11371
             keys.openpgp.org:443
+            metadata.google.internal:443
             objects.githubusercontent.com:443
             octo-sts.dev:443
             proxy.golang.org:443
