@@ -280,8 +280,12 @@ func repoToModel(ctx context.Context, repo *regv2.Repo) (*imageRepoModel, diag.D
 
 // catalogTierString normalizes v2beta1 CatalogTier enum names to match
 // the v1 format used elsewhere in the provider (e.g., "APPLICATION" not
-// "CATALOG_TIER_APPLICATION").
+// "CATALOG_TIER_APPLICATION"). The v2beta1 zero-value is named "UNSPECIFIED"
+// but v1's zero-value is "UNKNOWN" — translate explicitly so the value this
+// data source emits is always valid input for a chainguard_image_repo resource.
 func catalogTierString(tier regv2.CatalogTier) string {
-	s := tier.String()
-	return strings.TrimPrefix(s, "CATALOG_TIER_")
+	if tier == regv2.CatalogTier_CATALOG_TIER_UNSPECIFIED {
+		return "UNKNOWN"
+	}
+	return strings.TrimPrefix(tier.String(), "CATALOG_TIER_")
 }
