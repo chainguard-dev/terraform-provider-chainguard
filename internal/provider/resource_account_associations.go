@@ -8,6 +8,8 @@ package provider
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/mapvalidator"
 
@@ -46,15 +48,16 @@ type accountAssociationsResource struct {
 }
 
 type accountAssociationsResourceModel struct {
-	ID          types.String `tfsdk:"id"`
-	Name        types.String `tfsdk:"name"`
-	Description types.String `tfsdk:"description"`
-	Group       types.String `tfsdk:"group"`
-	Amazon      types.Object `tfsdk:"amazon"`
-	Google      types.Object `tfsdk:"google"`
-	Azure       types.Object `tfsdk:"azure"`
-	Chainguard  types.Object `tfsdk:"chainguard"`
-	Github      types.Object `tfsdk:"github"`
+	ID                 types.String               `tfsdk:"id"`
+	Name               types.String               `tfsdk:"name"`
+	Description        types.String               `tfsdk:"description"`
+	Group              types.String               `tfsdk:"group"`
+	Amazon             types.Object               `tfsdk:"amazon"`
+	Google             types.Object               `tfsdk:"google"`
+	Azure              types.Object               `tfsdk:"azure"`
+	Chainguard         types.Object               `tfsdk:"chainguard"`
+	Github             types.Object               `tfsdk:"github"`
+	GithubInstallation []*githubInstallationModel `tfsdk:"github_installation"`
 }
 
 type amazonAccountModel struct {
@@ -77,6 +80,12 @@ type azureAccountModel struct {
 
 type githubAccountModel struct {
 	Host           types.String `tfsdk:"host"`
+	AppID          types.Int64  `tfsdk:"app_id"`
+	InstallationID types.Int64  `tfsdk:"installation_id"`
+	Name           types.String `tfsdk:"name"`
+}
+
+type githubInstallationModel struct {
 	AppID          types.Int64  `tfsdk:"app_id"`
 	InstallationID types.Int64  `tfsdk:"installation_id"`
 	Name           types.String `tfsdk:"name"`
@@ -133,6 +142,7 @@ func (r *accountAssociationsResource) Schema(_ context.Context, _ resource.Schem
 						path.MatchRoot("azure"),
 						path.MatchRoot("chainguard"),
 						path.MatchRoot("github"),
+						path.MatchRoot("github_installation"),
 					),
 				},
 				Attributes: map[string]schema.Attribute{
@@ -203,19 +213,26 @@ func (r *accountAssociationsResource) Schema(_ context.Context, _ resource.Schem
 				},
 			},
 			"github": schema.SingleNestedBlock{
-				Description: "GitHub App installation configuration",
+				DeprecationMessage: "Use github_installation blocks instead. This block supports only a single installation.",
+				Description:        "GitHub App installation configuration (deprecated: use github_installation instead).",
 				Validators: []validator.Object{
 					objectvalidator.AlsoRequires(
+						path.Root("github").AtName("app_id").Expression(),
 						path.Root("github").AtName("installation_id").Expression(),
+					),
+					objectvalidator.ConflictsWith(
+						path.MatchRoot("github_installation"),
 					),
 				},
 				Attributes: map[string]schema.Attribute{
 					"host": schema.StringAttribute{
-						Description: "GitHub hostname the app is associated with.",
-						Computed:    true,
+						Description:        "Deprecated: no longer populated by the API.",
+						DeprecationMessage: "This field is no longer populated and will be removed in a future version.",
+						Computed:           true,
 					},
 					"app_id": schema.Int64Attribute{
 						Description: "GitHub App ID.",
+						Optional:    true,
 						Computed:    true,
 					},
 					"installation_id": schema.Int64Attribute{
@@ -225,6 +242,25 @@ func (r *accountAssociationsResource) Schema(_ context.Context, _ resource.Schem
 					"name": schema.StringAttribute{
 						Description: "GitHub user/org name the installation is installed on.",
 						Optional:    true,
+					},
+				},
+			},
+			"github_installation": schema.ListNestedBlock{
+				Description: "GitHub App installation associations. Each block associates one (app_id, installation_id) pair with this group. Supports multiple installations.",
+				NestedObject: schema.NestedBlockObject{
+					Attributes: map[string]schema.Attribute{
+						"app_id": schema.Int64Attribute{
+							Description: "GitHub App ID.",
+							Required:    true,
+						},
+						"installation_id": schema.Int64Attribute{
+							Description: "GitHub App Installation ID.",
+							Required:    true,
+						},
+						"name": schema.StringAttribute{
+							Description: "GitHub user/org name the installation is installed on.",
+							Optional:    true,
+						},
 					},
 				},
 			},
@@ -289,10 +325,37 @@ func populateAccountAssociation(ctx context.Context, m accountAssociationsResour
 		if diags = m.Github.As(ctx, &gm, basetypes.ObjectAsOptions{}); diags.HasError() {
 			return nil, diags
 		}
+		if gm.AppID.IsNull() || gm.AppID.IsUnknown() {
+			diags.AddError("missing app_id",
+				"The github block now requires app_id. Set it to the GitHub App ID, or migrate to github_installation blocks.")
+			return nil, diags
+		}
+		assoc.Github = &iam.AccountAssociations_GitHub{
+			AppInstallations: map[int64]*iam.AccountAssociations_GitHubAppInstallations{
+				gm.AppID.ValueInt64(): {
+					Installations: []*iam.AccountAssociations_GitHubInstallation{{
+						InstallationId: gm.InstallationID.ValueInt64(),
+						Name:           gm.Name.ValueString(),
+					}},
+				},
+			},
+		}
+	}
 
-		assoc.Github = &iam.AccountAssociations_GitHubInstallation{
-			InstallationId: gm.InstallationID.ValueInt64(),
-			Name:           gm.Name.ValueString(),
+	if len(m.GithubInstallation) > 0 {
+		appInstalls := make(map[int64]*iam.AccountAssociations_GitHubAppInstallations, len(m.GithubInstallation))
+		for _, gh := range m.GithubInstallation {
+			appID := gh.AppID.ValueInt64()
+			if appInstalls[appID] == nil {
+				appInstalls[appID] = &iam.AccountAssociations_GitHubAppInstallations{}
+			}
+			appInstalls[appID].Installations = append(appInstalls[appID].Installations, &iam.AccountAssociations_GitHubInstallation{
+				InstallationId: gh.InstallationID.ValueInt64(),
+				Name:           gh.Name.ValueString(),
+			})
+		}
+		assoc.Github = &iam.AccountAssociations_GitHub{
+			AppInstallations: appInstalls,
 		}
 	}
 
@@ -481,14 +544,40 @@ func (r *accountAssociationsResource) Read(ctx context.Context, req resource.Rea
 	}
 
 	if assoc.Github != nil {
-		gm := githubAccountModel{
-			Host:           types.StringValue(assoc.Github.Host),
-			AppID:          types.Int64Value(assoc.Github.AppId),
-			InstallationID: types.Int64Value(assoc.Github.InstallationId),
-			Name:           types.StringValue(assoc.Github.Name),
+		sortedAppIDs := slices.Sorted(maps.Keys(assoc.Github.GetAppInstallations()))
+		if !state.Github.IsNull() {
+			// Deprecated path: flatten to the first installation for backwards compat.
+			found := false
+		outer:
+			for _, appID := range sortedAppIDs {
+				for _, inst := range assoc.Github.GetAppInstallations()[appID].GetInstallations() {
+					gm := githubAccountModel{
+						Host:           types.StringValue(""),
+						AppID:          types.Int64Value(appID),
+						InstallationID: types.Int64Value(inst.GetInstallationId()),
+						Name:           types.StringValue(inst.GetName()),
+					}
+					state.Github, diags = types.ObjectValueFrom(ctx, state.Github.AttributeTypes(ctx), gm)
+					resp.Diagnostics.Append(diags...)
+					found = true
+					break outer
+				}
+			}
+			if !found {
+				state.Github = types.ObjectNull(state.Github.AttributeTypes(ctx))
+			}
+		} else {
+			state.GithubInstallation = nil
+			for _, appID := range sortedAppIDs {
+				for _, inst := range assoc.Github.GetAppInstallations()[appID].GetInstallations() {
+					state.GithubInstallation = append(state.GithubInstallation, &githubInstallationModel{
+						AppID:          types.Int64Value(appID),
+						InstallationID: types.Int64Value(inst.GetInstallationId()),
+						Name:           types.StringValue(inst.GetName()),
+					})
+				}
+			}
 		}
-		state.Github, diags = types.ObjectValueFrom(ctx, state.Github.AttributeTypes(ctx), gm)
-		resp.Diagnostics.Append(diags...)
 	}
 
 	if resp.Diagnostics.HasError() {

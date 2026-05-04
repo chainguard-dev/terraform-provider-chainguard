@@ -8,15 +8,17 @@ package provider
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
+	regv2 "chainguard.dev/sdk/proto/chainguard/platform/registry/v2beta1"
 	common "chainguard.dev/sdk/proto/platform/common/v1"
-	registry "chainguard.dev/sdk/proto/platform/registry/v1"
 	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -170,80 +172,120 @@ func (d *imageRepoDataSource) Read(ctx context.Context, req datasource.ReadReque
 		return
 	}
 	tflog.Info(ctx, "read imageRepo data-source request", map[string]any{"input-params": data.InputParams()})
-	filter := &registry.RepoFilter{}
-	if !data.ID.IsNull() {
-		filter.Id = data.ID.ValueString()
+
+	if !data.ID.IsNull() && data.ID.ValueString() != "" {
+		repo, err := d.prov.clientV2.Registry().ReposService().GetRepo(ctx, &regv2.GetRepoRequest{
+			Uid: data.ID.ValueString(),
+		})
+		if err != nil {
+			resp.Diagnostics.Append(errorToDiagnostic(err, "failed to get repo"))
+			return
+		}
+		repoModel, diags := repoToModel(ctx, repo)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		data.Items = append(data.Items, repoModel)
+		data.ID = types.StringValue(repo.GetUid())
+		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+		return
 	}
+
+	listReq := &regv2.ListReposRequest{}
 	if !data.Name.IsNull() {
-		filter.Name = data.Name.ValueString()
+		name := data.Name.ValueString()
+		listReq.Name = &name
 	}
 	if !data.ParentID.IsNull() {
-		filter.Uidp = &common.UIDPFilter{
+		listReq.Uidp = &common.UIDPFilter{
 			ChildrenOf: data.ParentID.ValueString(),
 		}
 	}
-	items, err := d.prov.client.Registry().Registry().ListRepos(ctx, filter)
+	repos, err := d.prov.clientV2.Registry().ListReposAll(ctx, listReq)
 	if err != nil {
 		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to list repos"))
 		return
 	}
-	for _, repo := range items.GetItems() {
-		bundles, diags := types.ListValueFrom(ctx, types.StringType, repo.GetBundles())
+	for _, repo := range repos {
+		repoModel, diags := repoToModel(ctx, repo)
 		resp.Diagnostics.Append(diags...)
-		if diags.HasError() {
+		if resp.Diagnostics.HasError() {
 			return
 		}
-
-		aliases, diags := types.ListValueFrom(ctx, types.StringType, repo.GetAliases())
-		resp.Diagnostics.Append(diags...)
-		if diags.HasError() {
-			return
-		}
-
-		activeTags, diags := types.ListValueFrom(ctx, types.StringType, repo.GetActiveTags())
-		resp.Diagnostics.Append(diags...)
-		if diags.HasError() {
-			return
-		}
-
-		var sc *syncConfig
-		if repo.SyncConfig != nil {
-			expiration := types.StringNull()
-			if repo.GetSyncConfig().GetExpiration() != nil && !repo.GetSyncConfig().GetExpiration().AsTime().IsZero() {
-				expiration = types.StringValue(repo.GetSyncConfig().GetExpiration().AsTime().Format(time.RFC3339))
-			}
-			sc = &syncConfig{
-				Source:      types.StringValue(repo.GetSyncConfig().GetSource()),
-				Expiration:  expiration,
-				UniqueTags:  types.BoolValue(repo.GetSyncConfig().GetUniqueTags()),
-				GracePeriod: types.BoolValue(repo.GetSyncConfig().GetGracePeriod()),
-				Google:      types.StringValue(repo.GetSyncConfig().GetGoogle()),
-				Amazon:      types.StringValue(repo.GetSyncConfig().GetAmazon()),
-				Azure:       types.StringValue(repo.GetSyncConfig().GetAzure()),
-				ApkoOverlay: types.StringValue(repo.GetSyncConfig().GetApkoOverlay()),
-			}
-		}
-		data.Items = append(data.Items, &imageRepoModel{
-			ID:          types.StringValue(repo.GetId()),
-			Name:        types.StringValue(repo.GetName()),
-			Bundles:     bundles,
-			Readme:      types.StringValue(repo.GetReadme()),
-			SyncConfig:  sc,
-			Tier:        types.StringValue(repo.GetCatalogTier().String()),
-			Description: types.StringValue(repo.GetDescription()),
-			Aliases:     aliases,
-			ActiveTags:  activeTags,
-		})
+		data.Items = append(data.Items, repoModel)
 	}
-	if len(items.GetItems()) == 0 {
+	if len(repos) == 0 {
 		resp.Diagnostics.Append(dataNotFound("repo", "check your input" /* extra */, data))
 		return
-	} else if len(items.GetItems()) == 1 {
-		data.ID = types.StringValue(items.GetItems()[0].GetId())
+	} else if len(repos) == 1 {
+		data.ID = types.StringValue(repos[0].GetUid())
 	} else if d.prov.testing {
-		// Set the ID on imageRepoModel for acceptance tests.
-		// https://developer.hashicorp.com/terraform/tutorials/providers-plugin-framework/providers-plugin-framework-acceptance-testing#implement-data-source-id-attribute
 		data.ID = types.StringValue("placeholder")
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+func repoToModel(ctx context.Context, repo *regv2.Repo) (*imageRepoModel, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	bundles, d := types.ListValueFrom(ctx, types.StringType, repo.GetBundles())
+	diags.Append(d...)
+	if d.HasError() {
+		return nil, diags
+	}
+
+	aliases, d := types.ListValueFrom(ctx, types.StringType, repo.GetAliases())
+	diags.Append(d...)
+	if d.HasError() {
+		return nil, diags
+	}
+
+	activeTags, d := types.ListValueFrom(ctx, types.StringType, repo.GetActiveTags())
+	diags.Append(d...)
+	if d.HasError() {
+		return nil, diags
+	}
+
+	var sc *syncConfig
+	if repo.SyncConfig != nil {
+		expiration := types.StringNull()
+		if repo.GetSyncConfig().GetExpirationTime() != nil && !repo.GetSyncConfig().GetExpirationTime().AsTime().IsZero() {
+			expiration = types.StringValue(repo.GetSyncConfig().GetExpirationTime().AsTime().Format(time.RFC3339))
+		}
+		sc = &syncConfig{
+			Source:      types.StringValue(repo.GetSyncConfig().GetSource()),
+			Expiration:  expiration,
+			UniqueTags:  types.BoolValue(repo.GetSyncConfig().GetUniqueTags()),
+			GracePeriod: types.BoolValue(repo.GetSyncConfig().GetGracePeriod()),
+			Google:      types.StringValue(repo.GetSyncConfig().GetGoogle()),
+			Amazon:      types.StringValue(repo.GetSyncConfig().GetAmazon()),
+			Azure:       types.StringValue(repo.GetSyncConfig().GetAzure()),
+			ApkoOverlay: types.StringValue(repo.GetSyncConfig().GetApkoOverlay()),
+		}
+	}
+
+	return &imageRepoModel{
+		ID:          types.StringValue(repo.GetUid()),
+		Name:        types.StringValue(repo.GetName()),
+		Bundles:     bundles,
+		Readme:      types.StringValue(repo.GetReadme()),
+		SyncConfig:  sc,
+		Tier:        types.StringValue(catalogTierString(repo.GetCatalogTier())),
+		Description: types.StringValue(repo.GetDescription()),
+		Aliases:     aliases,
+		ActiveTags:  activeTags,
+	}, diags
+}
+
+// catalogTierString normalizes v2beta1 CatalogTier enum names to match
+// the v1 format used elsewhere in the provider (e.g., "APPLICATION" not
+// "CATALOG_TIER_APPLICATION"). The v2beta1 zero-value is named "UNSPECIFIED"
+// but v1's zero-value is "UNKNOWN" — translate explicitly so the value this
+// data source emits is always valid input for a chainguard_image_repo resource.
+func catalogTierString(tier regv2.CatalogTier) string {
+	if tier == regv2.CatalogTier_CATALOG_TIER_UNSPECIFIED {
+		return "UNKNOWN"
+	}
+	return strings.TrimPrefix(tier.String(), "CATALOG_TIER_")
 }

@@ -15,7 +15,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
-	iam "chainguard.dev/sdk/proto/platform/iam/v1"
+	"chainguard.dev/sdk/proto/capabilities"
+	iamv2 "chainguard.dev/sdk/proto/chainguard/platform/iam/v2beta1"
+	common "chainguard.dev/sdk/proto/platform/common/v1"
 	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
 )
 
@@ -121,36 +123,58 @@ func (d *roleDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 	}
 	tflog.Info(ctx, "read role data-source request", map[string]any{"input-params": data.InputParams()})
 
-	all, err := d.prov.client.IAM().Roles().List(ctx, &iam.RoleFilter{
-		Id:     data.ID.ValueString(),
-		Name:   data.Name.ValueString(),
-		Parent: data.Parent.ValueString(),
+	if data.ID.ValueString() != "" {
+		role, err := d.prov.clientV2.IAM().RolesService().GetRole(ctx, &iamv2.GetRoleRequest{
+			Uid: data.ID.ValueString(),
+		})
+		if err != nil {
+			resp.Diagnostics.Append(errorToDiagnostic(err, "failed to get role"))
+			return
+		}
+		caps, diags := types.ListValueFrom(ctx, types.StringType, capabilityStrings(role.GetCapabilities()))
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		data.Items = append(data.Items, &roleModel{
+			ID:           types.StringValue(role.GetUid()),
+			Name:         types.StringValue(role.GetName()),
+			Description:  types.StringValue(role.GetDescription()),
+			Capabilities: caps,
+		})
+		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+		return
+	}
+
+	uf := &common.UIDPFilter{}
+	if v := data.Parent.ValueString(); v != "" && v != "/" {
+		uf.ChildrenOf = v
+	}
+	roles, err := d.prov.clientV2.IAM().ListRolesAll(ctx, &iamv2.ListRolesRequest{
+		Uidp: uf,
+		Name: data.Name.ValueString(),
 	})
 	if err != nil {
 		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to list roles"))
 		return
 	}
 
-	for _, role := range all.GetItems() {
-		caps, diags := types.ListValueFrom(ctx, types.StringType, role.Capabilities)
-		// Collect returned warnings/errors.
+	for _, role := range roles {
+		caps, diags := types.ListValueFrom(ctx, types.StringType, capabilityStrings(role.GetCapabilities()))
 		resp.Diagnostics.Append(diags...)
 		if diags.HasError() {
-			// Don't return a role if errors encountered converting the capabilities.
-			// This /shouldn't/ happen since the caps are coming from the API.
-			tflog.Error(ctx, "failed to convert capabilities to basetypes.ListValue", map[string]any{"caps": role.Capabilities})
+			tflog.Error(ctx, "failed to convert capabilities to basetypes.ListValue", map[string]any{"caps": role.GetCapabilities()})
 			continue
 		}
 
 		data.Items = append(data.Items, &roleModel{
-			ID:           types.StringValue(role.Id),
-			Name:         types.StringValue(role.Name),
-			Description:  types.StringValue(role.Description),
+			ID:           types.StringValue(role.GetUid()),
+			Name:         types.StringValue(role.GetName()),
+			Description:  types.StringValue(role.GetDescription()),
 			Capabilities: caps,
 		})
 	}
-	// Role wasn't found, or was deleted outside Terraform
-	if len(all.GetItems()) == 0 {
+	if len(roles) == 0 {
 		resp.Diagnostics.Append(dataNotFound("role", "" /* extra */, data))
 		return
 	} else if d.prov.testing {
@@ -161,4 +185,12 @@ func (d *roleDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 
 	// Set state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+func capabilityStrings(caps []capabilities.Capability) []string {
+	strs := make([]string, 0, len(caps))
+	for _, c := range caps {
+		strs = append(strs, c.String())
+	}
+	return strs
 }
