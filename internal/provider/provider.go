@@ -24,7 +24,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
+	grpc_retry "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/retry"
 	"github.com/sigstore/cosign/v2/pkg/providers"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -68,6 +70,18 @@ var (
 
 	UserAgent = "terraform-provider-chainguard"
 )
+
+// retryDialOption opts every RPC on the dialed connection into retries via
+// the grpc_retry interceptor that chainguard.dev/go-grpc-kit already wires
+// into platform.NewPlatformClients and clientsv2.NewClients. The kit
+// configures the interceptor with WithMax(0) (no retries) by default; passing
+// WithMax as a default per-call option overrides it without adding a second
+// interceptor. Retries on the kit-default backoff (100ms exponential) and the
+// library-default codes (Unavailable, ResourceExhausted), which covers the
+// connection-refused class of transient infrastructure errors.
+func retryDialOption() grpc.DialOption {
+	return grpc.WithDefaultCallOptions(grpc_retry.WithMax(3))
+}
 
 // New is a helper function to simplify provider server and testing implementation.
 func New(version string) func() provider.Provider {
@@ -349,7 +363,7 @@ func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest,
 func newPlatformClients(ctx context.Context, token, consoleAPI string) (platform.Clients, error) {
 	cred := auth.NewFromToken(ctx, fmt.Sprintf("Bearer %s", token), false)
 	ctx = platform.WithUserAgent(ctx, UserAgent)
-	clients, err := platform.NewPlatformClients(ctx, consoleAPI, cred)
+	clients, err := platform.NewPlatformClients(ctx, consoleAPI, cred, retryDialOption())
 	if err != nil {
 		return nil, err
 	}
@@ -400,7 +414,7 @@ func (pd *providerData) setupClient(ctx context.Context) error {
 	}
 
 	cred := auth.NewFromToken(ctx, fmt.Sprintf("Bearer %s", string(cgToken)), false)
-	v2, err := clientsv2.NewClients(ctx, pd.consoleAPI, UserAgent, cred)
+	v2, err := clientsv2.NewClients(ctx, pd.consoleAPI, UserAgent, cred, retryDialOption())
 	if err != nil {
 		return fmt.Errorf("failed to create v2beta1 API clients: %s", err.Error())
 	}
