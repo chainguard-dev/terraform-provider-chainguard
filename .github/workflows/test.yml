@@ -16,6 +16,10 @@ on:
 
 permissions: {}
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request_target' }}
+
 jobs:
   # Run acceptance tests in a matrix with Terraform CLI versions
   test:
@@ -41,7 +45,7 @@ jobs:
 
     permissions:
       contents: read
-      id-token: write
+      id-token: write # OIDC token for chainctl federated auth against the Chainguard API.
 
     strategy:
       fail-fast: false
@@ -84,7 +88,10 @@ jobs:
         with:
           go-version-file: "go.mod"
           check-latest: true
-          cache: true
+          # Disable Go build cache: with pull_request_target, an attacker-
+          # controlled PR could otherwise poison the cache used by trusted
+          # base-branch runs.
+          cache: false
 
       - uses: chainguard-dev/setup-chainctl@2cddd35a2f120d9973e58094dc6878c93cf58c28 # v0.5.1
         with:
@@ -101,11 +108,13 @@ jobs:
         run: go build -o terraform-provider-chainguard
 
       - name: Setup Terraform dev overrides
+        env:
+          WORKSPACE: ${{ github.workspace }}
         run: |
           cat > ~/.terraformrc << EOF
           provider_installation {
             dev_overrides {
-              "chainguard-dev/chainguard" = "${{ github.workspace }}"
+              "chainguard-dev/chainguard" = "${WORKSPACE}"
             }
             direct {}
           }
