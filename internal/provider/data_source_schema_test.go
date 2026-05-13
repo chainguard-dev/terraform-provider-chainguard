@@ -188,8 +188,7 @@ func validateModelAgainstSchema(model any, schemaAttrs map[string]schema.Attribu
 	}
 
 	var missingInSchema []string
-	for i := 0; i < modelType.NumField(); i++ {
-		field := modelType.Field(i)
+	for field := range modelType.Fields() {
 		tfsdkTag := field.Tag.Get("tfsdk")
 		if tfsdkTag == "" || tfsdkTag == "-" {
 			continue
