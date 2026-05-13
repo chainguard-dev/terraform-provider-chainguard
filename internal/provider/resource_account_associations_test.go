@@ -288,7 +288,7 @@ func mapToTF(m map[string]string) string {
 		if !first {
 			clientIdsBuilder.WriteString(`, `)
 		}
-		clientIdsBuilder.WriteString(fmt.Sprintf(`%s = "%s"`, component, clientid))
+		fmt.Fprintf(&clientIdsBuilder, `%s = "%s"`, component, clientid)
 	}
 	clientIdsBuilder.WriteString(`}`)
 	return clientIdsBuilder.String()
