@@ -4,7 +4,7 @@ go 1.26.3
 
 require (
 	chainguard.dev/apko v1.2.14
-	chainguard.dev/sdk v0.1.55
+	chainguard.dev/sdk v0.1.56
 	github.com/chainguard-dev/clog v1.8.0
 	github.com/coreos/go-oidc/v3 v3.18.0
 	github.com/google/go-cmp v0.7.0

@@ -4,8 +4,8 @@ chainguard.dev/go-grpc-kit v0.17.17 h1:Jwhc0zyUwQbC2hNcsi+YMeUX/JUnM+dXVCkTw6wtP
 chainguard.dev/go-grpc-kit v0.17.17/go.mod h1:qn0meP6RtrbLicE1bgBZnnVU9dvX95eLs0x0T6kZ+b4=
 chainguard.dev/go-oidctest v0.4.0 h1:B9YTfoa1WtsrEg0wnFeSP7i9tth0LO+GICm2j8HOgWI=
 chainguard.dev/go-oidctest v0.4.0/go.mod h1:IIic4S3je1I7Acy3bqPtaSPefGEsQDzUp7NJF35MPV4=
-chainguard.dev/sdk v0.1.55 h1:QEGW0BVNcvbUkjBFKKCR/34in69PPoV4jZejkN45uu4=
-chainguard.dev/sdk v0.1.55/go.mod h1:Yz9yDGzD0/q9/uwaKEe3BThr7Kbs6YisXT3D3yjSSfs=
+chainguard.dev/sdk v0.1.56 h1:1q8/ysylCInxcToBydSDvTzmRJsLnUSUnZ+MYWrlyx8=
+chainguard.dev/sdk v0.1.56/go.mod h1:+XJuQqlH2P97oIo7xuO5e7GTUq0fzYn2aKNLUT2ckzE=
 cloud.google.com/go/auth v0.20.0 h1:kXTssoVb4azsVDoUiF8KvxAqrsQcQtB53DcSgta74CA=
 cloud.google.com/go/auth v0.20.0/go.mod h1:942/yi/itH1SsmpyrbnTMDgGfdy2BUqIKyd0cyYLc5Q=
 cloud.google.com/go/auth/oauth2adapt v0.2.8 h1:keo8NaayQZ6wimpNSmW5OPc283g65QNIiLpZnkHRbnc=
