@@ -23,6 +23,11 @@ func TestIsRetryable(t *testing.T) {
 	}{
 		{"nil", nil, false},
 		{"unknown (raw 5xx)", status.Error(codes.Unknown, "500 Server Error"), true},
+		// An upstream HTTP 500 HTML page arrives as a codes.Unknown gRPC status
+		// carrying the raw body; this is the production failure shape.
+		{"raw html 500", status.Error(codes.Unknown,
+			"<html><head><title>500 Server Error</title></head>"+
+				"<body><h1>Error: Server Error</h1></body></html>"), true},
 		{"unavailable", status.Error(codes.Unavailable, "try later"), true},
 		{"internal", status.Error(codes.Internal, "boom"), true},
 		{"deadline", status.Error(codes.DeadlineExceeded, "slow"), true},
@@ -136,6 +141,25 @@ func TestWithRetry(t *testing.T) {
 		}
 		if calls != 1 {
 			t.Fatalf("calls = %d, want 1", calls)
+		}
+	})
+
+	t.Run("honors context deadline mid-backoff", func(t *testing.T) {
+		// A deadline shorter than the cumulative backoff must cut the retry loop
+		// short rather than running all attempts — the realistic Terraform
+		// operation-timeout case.
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+		defer cancel()
+		calls := 0
+		_, err := withRetryWithDelay(ctx, "op", time.Hour, func(context.Context) (int, error) {
+			calls++
+			return 0, status.Error(codes.Unavailable, "transient")
+		})
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("err = %v, want context.DeadlineExceeded", err)
+		}
+		if calls >= retryMaxAttempts {
+			t.Fatalf("calls = %d, want < %d (loop should exit on deadline)", calls, retryMaxAttempts)
 		}
 	})
 }

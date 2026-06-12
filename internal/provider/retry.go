@@ -16,9 +16,13 @@ import (
 
 const (
 	retryMaxAttempts = 5
-	retryBaseDelay   = 2 * time.Second
 	retryMaxDelay    = 16 * time.Second
 )
+
+// retryBaseDelay is the first backoff interval; later intervals double up to
+// retryMaxDelay. It is a var (not const) so tests can set it to zero and drive
+// the retry path without sleeping.
+var retryBaseDelay = 2 * time.Second
 
 // isRetryable reports whether err is a transient, server-side gRPC failure
 // where retrying an idempotent call may succeed.
