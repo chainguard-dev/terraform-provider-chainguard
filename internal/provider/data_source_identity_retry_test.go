@@ -137,7 +137,7 @@ func TestIdentityDataSourceRead_Retry(t *testing.T) {
 
 	t.Run("exhausts retries on persistent transient error", func(t *testing.T) {
 		ids := &sequenceIdentities{results: []lookupResult{
-			{err: status.Error(codes.Unavailable, "still down")},
+			{err: status.Error(codes.Internal, "still down")},
 		}}
 		_, resp := readIdentity(t, ids)
 

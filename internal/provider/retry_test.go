@@ -28,11 +28,13 @@ func TestIsRetryable(t *testing.T) {
 		{"raw html 500", status.Error(codes.Unknown,
 			"<html><head><title>500 Server Error</title></head>"+
 				"<body><h1>Error: Server Error</h1></body></html>"), true},
-		{"unavailable", status.Error(codes.Unavailable, "try later"), true},
 		{"internal", status.Error(codes.Internal, "boom"), true},
 		{"deadline", status.Error(codes.DeadlineExceeded, "slow"), true},
-		{"resource exhausted", status.Error(codes.ResourceExhausted, "429"), true},
 		{"aborted", status.Error(codes.Aborted, "conflict"), true},
+		// Owned by the connection-level grpc_retry interceptor, so deliberately
+		// NOT retried again here.
+		{"unavailable (dial layer owns)", status.Error(codes.Unavailable, "try later"), false},
+		{"resource exhausted (dial layer owns)", status.Error(codes.ResourceExhausted, "429"), false},
 		{"not found", status.Error(codes.NotFound, "nope"), false},
 		{"unauthenticated", status.Error(codes.Unauthenticated, "login"), false},
 		{"permission denied", status.Error(codes.PermissionDenied, "no"), false},
@@ -87,7 +89,7 @@ func TestWithRetry(t *testing.T) {
 		got, err := withRetryWithDelay(context.Background(), "op", 0, func(context.Context) (int, error) {
 			calls++
 			if calls < 3 {
-				return 0, status.Error(codes.Unavailable, "transient")
+				return 0, status.Error(codes.Internal, "transient")
 			}
 			return 7, nil
 		})
@@ -134,7 +136,7 @@ func TestWithRetry(t *testing.T) {
 		_, err := withRetryWithDelay(ctx, "op", time.Hour, func(context.Context) (int, error) {
 			calls++
 			cancel()
-			return 0, status.Error(codes.Unavailable, "transient")
+			return 0, status.Error(codes.Internal, "transient")
 		})
 		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("err = %v, want context.Canceled", err)
@@ -153,7 +155,7 @@ func TestWithRetry(t *testing.T) {
 		calls := 0
 		_, err := withRetryWithDelay(ctx, "op", time.Hour, func(context.Context) (int, error) {
 			calls++
-			return 0, status.Error(codes.Unavailable, "transient")
+			return 0, status.Error(codes.Internal, "transient")
 		})
 		if !errors.Is(err, context.DeadlineExceeded) {
 			t.Fatalf("err = %v, want context.DeadlineExceeded", err)

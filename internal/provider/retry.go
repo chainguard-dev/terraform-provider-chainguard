@@ -27,15 +27,21 @@ var retryBaseDelay = 2 * time.Second
 // isRetryable reports whether err is a transient, server-side gRPC failure
 // where retrying an idempotent call may succeed.
 //
-// codes.Unknown is included deliberately: a raw HTTP 5xx page returned by an
-// upstream load balancer (rather than a well-formed gRPC response) surfaces to
-// the client as codes.Unknown, which is exactly how transient 500s from the
-// identities API present.
+// This intentionally covers only the codes the connection-level retry does
+// NOT: go-grpc-kit wires a grpc_retry interceptor (see retryDialOption) that
+// already retries codes.Unavailable and codes.ResourceExhausted on every RPC,
+// so retrying them again here would just compound backoff. The codes below are
+// the gap:
+//   - codes.Unknown: a raw HTTP 5xx page from an upstream load balancer (not a
+//     well-formed gRPC response) surfaces as Unknown — exactly how transient
+//     500s from the identities API present.
+//   - codes.Internal: Cloud Run / the gateway returns it for transient faults.
+//   - codes.DeadlineExceeded, codes.Aborted: transient server-side conditions.
 //
-// codes.Internal is broader than the gRPC retry-policy default set, but Cloud
-// Run / the API gateway returns it for transient server-side faults; the cost
-// of retrying a deterministic Internal is bounded (all attempts then surface
-// the original error). Lookup is idempotent, so this is a safe trade.
+// These are deliberately retried here rather than added to the global dial
+// interceptor: that interceptor retries every RPC including non-idempotent
+// mutations, where re-issuing on an ambiguous Unknown/Internal is unsafe.
+// Lookup is idempotent, so scoping the wider set to this read is the safe call.
 func isRetryable(err error) bool {
 	// Require a genuine gRPC status: status.Code maps any non-status error to
 	// codes.Unknown, which would make every plain error look retryable.
@@ -44,11 +50,9 @@ func isRetryable(err error) bool {
 		return false
 	}
 	switch s.Code() {
-	case codes.Unavailable,
+	case codes.Unknown,
 		codes.Internal,
-		codes.Unknown,
 		codes.DeadlineExceeded,
-		codes.ResourceExhausted,
 		codes.Aborted:
 		return true
 	default:
