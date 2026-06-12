@@ -42,6 +42,25 @@ func TestIsRetryable(t *testing.T) {
 	}
 }
 
+func TestBackoffDelay(t *testing.T) {
+	// Exponential doubling from retryBaseDelay, capped at retryMaxDelay.
+	for _, tc := range []struct {
+		attempt int
+		want    time.Duration
+	}{
+		{0, 2 * time.Second},
+		{1, 4 * time.Second},
+		{2, 8 * time.Second},
+		{3, 16 * time.Second},  // hits the cap exactly
+		{4, 16 * time.Second},  // capped (would be 32s uncapped)
+		{10, 16 * time.Second}, // stays capped
+	} {
+		if got := backoffDelay(retryBaseDelay, tc.attempt); got != tc.want {
+			t.Errorf("backoffDelay(%s, %d) = %s, want %s", retryBaseDelay, tc.attempt, got, tc.want)
+		}
+	}
+}
+
 func TestWithRetry(t *testing.T) {
 	// Use a zero base delay so the test does not actually sleep.
 	t.Run("succeeds on first attempt", func(t *testing.T) {
