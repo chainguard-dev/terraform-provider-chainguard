@@ -25,7 +25,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"github.com/sigstore/cosign/v2/pkg/providers"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -309,21 +308,12 @@ func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest,
 		// when providing an explicit OIDC token.
 		cfg.UseRefreshTokens = protoutil.DefaultBool(lo.EnableRefreshTokens, cfg.IdentityID == "" && cfg.IdentityToken == "")
 
-		// Look for an OIDC token in the following places (in order of precedence)
-		// 1. TF_CHAINGUARD_IDENTITY_TOKEN env var
-		// 2. Ambient GitHub credentials
-		// 3. login_options.identity_token, which is allowed to be empty
-		switch {
-		case os.Getenv("TF_CHAINGUARD_IDENTITY_TOKEN") != "":
-			cfg.IdentityToken = os.Getenv("TF_CHAINGUARD_IDENTITY_TOKEN")
-		case providers.Enabled(ctx):
-			var err error
-			cfg.IdentityToken, err = providers.Provide(ctx, cfg.Issuer)
-			if err != nil {
-				tflog.Error(ctx, fmt.Sprintf("failed to get identity token from ambient credentials: %s", err.Error()))
-			}
-		default:
-			cfg.IdentityToken = lo.IdentityToken.ValueString()
+		// Resolve the OIDC token by source precedence: TF_CHAINGUARD_IDENTITY_TOKEN
+		// env > ambient credentials > login_options.identity_token (allowed empty).
+		var err error
+		cfg.IdentityToken, err = token.ResolveIdentityToken(ctx, cfg.Issuer, lo.IdentityToken.ValueString())
+		if err != nil {
+			tflog.Error(ctx, fmt.Sprintf("failed to get identity token from ambient credentials: %s", err.Error()))
 		}
 	}
 

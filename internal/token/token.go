@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
+	"github.com/sigstore/cosign/v2/pkg/providers"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -106,7 +107,7 @@ func refreshChainguardToken(ctx context.Context, cfg LoginConfig, forceRefresh b
 	}
 
 	if cfg.IdentityToken != "" {
-		accessToken, err = exchangeToken(ctx, cfg.IdentityToken, cfg)
+		accessToken, err = exchangeToken(ctx, identityTokenForExchange(ctx, cfg), cfg)
 	} else {
 		accessToken, refreshToken, err = getChainguardToken(ctx, cfg)
 	}
@@ -169,6 +170,33 @@ func exchangeRefreshToken(ctx context.Context, cfg LoginConfig) (cgToken string,
 
 	e := sts.New(cfg.Issuer, cfg.Audience, sts.WithUserAgent(cfg.UserAgent))
 	return e.Refresh(ctx, string(refreshTokenBytes))
+}
+
+// ResolveIdentityToken applies the OIDC identity token source precedence:
+// TF_CHAINGUARD_IDENTITY_TOKEN env > ambient credentials > fallback. The ambient
+// branch mints a fresh token on every call, so reusing this at refresh time
+// re-mints rather than reusing a possibly-expired token. It is the single source
+// of precedence shared by provider Configure and refresh.
+func ResolveIdentityToken(ctx context.Context, issuer, fallback string) (string, error) {
+	switch {
+	case os.Getenv("TF_CHAINGUARD_IDENTITY_TOKEN") != "":
+		return os.Getenv("TF_CHAINGUARD_IDENTITY_TOKEN"), nil
+	case providers.Enabled(ctx):
+		return providers.Provide(ctx, issuer)
+	default:
+		return fallback, nil
+	}
+}
+
+// identityTokenForExchange resolves the OIDC token to exchange on refresh, falling
+// back to the configured token (the captured one) if re-minting fails.
+func identityTokenForExchange(ctx context.Context, cfg LoginConfig) string {
+	tok, err := ResolveIdentityToken(ctx, cfg.Issuer, cfg.IdentityToken)
+	if err != nil {
+		tflog.Warn(ctx, fmt.Sprintf("failed to re-mint ambient identity token, reusing configured token: %v", err))
+		return cfg.IdentityToken
+	}
+	return tok
 }
 
 // exchangeToken gets a Chainguard token by exchanging the given OIDC token or path to a token.
