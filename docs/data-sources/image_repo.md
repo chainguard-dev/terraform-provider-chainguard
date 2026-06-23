@@ -40,7 +40,7 @@ Optional:
 
 - `active_tags` (List of String) List of active tags for this repo.
 - `aliases` (List of String) Known aliases for a given image.
-- `bundles` (List of String) List of bundles associated with this repo (a-z freeform keywords for sales purposes).
+- `bundles` (List of String) List of bundles associated with this repo. Allowed values are enforced by the Chainguard API.
 - `readme` (String) The README for this repo.
 - `sync_config` (Object) (see [below for nested schema](#nestedatt--items--sync_config))
 - `tier` (String) Image tier associated with this repo.

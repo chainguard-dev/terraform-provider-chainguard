@@ -30,7 +30,7 @@ resource "chainguard_image_tag" "example" {
 
 ### Optional
 
-- `bundles` (List of String) List of bundles associated with this repo (valid ones: `application|base|byol|ai|ai-gpu|featured|fips`).
+- `bundles` (List of String) List of bundles associated with this repo. Allowed values are enforced by the Chainguard API.
 - `deprecated` (Boolean) Whether the tag is deprecated.
 
 ### Read-Only
