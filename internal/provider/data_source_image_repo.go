@@ -103,12 +103,9 @@ func (d *imageRepoDataSource) Schema(_ context.Context, _ datasource.SchemaReque
 							Computed:    true,
 						},
 						"bundles": schema.ListAttribute{
-							Description: "List of bundles associated with this repo (a-z freeform keywords for sales purposes).",
+							Description: "List of bundles associated with this repo. Allowed values are enforced by the Chainguard API.",
 							Optional:    true,
 							ElementType: types.StringType,
-							Validators: []validator.List{
-								listvalidator.ValueStringsAre(validators.ValidateStringFuncs(validBundlesValue)),
-							},
 						},
 						"readme": schema.StringAttribute{
 							Description: "The README for this repo.",

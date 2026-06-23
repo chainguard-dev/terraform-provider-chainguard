@@ -106,12 +106,9 @@ func (r *imageRepoResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				},
 			},
 			"bundles": schema.ListAttribute{
-				Description: "List of bundles associated with this repo (valid ones: `application|base|byol|ai|ai-gpu|featured|fips`).",
+				Description: "List of bundles associated with this repo. Allowed values are enforced by the Chainguard API.",
 				Optional:    true,
 				ElementType: types.StringType,
-				Validators: []validator.List{
-					listvalidator.ValueStringsAre(validators.ValidateStringFuncs(validBundlesValue)),
-				},
 			},
 			"readme": schema.StringAttribute{
 				Description: "The README for this repo.",
@@ -207,14 +204,6 @@ func (r *imageRepoResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 			},
 		},
 	}
-}
-
-// validBundlesValue implements validators.ValidateStringFunc.
-func validBundlesValue(s string) error {
-	if err := validation.ValidateBundles([]string{s}); err != nil {
-		return fmt.Errorf("bundle item %q is invalid: %w", s, err)
-	}
-	return nil
 }
 
 // validAliasesValue implements validators.ValidateStringFunc.

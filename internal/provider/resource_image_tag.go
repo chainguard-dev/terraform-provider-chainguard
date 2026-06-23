@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -85,12 +84,9 @@ func (r *imageTagResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 				},
 			},
 			"bundles": schema.ListAttribute{
-				Description: "List of bundles associated with this repo (valid ones: `application|base|byol|ai|ai-gpu|featured|fips`).",
+				Description: "List of bundles associated with this repo. Allowed values are enforced by the Chainguard API.",
 				Optional:    true,
 				ElementType: types.StringType,
-				Validators: []validator.List{
-					listvalidator.ValueStringsAre(validators.ValidateStringFuncs(validBundlesValue)),
-				},
 			},
 			"digest": schema.StringAttribute{
 				Description: "The digest of the manifest with this tag.",
