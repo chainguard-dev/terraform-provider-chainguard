@@ -13,6 +13,7 @@ import (
 
 	regv2 "chainguard.dev/sdk/proto/chainguard/platform/registry/v2beta1"
 	common "chainguard.dev/sdk/proto/platform/common/v1"
+	registry "chainguard.dev/sdk/proto/platform/registry/v1"
 	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -178,7 +179,12 @@ func (d *imageRepoDataSource) Read(ctx context.Context, req datasource.ReadReque
 			resp.Diagnostics.Append(errorToDiagnostic(err, "failed to get repo"))
 			return
 		}
-		repoModel, diags := repoToModel(ctx, repo)
+		readme, err := d.repoReadme(ctx, repo.GetUid())
+		if err != nil {
+			resp.Diagnostics.Append(errorToDiagnostic(err, "failed to get repo readme"))
+			return
+		}
+		repoModel, diags := repoToModel(ctx, repo, readme)
 		resp.Diagnostics.Append(diags...)
 		if resp.Diagnostics.HasError() {
 			return
@@ -205,7 +211,12 @@ func (d *imageRepoDataSource) Read(ctx context.Context, req datasource.ReadReque
 		return
 	}
 	for _, repo := range repos {
-		repoModel, diags := repoToModel(ctx, repo)
+		readme, err := d.repoReadme(ctx, repo.GetUid())
+		if err != nil {
+			resp.Diagnostics.Append(errorToDiagnostic(err, "failed to get repo readme"))
+			return
+		}
+		repoModel, diags := repoToModel(ctx, repo, readme)
 		resp.Diagnostics.Append(diags...)
 		if resp.Diagnostics.HasError() {
 			return
@@ -223,7 +234,22 @@ func (d *imageRepoDataSource) Read(ctx context.Context, req datasource.ReadReque
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func repoToModel(ctx context.Context, repo *regv2.Repo) (*imageRepoModel, diag.Diagnostics) {
+// repoReadme looks up a repo's README via the v1 registry API, keyed by repo
+// UID. The README was dropped from the v2beta1 Repo surface, so v2beta1 reads
+// return an empty README. Source it from v1, which still returns it.
+func (d *dataSource) repoReadme(ctx context.Context, uid string) (string, error) {
+	list, err := d.prov.client.Registry().Registry().ListRepos(ctx, &registry.RepoFilter{Id: uid})
+	if err != nil {
+		return "", err
+	}
+	items := list.GetItems()
+	if len(items) == 0 {
+		return "", nil
+	}
+	return items[0].GetReadme(), nil
+}
+
+func repoToModel(ctx context.Context, repo *regv2.Repo, readme string) (*imageRepoModel, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	bundles, d := types.ListValueFrom(ctx, types.StringType, repo.GetBundles())
@@ -266,7 +292,7 @@ func repoToModel(ctx context.Context, repo *regv2.Repo) (*imageRepoModel, diag.D
 		ID:          types.StringValue(repo.GetUid()),
 		Name:        types.StringValue(repo.GetName()),
 		Bundles:     bundles,
-		Readme:      types.StringValue(repo.GetReadme()),
+		Readme:      types.StringValue(readme),
 		SyncConfig:  sc,
 		Tier:        types.StringValue(catalogTierString(repo.GetCatalogTier())),
 		Description: types.StringValue(repo.GetDescription()),
