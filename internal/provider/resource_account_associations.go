@@ -24,7 +24,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
-	iam "chainguard.dev/sdk/proto/platform/iam/v1"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	iamv2 "chainguard.dev/sdk/proto/chainguard/platform/iam/v2beta1"
 	"chainguard.dev/sdk/validation"
 	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
 	"github.com/hashicorp/terraform-plugin-framework-validators/objectvalidator"
@@ -273,11 +276,10 @@ func (r *accountAssociationsResource) ImportState(ctx context.Context, req resou
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
-func populateAccountAssociation(ctx context.Context, m accountAssociationsResourceModel) (*iam.AccountAssociations, diag.Diagnostics) {
-	assoc := &iam.AccountAssociations{
+func populateAccountAssociation(ctx context.Context, m accountAssociationsResourceModel) (*iamv2.AccountAssociation, diag.Diagnostics) {
+	assoc := &iamv2.AccountAssociation{
 		Name:        m.Name.ValueString(),
 		Description: m.Description.ValueString(),
-		Group:       m.Group.ValueString(),
 	}
 
 	var diags diag.Diagnostics
@@ -287,7 +289,7 @@ func populateAccountAssociation(ctx context.Context, m accountAssociationsResour
 			return nil, diags
 		}
 
-		assoc.Amazon = &iam.AccountAssociations_Amazon{
+		assoc.Amazon = &iamv2.AccountAssociation_Amazon{
 			Account: am.Account.ValueString(),
 		}
 	}
@@ -303,7 +305,7 @@ func populateAccountAssociation(ctx context.Context, m accountAssociationsResour
 			return nil, diags
 		}
 
-		assoc.Chainguard = &iam.AccountAssociations_Chainguard{
+		assoc.Chainguard = &iamv2.AccountAssociation_Chainguard{
 			ServiceBindings: sb,
 		}
 	}
@@ -314,7 +316,7 @@ func populateAccountAssociation(ctx context.Context, m accountAssociationsResour
 			return nil, diags
 		}
 
-		assoc.Google = &iam.AccountAssociations_Google{
+		assoc.Google = &iamv2.AccountAssociation_Google{
 			ProjectId:     gm.ProjectID.ValueString(),
 			ProjectNumber: gm.ProjectNumber.ValueString(),
 		}
@@ -330,10 +332,10 @@ func populateAccountAssociation(ctx context.Context, m accountAssociationsResour
 				"The github block now requires app_id. Set it to the GitHub App ID, or migrate to github_installation blocks.")
 			return nil, diags
 		}
-		assoc.Github = &iam.AccountAssociations_GitHub{
-			AppInstallations: map[int64]*iam.AccountAssociations_GitHubAppInstallations{
+		assoc.Github = &iamv2.AccountAssociation_GitHub{
+			AppInstallations: map[int64]*iamv2.AccountAssociation_GitHubAppInstallations{
 				gm.AppID.ValueInt64(): {
-					Installations: []*iam.AccountAssociations_GitHubInstallation{{
+					Installations: []*iamv2.AccountAssociation_GitHubInstallation{{
 						InstallationId: gm.InstallationID.ValueInt64(),
 						Name:           gm.Name.ValueString(),
 					}},
@@ -343,18 +345,18 @@ func populateAccountAssociation(ctx context.Context, m accountAssociationsResour
 	}
 
 	if len(m.GithubInstallation) > 0 {
-		appInstalls := make(map[int64]*iam.AccountAssociations_GitHubAppInstallations, len(m.GithubInstallation))
+		appInstalls := make(map[int64]*iamv2.AccountAssociation_GitHubAppInstallations, len(m.GithubInstallation))
 		for _, gh := range m.GithubInstallation {
 			appID := gh.AppID.ValueInt64()
 			if appInstalls[appID] == nil {
-				appInstalls[appID] = &iam.AccountAssociations_GitHubAppInstallations{}
+				appInstalls[appID] = &iamv2.AccountAssociation_GitHubAppInstallations{}
 			}
-			appInstalls[appID].Installations = append(appInstalls[appID].Installations, &iam.AccountAssociations_GitHubInstallation{
+			appInstalls[appID].Installations = append(appInstalls[appID].Installations, &iamv2.AccountAssociation_GitHubInstallation{
 				InstallationId: gh.InstallationID.ValueInt64(),
 				Name:           gh.Name.ValueString(),
 			})
 		}
-		assoc.Github = &iam.AccountAssociations_GitHub{
+		assoc.Github = &iamv2.AccountAssociation_GitHub{
 			AppInstallations: appInstalls,
 		}
 	}
@@ -369,7 +371,7 @@ func populateAccountAssociation(ctx context.Context, m accountAssociationsResour
 		if diags.HasError() {
 			return nil, diags
 		}
-		assoc.Azure = &iam.AccountAssociations_Azure{
+		assoc.Azure = &iamv2.AccountAssociation_Azure{
 			TenantId:  am.TenantID.ValueString(),
 			ClientIds: m,
 		}
@@ -396,8 +398,11 @@ func (r *accountAssociationsResource) Create(ctx context.Context, req resource.C
 
 	// Retry on PermissionDenied to handle eventual consistency when the
 	// parent group was just created in the same apply.
-	created, err := retryOnPermissionDenied(ctx, func() (*iam.AccountAssociations, error) {
-		return r.prov.client.IAM().AccountAssociations().Create(ctx, assoc)
+	created, err := retryOnPermissionDenied(ctx, func() (*iamv2.AccountAssociation, error) {
+		return r.prov.clientV2.IAM().AccountAssociationsService().CreateAccountAssociation(ctx, &iamv2.CreateAccountAssociationRequest{
+			Parent:             plan.Group.ValueString(),
+			AccountAssociation: assoc,
+		})
 	})
 	if err != nil {
 		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to create account association"))
@@ -405,9 +410,7 @@ func (r *accountAssociationsResource) Create(ctx context.Context, req resource.C
 	}
 
 	// Save account association details in the state.
-	// Account associations have no "id". They are one per group so we use the
-	// group as id.
-	plan.ID = types.StringValue(created.Group)
+	plan.ID = types.StringValue(created.GetUid())
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
@@ -425,25 +428,18 @@ func (r *accountAssociationsResource) Read(ctx context.Context, req resource.Rea
 	id := state.ID.ValueString()
 	tflog.Info(ctx, fmt.Sprintf("read account association request for group: %s", id))
 
-	assocList, err := r.prov.client.IAM().AccountAssociations().List(ctx, &iam.AccountAssociationsFilter{
-		Group: id,
+	assoc, err := r.prov.clientV2.IAM().AccountAssociationsService().GetAccountAssociation(ctx, &iamv2.GetAccountAssociationRequest{
+		Uid: id,
 	})
 	if err != nil {
-		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to list account associations"))
+		if status.Code(err) == codes.NotFound {
+			// Account association was deleted outside TF, remove from state
+			resp.State.RemoveResource(ctx)
+			return
+		}
+		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to get account association"))
 		return
 	}
-
-	switch c := len(assocList.GetItems()); {
-	case c == 0:
-		// Account association was deleted outside TF, remove from state
-		resp.State.RemoveResource(ctx)
-		return
-	case c > 1:
-		resp.Diagnostics.AddError("failed to list account associations", fmt.Sprintf("more than one account association found matching group id %s", id))
-		return
-	}
-
-	assoc := assocList.GetItems()[0]
 
 	// Only update the state model if there are differences returned from the API
 	// to prevent Terraform reporting extraneous drift.
@@ -453,8 +449,8 @@ func (r *accountAssociationsResource) Read(ctx context.Context, req resource.Rea
 	if state.Description.ValueString() != assoc.Description {
 		state.Description = types.StringValue(assoc.Description)
 	}
-	if state.Group.ValueString() != assoc.Group {
-		state.Group = types.StringValue(assoc.Group)
+	if state.Group.ValueString() != assoc.GetUid() {
+		state.Group = types.StringValue(assoc.GetUid())
 	}
 
 	var diags diag.Diagnostics
@@ -617,7 +613,10 @@ func (r *accountAssociationsResource) Update(ctx context.Context, req resource.U
 		return
 	}
 
-	_, err := r.prov.client.IAM().AccountAssociations().Update(ctx, assoc)
+	assoc.Uid = data.ID.ValueString()
+	_, err := r.prov.clientV2.IAM().AccountAssociationsService().UpdateAccountAssociation(ctx, &iamv2.UpdateAccountAssociationRequest{
+		AccountAssociation: assoc,
+	})
 	if err != nil {
 		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to update account associations"))
 		return
@@ -637,8 +636,8 @@ func (r *accountAssociationsResource) Delete(ctx context.Context, req resource.D
 	id := state.Group.ValueString()
 	tflog.Info(ctx, fmt.Sprintf("delete account associations request for group: %s", id))
 
-	_, err := r.prov.client.IAM().AccountAssociations().Delete(ctx, &iam.DeleteAccountAssociationsRequest{
-		Group: id,
+	_, err := r.prov.clientV2.IAM().AccountAssociationsService().DeleteAccountAssociation(ctx, &iamv2.DeleteAccountAssociationRequest{
+		Uid: id,
 	})
 	if err != nil {
 		resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to account associations for group %q", id)))
