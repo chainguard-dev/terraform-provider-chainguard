@@ -192,8 +192,16 @@ func (r *rolebindingResource) Update(ctx context.Context, req resource.UpdateReq
 
 	// Set state
 	data.ID = types.StringValue(binding.GetUid())
-	data.Identity = types.StringValue(binding.GetIdentityUid())
-	data.Role = types.StringValue(binding.GetRoleUid())
+	if uid := binding.GetIdentityUid(); uid != "" {
+		data.Identity = types.StringValue(uid)
+	} else if id := binding.GetIdentity(); id != nil {
+		data.Identity = types.StringValue(id.GetUid())
+	}
+	if uid := binding.GetRoleUid(); uid != "" {
+		data.Role = types.StringValue(uid)
+	} else if r := binding.GetRole(); r != nil {
+		data.Role = types.StringValue(r.GetUid())
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
