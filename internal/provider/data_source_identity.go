@@ -97,7 +97,9 @@ func (d *identityDataSource) Read(ctx context.Context, req datasource.ReadReques
 		Subject: data.Subject.ValueString(),
 		Issuer:  data.Issuer.ValueString(),
 	}
-	id, err := d.prov.client.IAM().Identities().Lookup(ctx, lr)
+	id, err := withRetry(ctx, "lookup identity", func(ctx context.Context) (*iam.Identity, error) {
+		return d.prov.client.IAM().Identities().Lookup(ctx, lr)
+	})
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
 			resp.Diagnostics.Append(dataNotFound("identity", "" /* extra */, data))
