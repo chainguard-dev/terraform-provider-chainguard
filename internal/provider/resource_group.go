@@ -168,7 +168,10 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 			resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to verify root group access for %q", g.GetUid())))
 			return
 		}
-		r.prov.setClient(clients)
+		if err := r.prov.setClients(ctx, clients); err != nil {
+			resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to refresh clients for %q", g.GetUid())))
+			return
+		}
 	}
 }
 
@@ -393,6 +396,9 @@ func (r *groupResource) Delete(ctx context.Context, req resource.DeleteRequest, 
 		Uid: id,
 	})
 	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return
+		}
 		resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to delete group %q", id)))
 		return
 	}
