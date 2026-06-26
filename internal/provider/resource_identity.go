@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/mapvalidator"
@@ -25,10 +26,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"golang.org/x/exp/maps"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	iam "chainguard.dev/sdk/proto/platform/iam/v1"
+	iamv2 "chainguard.dev/sdk/proto/chainguard/platform/iam/v2beta1"
 	"chainguard.dev/sdk/uidp"
 	"chainguard.dev/sdk/validation"
 	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
@@ -102,7 +104,10 @@ func (r *identityResource) Metadata(_ context.Context, req resource.MetadataRequ
 
 // Schema defines the schema for the resource.
 func (r *identityResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
-	servicePrincipals := maps.Keys(iam.ServicePrincipal_value)
+	servicePrincipals := make([]string, 0, len(iamv2.ServicePrincipal_value))
+	for name := range iamv2.ServicePrincipal_value {
+		servicePrincipals = append(servicePrincipals, strings.TrimPrefix(name, "SERVICE_PRINCIPAL_"))
+	}
 
 	resp.Schema = schema.Schema{
 		Description: "IAM Identity in the Chainguard platform.",
@@ -349,7 +354,7 @@ func checkRFC3339(raw string) error {
 	return nil
 }
 
-func populateModel(ctx context.Context, model *identityResourceModel, id *iam.Identity) diag.Diagnostics {
+func populateModel(ctx context.Context, model *identityResourceModel, id *iamv2.Identity) diag.Diagnostics {
 	var allDiags diag.Diagnostics
 
 	if model == nil {
@@ -360,29 +365,29 @@ func populateModel(ctx context.Context, model *identityResourceModel, id *iam.Id
 	claimMatchTypes := model.ClaimMatch.AttributeTypes(ctx)
 	staticTypes := model.Static.AttributeTypes(ctx)
 
-	model.ID = types.StringValue(id.Id)
-	model.ParentID = types.StringValue(uidp.Parent(id.Id))
+	model.ID = types.StringValue(id.GetUid())
+	model.ParentID = types.StringValue(uidp.Parent(id.GetUid()))
 	model.Name = types.StringValue(id.Name)
 	if model.Description.IsNull() && id.Description != "" {
 		model.Description = types.StringValue(id.Description)
 	}
-	if id.CreatedAt != nil {
-		model.CreatedAt = types.StringValue(id.CreatedAt.AsTime().Format(time.RFC3339))
+	if id.CreateTime != nil {
+		model.CreatedAt = types.StringValue(id.CreateTime.AsTime().Format(time.RFC3339))
 	} else {
 		model.CreatedAt = types.StringNull()
 	}
-	if id.UpdatedAt != nil {
-		model.UpdatedAt = types.StringValue(id.UpdatedAt.AsTime().Format(time.RFC3339))
+	if id.UpdateTime != nil {
+		model.UpdatedAt = types.StringValue(id.UpdateTime.AsTime().Format(time.RFC3339))
 	} else {
 		model.UpdatedAt = types.StringNull()
 	}
-	if id.LastSeen != nil {
-		model.LastSeen = types.StringValue(id.LastSeen.AsTime().Format(time.RFC3339))
+	if id.LastSeenTime != nil {
+		model.LastSeen = types.StringValue(id.LastSeenTime.AsTime().Format(time.RFC3339))
 	} else {
 		model.LastSeen = types.StringNull()
 	}
 
-	if lit, ok := id.Relationship.(*iam.Identity_ClaimMatch_); ok {
+	if lit, ok := id.Relationship.(*iamv2.Identity_ClaimMatch_); ok {
 		var diags diag.Diagnostics
 
 		// Get the current state
@@ -424,27 +429,27 @@ func populateModel(ctx context.Context, model *identityResourceModel, id *iam.Id
 		}
 
 		switch lit.ClaimMatch.Iss.(type) {
-		case *iam.Identity_ClaimMatch_Issuer:
+		case *iamv2.Identity_ClaimMatch_Issuer:
 			cm.Issuer = types.StringValue(lit.ClaimMatch.GetIssuer())
-		case *iam.Identity_ClaimMatch_IssuerPattern:
+		case *iamv2.Identity_ClaimMatch_IssuerPattern:
 			cm.IssuerPattern = types.StringValue(lit.ClaimMatch.GetIssuerPattern())
 		default:
 			allDiags.AddError("failed to assign issuer", fmt.Sprintf("unsupported issuer type: %T", lit.ClaimMatch.Iss))
 		}
 
 		switch lit.ClaimMatch.Sub.(type) {
-		case *iam.Identity_ClaimMatch_Subject:
+		case *iamv2.Identity_ClaimMatch_Subject:
 			cm.Subject = types.StringValue(lit.ClaimMatch.GetSubject())
-		case *iam.Identity_ClaimMatch_SubjectPattern:
+		case *iamv2.Identity_ClaimMatch_SubjectPattern:
 			cm.SubjectPattern = types.StringValue(lit.ClaimMatch.GetSubjectPattern())
 		default:
 			allDiags.AddError("failed to assign subject", fmt.Sprintf("unsupported subject type: %T", lit.ClaimMatch.Sub))
 		}
 
 		switch lit.ClaimMatch.Aud.(type) {
-		case *iam.Identity_ClaimMatch_Audience:
+		case *iamv2.Identity_ClaimMatch_Audience:
 			cm.Audience = types.StringValue(lit.ClaimMatch.GetAudience())
-		case *iam.Identity_ClaimMatch_AudiencePattern:
+		case *iamv2.Identity_ClaimMatch_AudiencePattern:
 			cm.AudiencePattern = types.StringValue(lit.ClaimMatch.GetAudiencePattern())
 		default:
 			// This isn't a required field.
@@ -456,24 +461,24 @@ func populateModel(ctx context.Context, model *identityResourceModel, id *iam.Id
 		model.ClaimMatch = types.ObjectNull(claimMatchTypes)
 	}
 
-	if aws, ok := id.Relationship.(*iam.Identity_AwsIdentity); ok {
+	if aws, ok := id.Relationship.(*iamv2.Identity_AwsIdentity); ok {
 		awsModel := &awsIdentityModel{
 			Account: types.StringValue(aws.AwsIdentity.AwsAccount),
 		}
 
 		switch aws.AwsIdentity.AwsUserId.(type) {
-		case *iam.Identity_AWSIdentity_UserId:
+		case *iamv2.Identity_AWSIdentity_UserId:
 			awsModel.UserID = types.StringValue(aws.AwsIdentity.GetUserId())
-		case *iam.Identity_AWSIdentity_UserIdPattern:
+		case *iamv2.Identity_AWSIdentity_UserIdPattern:
 			awsModel.UserIDPattern = types.StringValue(aws.AwsIdentity.GetUserIdPattern())
 		default:
 			allDiags.AddError("failed to assign AWS user ID", fmt.Sprintf("unsupported user ID type: %T", aws.AwsIdentity.AwsUserId))
 		}
 
 		switch aws.AwsIdentity.AwsArn.(type) {
-		case *iam.Identity_AWSIdentity_Arn:
+		case *iamv2.Identity_AWSIdentity_Arn:
 			awsModel.ARN = types.StringValue(aws.AwsIdentity.GetArn())
-		case *iam.Identity_AWSIdentity_ArnPattern:
+		case *iamv2.Identity_AWSIdentity_ArnPattern:
 			awsModel.ARNPattern = types.StringValue(aws.AwsIdentity.GetArnPattern())
 		default:
 			allDiags.AddError("failed to assign AWS ARN", fmt.Sprintf("unsupported ARN type: %T", aws.AwsIdentity.AwsArn))
@@ -486,15 +491,15 @@ func populateModel(ctx context.Context, model *identityResourceModel, id *iam.Id
 		model.AWSIdentity = types.ObjectNull(awsTypes)
 	}
 
-	if st, ok := id.Relationship.(*iam.Identity_Static); ok {
+	if st, ok := id.Relationship.(*iamv2.Identity_StaticKeys_); ok {
 		expiration := types.StringNull()
-		if st.Static.Expiration != nil {
-			expiration = types.StringValue(st.Static.Expiration.AsTime().Format(time.RFC3339))
+		if st.StaticKeys.ExpirationTime != nil {
+			expiration = types.StringValue(st.StaticKeys.ExpirationTime.AsTime().Format(time.RFC3339))
 		}
 		static := &staticModel{
-			Issuer:     types.StringValue(st.Static.Issuer),
-			Subject:    types.StringValue(st.Static.Subject),
-			IssuerKeys: types.StringValue(st.Static.IssuerKeys),
+			Issuer:     types.StringValue(st.StaticKeys.Issuer),
+			Subject:    types.StringValue(st.StaticKeys.Subject),
+			IssuerKeys: types.StringValue(st.StaticKeys.IssuerKeys),
 			Expiration: expiration,
 		}
 
@@ -505,8 +510,8 @@ func populateModel(ctx context.Context, model *identityResourceModel, id *iam.Id
 		model.Static = types.ObjectNull(staticTypes)
 	}
 
-	if sp, ok := id.Relationship.(*iam.Identity_ServicePrincipal); ok {
-		v := iam.ServicePrincipal_name[int32(sp.ServicePrincipal)]
+	if sp, ok := id.Relationship.(*iamv2.Identity_ServicePrincipal); ok {
+		v := strings.TrimPrefix(iamv2.ServicePrincipal_name[int32(sp.ServicePrincipal)], "SERVICE_PRINCIPAL_")
 		model.ServicePrincipal = types.StringValue(v)
 	} else {
 		model.ServicePrincipal = types.StringNull()
@@ -515,9 +520,9 @@ func populateModel(ctx context.Context, model *identityResourceModel, id *iam.Id
 	return allDiags
 }
 
-func populateIdentity(ctx context.Context, m identityResourceModel) (*iam.Identity, error) {
-	id := &iam.Identity{
-		Id:          m.ID.ValueString(),
+func populateIdentity(ctx context.Context, m identityResourceModel) (*iamv2.Identity, error) {
+	id := &iamv2.Identity{
+		Uid:         m.ID.ValueString(),
 		Name:        m.Name.ValueString(),
 		Description: m.Description.ValueString(),
 	}
@@ -546,48 +551,48 @@ func populateIdentity(ctx context.Context, m identityResourceModel) (*iam.Identi
 			}
 		}
 
-		cm := &iam.Identity_ClaimMatch{
+		cm := &iamv2.Identity_ClaimMatch{
 			Claims:        claims,
 			ClaimPatterns: claimPatterns,
 		}
 
 		// Issuer or IssuerPattern; only one is not null due to validators
 		if !cmModel.Issuer.IsNull() {
-			cm.Iss = &iam.Identity_ClaimMatch_Issuer{
+			cm.Iss = &iamv2.Identity_ClaimMatch_Issuer{
 				Issuer: cmModel.Issuer.ValueString(),
 			}
 		}
 		if !cmModel.IssuerPattern.IsNull() {
-			cm.Iss = &iam.Identity_ClaimMatch_IssuerPattern{
+			cm.Iss = &iamv2.Identity_ClaimMatch_IssuerPattern{
 				IssuerPattern: cmModel.IssuerPattern.ValueString(),
 			}
 		}
 
 		// Subject or SubjectPattern; only one is not null due to validators
 		if !cmModel.Subject.IsNull() {
-			cm.Sub = &iam.Identity_ClaimMatch_Subject{
+			cm.Sub = &iamv2.Identity_ClaimMatch_Subject{
 				Subject: cmModel.Subject.ValueString(),
 			}
 		}
 		if !cmModel.SubjectPattern.IsNull() {
-			cm.Sub = &iam.Identity_ClaimMatch_SubjectPattern{
+			cm.Sub = &iamv2.Identity_ClaimMatch_SubjectPattern{
 				SubjectPattern: cmModel.SubjectPattern.ValueString(),
 			}
 		}
 
 		// Audience or AudiencePattern; at most one is not null due to validators (both may be null)
 		if !cmModel.Audience.IsNull() {
-			cm.Aud = &iam.Identity_ClaimMatch_Audience{
+			cm.Aud = &iamv2.Identity_ClaimMatch_Audience{
 				Audience: cmModel.Audience.ValueString(),
 			}
 		}
 		if !cmModel.AudiencePattern.IsNull() {
-			cm.Aud = &iam.Identity_ClaimMatch_AudiencePattern{
+			cm.Aud = &iamv2.Identity_ClaimMatch_AudiencePattern{
 				AudiencePattern: cmModel.AudiencePattern.ValueString(),
 			}
 		}
 
-		id.Relationship = &iam.Identity_ClaimMatch_{
+		id.Relationship = &iamv2.Identity_ClaimMatch_{
 			ClaimMatch: cm,
 		}
 	} else if !m.AWSIdentity.IsNull() {
@@ -597,35 +602,35 @@ func populateIdentity(ctx context.Context, m identityResourceModel) (*iam.Identi
 			return nil, errors.New("failed to cast aws model from state or plan")
 		}
 
-		aws := &iam.Identity_AWSIdentity{
+		aws := &iamv2.Identity_AWSIdentity{
 			AwsAccount: awsModel.Account.ValueString(),
 		}
 
 		// UserID or UserIDPattern; only one is not null due to validators
 		if !awsModel.UserID.IsNull() {
-			aws.AwsUserId = &iam.Identity_AWSIdentity_UserId{
+			aws.AwsUserId = &iamv2.Identity_AWSIdentity_UserId{
 				UserId: awsModel.UserID.ValueString(),
 			}
 		}
 		if !awsModel.UserIDPattern.IsNull() {
-			aws.AwsUserId = &iam.Identity_AWSIdentity_UserIdPattern{
+			aws.AwsUserId = &iamv2.Identity_AWSIdentity_UserIdPattern{
 				UserIdPattern: awsModel.UserIDPattern.ValueString(),
 			}
 		}
 
 		// ARN or ARNPattern; only one is not null due to validators
 		if !awsModel.ARN.IsNull() {
-			aws.AwsArn = &iam.Identity_AWSIdentity_Arn{
+			aws.AwsArn = &iamv2.Identity_AWSIdentity_Arn{
 				Arn: awsModel.ARN.ValueString(),
 			}
 		}
 		if !awsModel.ARNPattern.IsNull() {
-			aws.AwsArn = &iam.Identity_AWSIdentity_ArnPattern{
+			aws.AwsArn = &iamv2.Identity_AWSIdentity_ArnPattern{
 				ArnPattern: awsModel.ARNPattern.ValueString(),
 			}
 		}
 
-		id.Relationship = &iam.Identity_AwsIdentity{
+		id.Relationship = &iamv2.Identity_AwsIdentity{
 			AwsIdentity: aws,
 		}
 	} else if !m.Static.IsNull() {
@@ -643,17 +648,17 @@ func populateIdentity(ctx context.Context, m identityResourceModel) (*iam.Identi
 		}
 		exp = timestamppb.New(ts)
 
-		id.Relationship = &iam.Identity_Static{
-			Static: &iam.Identity_StaticKeys{
-				Issuer:     stModel.Issuer.ValueString(),
-				Subject:    stModel.Subject.ValueString(),
-				IssuerKeys: stModel.IssuerKeys.ValueString(),
-				Expiration: exp,
+		id.Relationship = &iamv2.Identity_StaticKeys_{
+			StaticKeys: &iamv2.Identity_StaticKeys{
+				Issuer:         stModel.Issuer.ValueString(),
+				Subject:        stModel.Subject.ValueString(),
+				IssuerKeys:     stModel.IssuerKeys.ValueString(),
+				ExpirationTime: exp,
 			},
 		}
 	} else if !m.ServicePrincipal.IsNull() {
-		id.Relationship = &iam.Identity_ServicePrincipal{
-			ServicePrincipal: iam.ServicePrincipal(iam.ServicePrincipal_value[m.ServicePrincipal.ValueString()]),
+		id.Relationship = &iamv2.Identity_ServicePrincipal{
+			ServicePrincipal: iamv2.ServicePrincipal(iamv2.ServicePrincipal_value["SERVICE_PRINCIPAL_"+m.ServicePrincipal.ValueString()]),
 		}
 	} else {
 		// This shouldn't happen with our validation.
@@ -686,9 +691,9 @@ func (r *identityResource) Create(ctx context.Context, req resource.CreateReques
 
 	// Create the identity. Retry on PermissionDenied to handle eventual
 	// consistency when the parent group was just created in the same apply.
-	ident, err := retryOnPermissionDenied(ctx, func() (*iam.Identity, error) {
-		return r.prov.client.IAM().Identities().Create(ctx, &iam.CreateIdentityRequest{
-			ParentId: plan.ParentID.ValueString(),
+	ident, err := retryOnPermissionDenied(ctx, func() (*iamv2.Identity, error) {
+		return r.prov.clientV2.IAM().IdentitiesService().CreateIdentity(ctx, &iamv2.CreateIdentityRequest{
+			Parent:   plan.ParentID.ValueString(),
 			Identity: identity,
 		})
 	})
@@ -717,26 +722,18 @@ func (r *identityResource) Read(ctx context.Context, req resource.ReadRequest, r
 
 	// Query for the identity to update state
 	identID := state.ID.ValueString()
-	identityList, err := r.prov.client.IAM().Identities().List(ctx, &iam.IdentityFilter{
-		Id: identID,
+	ident, err := r.prov.clientV2.IAM().IdentitiesService().GetIdentity(ctx, &iamv2.GetIdentityRequest{
+		Uid: identID,
 	})
 	if err != nil {
-		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to list identities"))
+		if status.Code(err) == codes.NotFound {
+			// Identity doesn't exist or was deleted outside TF
+			resp.State.RemoveResource(ctx)
+			return
+		}
+		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to get identity"))
 		return
 	}
-
-	switch c := len(identityList.GetItems()); {
-	case c == 0:
-		// Identity doesn't exist or was deleted outside TF
-		resp.State.RemoveResource(ctx)
-		return
-	case c > 1:
-		tflog.Error(ctx, fmt.Sprintf("identities list returned %d identities for id %q", c, identID))
-		resp.Diagnostics.AddError("internal error", fmt.Sprintf("fatal data corruption: id %s matched more than one identity", identID))
-		return
-	}
-
-	ident := identityList.GetItems()[0]
 
 	// If any errors were encountered, exit before updating the state.
 	if resp.Diagnostics.Append(populateModel(ctx, &state, ident)...); resp.Diagnostics.HasError() {
@@ -763,7 +760,9 @@ func (r *identityResource) Update(ctx context.Context, req resource.UpdateReques
 		return
 	}
 
-	updated, err := r.prov.client.IAM().Identities().Update(ctx, ident)
+	updated, err := r.prov.clientV2.IAM().IdentitiesService().UpdateIdentity(ctx, &iamv2.UpdateIdentityRequest{
+		Identity: ident,
+	})
 	if err != nil {
 		resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to update identity %q", plan.ID.ValueString())))
 		return
@@ -789,8 +788,8 @@ func (r *identityResource) Delete(ctx context.Context, req resource.DeleteReques
 	tflog.Info(ctx, fmt.Sprintf("delete identity request: %s", state.ID))
 
 	id := state.ID.ValueString()
-	_, err := r.prov.client.IAM().Identities().Delete(ctx, &iam.DeleteIdentityRequest{
-		Id: id,
+	_, err := r.prov.clientV2.IAM().IdentitiesService().DeleteIdentity(ctx, &iamv2.DeleteIdentityRequest{
+		Uid: id,
 	})
 	if err != nil {
 		resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to delete identity %q", id)))
