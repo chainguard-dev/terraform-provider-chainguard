@@ -633,13 +633,16 @@ func (r *accountAssociationsResource) Delete(ctx context.Context, req resource.D
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	id := state.Group.ValueString()
+	id := state.ID.ValueString()
 	tflog.Info(ctx, fmt.Sprintf("delete account associations request for group: %s", id))
 
 	_, err := r.prov.clientV2.IAM().AccountAssociationsService().DeleteAccountAssociation(ctx, &iamv2.DeleteAccountAssociationRequest{
 		Uid: id,
 	})
 	if err != nil {
-		resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to account associations for group %q", id)))
+		if status.Code(err) == codes.NotFound {
+			return
+		}
+		resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to delete account associations for group %q", id)))
 	}
 }

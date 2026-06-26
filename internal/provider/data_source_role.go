@@ -190,10 +190,7 @@ func (d *roleDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 func capabilityStrings(caps []capabilities.Capability) []string {
 	strs, err := capabilities.StringifyAll(caps)
 	if err != nil {
-		strs = make([]string, 0, len(caps))
-		for _, c := range caps {
-			strs = append(strs, c.String())
-		}
+		return nil
 	}
 	return strs
 }

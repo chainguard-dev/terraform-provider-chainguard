@@ -105,7 +105,10 @@ func (r *identityResource) Metadata(_ context.Context, req resource.MetadataRequ
 // Schema defines the schema for the resource.
 func (r *identityResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	servicePrincipals := make([]string, 0, len(iamv2.ServicePrincipal_value))
-	for name := range iamv2.ServicePrincipal_value {
+	for name, val := range iamv2.ServicePrincipal_value {
+		if val == 0 {
+			continue
+		}
 		servicePrincipals = append(servicePrincipals, strings.TrimPrefix(name, "SERVICE_PRINCIPAL_"))
 	}
 
@@ -792,6 +795,9 @@ func (r *identityResource) Delete(ctx context.Context, req resource.DeleteReques
 		Uid: id,
 	})
 	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return
+		}
 		resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to delete identity %q", id)))
 		return
 	}

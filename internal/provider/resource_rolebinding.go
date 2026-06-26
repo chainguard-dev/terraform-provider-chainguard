@@ -150,9 +150,11 @@ func (r *rolebindingResource) Read(ctx context.Context, req resource.ReadRequest
 	}
 
 	state.ID = types.StringValue(binding.GetUid())
-	state.Group = types.StringValue(binding.GetGroup().GetUid())
-	state.Identity = types.StringValue(binding.GetIdentity().GetUid())
-	state.Role = types.StringValue(binding.GetRole().GetUid())
+	if g := binding.GetGroup(); g != nil {
+		state.Group = types.StringValue(g.GetUid())
+	}
+	state.Identity = types.StringValue(binding.GetIdentityUid())
+	state.Role = types.StringValue(binding.GetRoleUid())
 
 	// Set state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
@@ -202,6 +204,9 @@ func (r *rolebindingResource) Delete(ctx context.Context, req resource.DeleteReq
 		Uid: id,
 	})
 	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return
+		}
 		resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to delete rolebinding %q", id)))
 		return
 	}

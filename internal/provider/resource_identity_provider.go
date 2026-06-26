@@ -338,6 +338,9 @@ func (r *identityProviderResource) Delete(ctx context.Context, req resource.Dele
 		Uid: id,
 	})
 	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return
+		}
 		resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to delete identity provider %q", id)))
 	}
 }

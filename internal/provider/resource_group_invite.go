@@ -219,6 +219,9 @@ func (r *groupInviteResource) Delete(ctx context.Context, req resource.DeleteReq
 		Uid: id,
 	})
 	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return
+		}
 		resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to delete group invite %q", id)))
 	}
 }
