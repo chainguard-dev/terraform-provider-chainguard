@@ -19,9 +19,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/durationpb"
 
-	iam "chainguard.dev/sdk/proto/platform/iam/v1"
+	iamv2 "chainguard.dev/sdk/proto/chainguard/platform/iam/v2beta1"
 	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
 )
 
@@ -148,12 +150,14 @@ func (r *groupInviteResource) Create(ctx context.Context, req resource.CreateReq
 
 	// Retry on PermissionDenied to handle eventual consistency when the
 	// parent group was just created in the same apply.
-	invite, err := retryOnPermissionDenied(ctx, func() (*iam.GroupInvite, error) {
-		return r.prov.client.IAM().GroupInvites().Create(ctx, &iam.GroupInviteRequest{
-			Group: plan.Group.ValueString(),
-			Ttl:   durationpb.New(time.Until(ts)),
-			Role:  plan.Role.ValueString(),
-			Email: plan.Email.ValueString(),
+	invite, err := retryOnPermissionDenied(ctx, func() (*iamv2.GroupInvite, error) {
+		return r.prov.clientV2.IAM().GroupInvitesService().CreateGroupInvite(ctx, &iamv2.CreateGroupInviteRequest{
+			Parent: plan.Group.ValueString(),
+			GroupInvite: &iamv2.GroupInvite{
+				Ttl:     durationpb.New(time.Until(ts)),
+				RoleUid: plan.Role.ValueString(),
+				Email:   plan.Email.ValueString(),
+			},
 		})
 	})
 	if err != nil {
@@ -162,8 +166,8 @@ func (r *groupInviteResource) Create(ctx context.Context, req resource.CreateReq
 	}
 
 	// Save group invite details in the state.
-	plan.ID = types.StringValue(invite.Id)
-	plan.Code = types.StringValue(invite.Code)
+	plan.ID = types.StringValue(invite.GetUid())
+	plan.Code = types.StringValue(invite.GetCode())
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
@@ -177,30 +181,22 @@ func (r *groupInviteResource) Read(ctx context.Context, req resource.ReadRequest
 	}
 	tflog.Info(ctx, fmt.Sprintf("read group invite request: %s", state.ID))
 
-	// Query for the group to update state
-	inviteList, err := r.prov.client.IAM().GroupInvites().List(ctx, &iam.GroupInviteFilter{
-		Id: state.ID.ValueString(),
+	// Query for the group invite using GetGroupInvite instead of List-by-ID.
+	_, err := r.prov.clientV2.IAM().GroupInvitesService().GetGroupInvite(ctx, &iamv2.GetGroupInviteRequest{
+		Uid: state.ID.ValueString(),
 	})
 	if err != nil {
-		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to list group invites"))
+		if status.Code(err) == codes.NotFound {
+			// Group invite was deleted outside TF, remove from state
+			resp.State.RemoveResource(ctx)
+			return
+		}
+		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to get group invite"))
 		return
 	}
 
-	switch c := len(inviteList.GetItems()); c {
-	case 0:
-		// Group was already deleted outside TF, remove from state
-		resp.State.RemoveResource(ctx)
-
-	case 1:
-		// TODO: We cannot read the code, so are there any useful fields to set?
-
-		// Set state
-		resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
-
-	default:
-		tflog.Error(ctx, fmt.Sprintf("group invite list returned %d invites for id %s", c, state.ID.ValueString()))
-		resp.Diagnostics.AddError("failed to list group invites", fmt.Sprintf("more than one group invite found matching id %s", state.ID.ValueString()))
-	}
+	// Set state — we cannot read the code, so just confirm existence.
+	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
 // Update updates the resource and sets the updated Terraform state on success.
@@ -219,8 +215,8 @@ func (r *groupInviteResource) Delete(ctx context.Context, req resource.DeleteReq
 	tflog.Info(ctx, fmt.Sprintf("delete group invite request: %s", state.ID))
 
 	id := state.ID.ValueString()
-	_, err := r.prov.client.IAM().GroupInvites().Delete(ctx, &iam.DeleteGroupInviteRequest{
-		Id: state.ID.ValueString(),
+	_, err := r.prov.clientV2.IAM().GroupInvitesService().DeleteGroupInvite(ctx, &iamv2.DeleteGroupInviteRequest{
+		Uid: id,
 	})
 	if err != nil {
 		resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to delete group invite %q", id)))
