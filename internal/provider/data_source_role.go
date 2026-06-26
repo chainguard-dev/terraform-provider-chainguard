@@ -131,7 +131,12 @@ func (d *roleDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 			resp.Diagnostics.Append(errorToDiagnostic(err, "failed to get role"))
 			return
 		}
-		caps, diags := types.ListValueFrom(ctx, types.StringType, capabilityStrings(role.GetCapabilities()))
+		capStrs, err := capabilityStrings(role.GetCapabilities())
+		if err != nil {
+			resp.Diagnostics.Append(errorToDiagnostic(err, "failed to stringify capabilities"))
+			return
+		}
+		caps, diags := types.ListValueFrom(ctx, types.StringType, capStrs)
 		resp.Diagnostics.Append(diags...)
 		if resp.Diagnostics.HasError() {
 			return
@@ -160,7 +165,12 @@ func (d *roleDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 	}
 
 	for _, role := range roles {
-		caps, diags := types.ListValueFrom(ctx, types.StringType, capabilityStrings(role.GetCapabilities()))
+		capStrs, err := capabilityStrings(role.GetCapabilities())
+		if err != nil {
+			resp.Diagnostics.Append(errorToDiagnostic(err, "failed to stringify capabilities"))
+			return
+		}
+		caps, diags := types.ListValueFrom(ctx, types.StringType, capStrs)
 		resp.Diagnostics.Append(diags...)
 		if diags.HasError() {
 			tflog.Error(ctx, "failed to convert capabilities to basetypes.ListValue", map[string]any{"caps": role.GetCapabilities()})
@@ -187,10 +197,6 @@ func (d *roleDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func capabilityStrings(caps []capabilities.Capability) []string {
-	strs, err := capabilities.StringifyAll(caps)
-	if err != nil {
-		return nil
-	}
-	return strs
+func capabilityStrings(caps []capabilities.Capability) ([]string, error) {
+	return capabilities.StringifyAll(caps)
 }

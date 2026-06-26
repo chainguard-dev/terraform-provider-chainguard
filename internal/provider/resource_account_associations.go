@@ -449,6 +449,8 @@ func (r *accountAssociationsResource) Read(ctx context.Context, req resource.Rea
 	if state.Description.ValueString() != assoc.Description {
 		state.Description = types.StringValue(assoc.Description)
 	}
+	// In v2beta1, AccountAssociation.Uid IS the parent group UIDP
+	// (one association per group, keyed by group).
 	if state.Group.ValueString() != assoc.GetUid() {
 		state.Group = types.StringValue(assoc.GetUid())
 	}

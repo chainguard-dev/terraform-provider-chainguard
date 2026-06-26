@@ -153,8 +153,16 @@ func (r *rolebindingResource) Read(ctx context.Context, req resource.ReadRequest
 	if g := binding.GetGroup(); g != nil {
 		state.Group = types.StringValue(g.GetUid())
 	}
-	state.Identity = types.StringValue(binding.GetIdentityUid())
-	state.Role = types.StringValue(binding.GetRoleUid())
+	if uid := binding.GetIdentityUid(); uid != "" {
+		state.Identity = types.StringValue(uid)
+	} else if id := binding.GetIdentity(); id != nil {
+		state.Identity = types.StringValue(id.GetUid())
+	}
+	if uid := binding.GetRoleUid(); uid != "" {
+		state.Role = types.StringValue(uid)
+	} else if r := binding.GetRole(); r != nil {
+		state.Role = types.StringValue(r.GetUid())
+	}
 
 	// Set state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)

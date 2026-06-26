@@ -179,8 +179,13 @@ func (r *roleResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 	state.Description = types.StringValue(role.GetDescription())
 	state.ParentID = types.StringValue(uidp.Parent(role.GetUid()))
 
+	capStrs, err := capabilityStrings(role.GetCapabilities())
+	if err != nil {
+		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to stringify capabilities"))
+		return
+	}
 	var diags diag.Diagnostics
-	state.Capabilities, diags = types.SetValueFrom(ctx, types.StringType, capabilityStrings(role.GetCapabilities()))
+	state.Capabilities, diags = types.SetValueFrom(ctx, types.StringType, capStrs)
 	if diags.HasError() {
 		resp.Diagnostics.Append(diags...)
 		return
@@ -229,7 +234,12 @@ func (r *roleResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	data.ID = types.StringValue(role.GetUid())
 	data.Name = types.StringValue(role.GetName())
 	data.Description = types.StringValue(role.GetDescription())
-	data.Capabilities, diags = types.SetValueFrom(ctx, types.StringType, capabilityStrings(role.GetCapabilities()))
+	capStrs, err := capabilityStrings(role.GetCapabilities())
+	if err != nil {
+		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to stringify capabilities"))
+		return
+	}
+	data.Capabilities, diags = types.SetValueFrom(ctx, types.StringType, capStrs)
 	if diags.HasError() {
 		resp.Diagnostics.Append(diags...)
 		return
