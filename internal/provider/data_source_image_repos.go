@@ -163,7 +163,12 @@ func (d *imageReposDataSource) Read(ctx context.Context, req datasource.ReadRequ
 	data.Items = make([]*imageRepoModel, 0)
 
 	for _, repo := range repos {
-		repoModel, diags := repoToModel(ctx, repo)
+		readme, err := d.repoReadme(ctx, repo.GetUid())
+		if err != nil {
+			resp.Diagnostics.Append(errorToDiagnostic(err, "failed to get repo readme"))
+			return
+		}
+		repoModel, diags := repoToModel(ctx, repo, readme)
 		resp.Diagnostics.Append(diags...)
 		if resp.Diagnostics.HasError() {
 			return
