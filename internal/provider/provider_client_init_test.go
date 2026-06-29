@@ -12,6 +12,15 @@ import (
 	platform "chainguard.dev/sdk/proto/platform"
 )
 
+// setClient is a test helper that sets only the v1 client under the mutex.
+// Production code uses setClients which also refreshes the v2beta1 client,
+// but these tests only exercise the mutex-protected swap pattern.
+func (pd *providerData) setClient(clients platform.Clients) {
+	pd.clientMu.Lock()
+	defer pd.clientMu.Unlock()
+	pd.client = clients
+}
+
 // TestSetClient_ThreadSafe verifies that setClient and the double-check
 // in setupClient work correctly under concurrent access.
 func TestSetClient_ThreadSafe(t *testing.T) {
