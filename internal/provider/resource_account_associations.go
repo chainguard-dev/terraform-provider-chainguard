@@ -26,6 +26,7 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	iamv2 "chainguard.dev/sdk/proto/chainguard/platform/iam/v2beta1"
 	"chainguard.dev/sdk/validation"
@@ -631,6 +632,7 @@ func (r *accountAssociationsResource) Update(ctx context.Context, req resource.U
 	assoc.Uid = data.ID.ValueString()
 	_, err := r.prov.clientV2.IAM().AccountAssociationsService().UpdateAccountAssociation(ctx, &iamv2.UpdateAccountAssociationRequest{
 		AccountAssociation: assoc,
+		UpdateMask:         &fieldmaskpb.FieldMask{Paths: []string{"*"}},
 	})
 	if err != nil {
 		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to update account associations"))
