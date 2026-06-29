@@ -4,8 +4,8 @@ chainguard.dev/go-grpc-kit v0.17.17 h1:Jwhc0zyUwQbC2hNcsi+YMeUX/JUnM+dXVCkTw6wtP
 chainguard.dev/go-grpc-kit v0.17.17/go.mod h1:qn0meP6RtrbLicE1bgBZnnVU9dvX95eLs0x0T6kZ+b4=
 chainguard.dev/go-oidctest v0.4.0 h1:B9YTfoa1WtsrEg0wnFeSP7i9tth0LO+GICm2j8HOgWI=
 chainguard.dev/go-oidctest v0.4.0/go.mod h1:IIic4S3je1I7Acy3bqPtaSPefGEsQDzUp7NJF35MPV4=
-chainguard.dev/sdk v0.1.89 h1:y38vNGDPH186NMqeav0QWCROSUCt9jKlJOqeyJXP8EM=
-chainguard.dev/sdk v0.1.89/go.mod h1:VQ7UkdhbYpwvzapYJcHixIGE7okay8HNwKPmI1Gk8ok=
+chainguard.dev/sdk v0.1.94 h1:bdRWsrS6W2z5cYOdXJYX4fGvmr1TpTljTD0VUrTYSl0=
+chainguard.dev/sdk v0.1.94/go.mod h1:INq9LfC/tADHJLUBKvWGJ6TUslgMt55tVSpEWRdH5vM=
 cloud.google.com/go/auth v0.20.0 h1:kXTssoVb4azsVDoUiF8KvxAqrsQcQtB53DcSgta74CA=
 cloud.google.com/go/auth v0.20.0/go.mod h1:942/yi/itH1SsmpyrbnTMDgGfdy2BUqIKyd0cyYLc5Q=
 cloud.google.com/go/auth/oauth2adapt v0.2.8 h1:keo8NaayQZ6wimpNSmW5OPc283g65QNIiLpZnkHRbnc=
@@ -405,6 +405,8 @@ google.golang.org/api v0.283.0/go.mod h1:6Wssta4c5n9qHq5CBhmlai5h/PUa1djdDAIhYEH
 google.golang.org/appengine v1.1.0/go.mod h1:EbEs0AVv82hx2wNQdGPgUI5lhzA/G0D9YwlJXL52JkM=
 google.golang.org/appengine v1.6.8 h1:IhEN5q69dyKagZPYMSdIjS2HqprW324FRQZJcGqPAsM=
 google.golang.org/appengine v1.6.8/go.mod h1:1jJ3jBArFh5pcgW8gCtRJnepW8FzD1V44FJffLiz/Ds=
+google.golang.org/genproto v0.0.0-20260406210006-6f92a3bedf2d h1:N1Ec54vZnIPd7MnxRiYLW+oY4fDR4BOS/LrssdD9+ek=
+google.golang.org/genproto v0.0.0-20260406210006-6f92a3bedf2d/go.mod h1:c2hJ1grtnH0xUiEKGDGkjGNTJ1Hy2LrblyKOHF0sqRM=
 google.golang.org/genproto/googleapis/api v0.0.0-20260401024825-9d38bb4040a9 h1:VPWxll4HlMw1Vs/qXtN7BvhZqsS9cdAittCNvVENElA=
 google.golang.org/genproto/googleapis/api v0.0.0-20260401024825-9d38bb4040a9/go.mod h1:7QBABkRtR8z+TEnmXTqIqwJLlzrZKVfAUm7tY3yGv0M=
 google.golang.org/genproto/googleapis/rpc v0.0.0-20260523011958-0a33c5d7ca68 h1:PvEgGJf9C/1u5CHkInMg7UFYYUoiaQmW2LbtH0pjB78=

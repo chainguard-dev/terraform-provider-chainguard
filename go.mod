@@ -4,7 +4,7 @@ go 1.26.4
 
 require (
 	chainguard.dev/apko v1.2.18
-	chainguard.dev/sdk v0.1.89
+	chainguard.dev/sdk v0.1.94
 	github.com/chainguard-dev/clog v1.8.1
 	github.com/coreos/go-oidc/v3 v3.19.0
 	github.com/google/go-cmp v0.7.0
@@ -145,6 +145,7 @@ require (
 	golang.org/x/tools v0.44.0 // indirect
 	google.golang.org/api v0.283.0 // indirect
 	google.golang.org/appengine v1.6.8 // indirect
+	google.golang.org/genproto v0.0.0-20260406210006-6f92a3bedf2d // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260401024825-9d38bb4040a9 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260523011958-0a33c5d7ca68 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
