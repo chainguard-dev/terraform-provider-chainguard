@@ -489,7 +489,8 @@ func (r *accountAssociationsResource) Read(ctx context.Context, req resource.Rea
 			// Assume they're equal, until proven otherwise.
 			update = false
 			for k, sv := range cm.ServiceBindings.Elements() {
-				if v, ok := assoc.Chainguard.ServiceBindings[k]; !ok || v != sv.String() {
+				s, _ := sv.(types.String)
+				if v, ok := assoc.Chainguard.ServiceBindings[k]; !ok || v != s.ValueString() {
 					update = true
 					break
 				}
@@ -606,7 +607,12 @@ func compareMaps(a map[string]string, b types.Map) bool {
 		return false
 	}
 	for k, v := range a {
-		if bVal, ok := bmap[k]; !ok || bVal.String() != v {
+		bVal, ok := bmap[k]
+		if !ok {
+			return false
+		}
+		s, _ := bVal.(types.String)
+		if s.ValueString() != v {
 			return false
 		}
 	}

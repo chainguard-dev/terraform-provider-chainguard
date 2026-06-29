@@ -22,6 +22,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	iamv2 "chainguard.dev/sdk/proto/chainguard/platform/iam/v2beta1"
+	"chainguard.dev/sdk/uidp"
 	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
 )
 
@@ -152,6 +153,8 @@ func (r *rolebindingResource) Read(ctx context.Context, req resource.ReadRequest
 	state.ID = types.StringValue(binding.GetUid())
 	if g := binding.GetGroup(); g != nil {
 		state.Group = types.StringValue(g.GetUid())
+	} else {
+		state.Group = types.StringValue(uidp.Parent(binding.GetUid()))
 	}
 	if uid := binding.GetIdentityUid(); uid != "" {
 		state.Identity = types.StringValue(uid)

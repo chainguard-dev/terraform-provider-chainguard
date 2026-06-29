@@ -429,11 +429,15 @@ func (pd *providerData) setClients(ctx context.Context, v1 platform.Clients) err
 
 	pd.clientMu.Lock()
 	defer pd.clientMu.Unlock()
-	old := pd.clientV2
+	oldV1 := pd.client
+	oldV2 := pd.clientV2
 	pd.client = v1
 	pd.clientV2 = v2
-	if old != nil {
-		old.Close()
+	if oldV1 != nil {
+		oldV1.Close()
+	}
+	if oldV2 != nil {
+		oldV2.Close()
 	}
 	return nil
 }
