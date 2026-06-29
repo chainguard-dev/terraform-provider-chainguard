@@ -472,6 +472,8 @@ func (r *accountAssociationsResource) Read(ctx context.Context, req resource.Rea
 			state.Amazon, diags = types.ObjectValueFrom(ctx, state.Amazon.AttributeTypes(ctx), am)
 			resp.Diagnostics.Append(diags...)
 		}
+	} else if !state.Amazon.IsNull() {
+		state.Amazon = types.ObjectNull(state.Amazon.AttributeTypes(ctx))
 	}
 
 	if assoc.Chainguard != nil {
@@ -500,6 +502,8 @@ func (r *accountAssociationsResource) Read(ctx context.Context, req resource.Rea
 			state.Chainguard, diags = types.ObjectValueFrom(ctx, state.Chainguard.AttributeTypes(ctx), cm)
 			resp.Diagnostics.Append(diags...)
 		}
+	} else if !state.Chainguard.IsNull() {
+		state.Chainguard = types.ObjectNull(state.Chainguard.AttributeTypes(ctx))
 	}
 
 	if assoc.Google != nil {
@@ -519,6 +523,8 @@ func (r *accountAssociationsResource) Read(ctx context.Context, req resource.Rea
 			state.Google, diags = types.ObjectValueFrom(ctx, state.Google.AttributeTypes(ctx), gm)
 			resp.Diagnostics.Append(diags...)
 		}
+	} else if !state.Google.IsNull() {
+		state.Google = types.ObjectNull(state.Google.AttributeTypes(ctx))
 	}
 
 	if assoc.Azure != nil {
@@ -539,6 +545,8 @@ func (r *accountAssociationsResource) Read(ctx context.Context, req resource.Rea
 			state.Azure, diags = types.ObjectValueFrom(ctx, state.Azure.AttributeTypes(ctx), am)
 			resp.Diagnostics.Append(diags...)
 		}
+	} else if !state.Azure.IsNull() {
+		state.Azure = types.ObjectNull(state.Azure.AttributeTypes(ctx))
 	}
 
 	if assoc.Github != nil {
@@ -576,6 +584,11 @@ func (r *accountAssociationsResource) Read(ctx context.Context, req resource.Rea
 				}
 			}
 		}
+	} else {
+		if !state.Github.IsNull() {
+			state.Github = types.ObjectNull(state.Github.AttributeTypes(ctx))
+		}
+		state.GithubInstallation = nil
 	}
 
 	if resp.Diagnostics.HasError() {
