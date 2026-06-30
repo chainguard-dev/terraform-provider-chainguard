@@ -20,6 +20,7 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	iamv2 "chainguard.dev/sdk/proto/chainguard/platform/iam/v2beta1"
 	"chainguard.dev/sdk/uidp"
@@ -187,6 +188,7 @@ func (r *rolebindingResource) Update(ctx context.Context, req resource.UpdateReq
 			IdentityUid: data.Identity.ValueString(),
 			RoleUid:     data.Role.ValueString(),
 		},
+		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"*"}},
 	})
 	if err != nil {
 		resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to update rolebinding %q", data.ID.ValueString())))

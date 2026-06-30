@@ -22,6 +22,7 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	"chainguard.dev/sdk/proto/capabilities"
 	iamv2 "chainguard.dev/sdk/proto/chainguard/platform/iam/v2beta1"
@@ -224,6 +225,7 @@ func (r *roleResource) Update(ctx context.Context, req resource.UpdateRequest, r
 			Description:  data.Description.ValueString(),
 			Capabilities: parsedCaps,
 		},
+		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"*"}},
 	})
 	if err != nil {
 		resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to update role %q", data.ID.ValueString())))

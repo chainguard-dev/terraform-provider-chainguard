@@ -23,6 +23,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
+
 	iamv2 "chainguard.dev/sdk/proto/chainguard/platform/iam/v2beta1"
 	"chainguard.dev/sdk/proto/platform"
 	iam "chainguard.dev/sdk/proto/platform/iam/v1"
@@ -329,6 +331,7 @@ func (r *groupResource) update(ctx context.Context, data *groupResourceModel, st
 			Description: data.Description.ValueString(),
 			Verified:    data.Verified.ValueBool(),
 		},
+		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"*"}},
 	})
 	if err != nil {
 		return errorToDiagnostic(err, fmt.Sprintf("failed to update group %q", data.ID.ValueString()))

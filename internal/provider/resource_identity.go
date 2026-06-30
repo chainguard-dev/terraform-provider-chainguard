@@ -28,6 +28,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	iamv2 "chainguard.dev/sdk/proto/chainguard/platform/iam/v2beta1"
@@ -764,7 +765,8 @@ func (r *identityResource) Update(ctx context.Context, req resource.UpdateReques
 	}
 
 	updated, err := r.prov.clientV2.IAM().IdentitiesService().UpdateIdentity(ctx, &iamv2.UpdateIdentityRequest{
-		Identity: ident,
+		Identity:   ident,
+		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"*"}},
 	})
 	if err != nil {
 		resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to update identity %q", plan.ID.ValueString())))

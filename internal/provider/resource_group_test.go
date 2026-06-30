@@ -17,6 +17,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
+
 	clientsv2 "chainguard.dev/sdk/proto/chainguard/platform/clients/v2beta1"
 	iamv2 "chainguard.dev/sdk/proto/chainguard/platform/iam/v2beta1"
 	iamv2test "chainguard.dev/sdk/proto/chainguard/platform/iam/v2beta1/test"
@@ -75,6 +77,7 @@ func TestGroupResource_update(t *testing.T) {
 					Name:        "name",
 					Description: "foo",
 				},
+				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"*"}},
 			},
 			Result: &iamv2.Group{
 				Uid:         "id",
@@ -101,6 +104,7 @@ func TestGroupResource_update(t *testing.T) {
 					Name:     "name",
 					Verified: true,
 				},
+				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"*"}},
 			},
 			Result: &iamv2.Group{
 				Uid:      "id",
@@ -127,6 +131,7 @@ func TestGroupResource_update(t *testing.T) {
 					Name:     "name",
 					Verified: true,
 				},
+				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"*"}},
 			},
 			Result: &iamv2.Group{
 				Uid:      "id",
@@ -153,6 +158,7 @@ func TestGroupResource_update(t *testing.T) {
 					Uid:  "id",
 					Name: "name",
 				},
+				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"*"}},
 			},
 			Result: &iamv2.Group{
 				Uid:  "id",
@@ -208,6 +214,7 @@ func TestGroupResource_update(t *testing.T) {
 					Uid:  "id",
 					Name: "name",
 				},
+				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"*"}},
 			},
 			Result: &iamv2.Group{
 				Uid:  "id",
@@ -298,6 +305,7 @@ func TestGroupResource_updateResourceLimits(t *testing.T) {
 										Uid:  "id",
 										Name: "name",
 									},
+									UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"*"}},
 								},
 								Result: &iamv2.Group{
 									Uid:            "id",

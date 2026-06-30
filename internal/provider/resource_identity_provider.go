@@ -23,6 +23,7 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	iamv2 "chainguard.dev/sdk/proto/chainguard/platform/iam/v2beta1"
 	"chainguard.dev/sdk/uidp"
@@ -315,6 +316,7 @@ func (r *identityProviderResource) Update(ctx context.Context, req resource.Upda
 
 	if _, err := r.prov.clientV2.IAM().IdentityProvidersService().UpdateIdentityProvider(ctx, &iamv2.UpdateIdentityProviderRequest{
 		IdentityProvider: idp,
+		UpdateMask:       &fieldmaskpb.FieldMask{Paths: []string{"*"}},
 	}); err != nil {
 		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to update identity provider"))
 		return
