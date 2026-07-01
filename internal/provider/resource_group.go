@@ -23,8 +23,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
+
+	iamv2 "chainguard.dev/sdk/proto/chainguard/platform/iam/v2beta1"
 	"chainguard.dev/sdk/proto/platform"
-	common "chainguard.dev/sdk/proto/platform/common/v1"
 	iam "chainguard.dev/sdk/proto/platform/iam/v1"
 	"chainguard.dev/sdk/uidp"
 	"github.com/chainguard-dev/terraform-provider-chainguard/internal/protoutil"
@@ -126,8 +128,8 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 	tflog.Info(ctx, fmt.Sprintf("create group request: name=%s, parent_id=%s", plan.Name, plan.ParentID))
 
 	// Create the group.
-	cr := &iam.CreateGroupRequest{
-		Group: &iam.Group{
+	cr := &iamv2.CreateGroupRequest{
+		Group: &iamv2.Group{
 			Name:        plan.Name.ValueString(),
 			Description: plan.Description.ValueString(),
 			Verified:    plan.Verified.ValueBool(),
@@ -139,16 +141,16 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 		cr.Parent = plan.ParentID.ValueString()
 	}
 
-	g, err := r.prov.client.IAM().Groups().Create(ctx, cr)
+	g, err := r.prov.clientV2.IAM().GroupsService().CreateGroup(ctx, cr)
 	if err != nil {
 		resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to create group %q", cr.Group.Name)))
 		return
 	}
 
 	// Save group details in the state.
-	plan.ID = types.StringValue(g.Id)
-	if len(g.ResourceLimits) > 0 {
-		rl, diags := types.MapValueFrom(ctx, types.Int32Type, g.ResourceLimits)
+	plan.ID = types.StringValue(g.GetUid())
+	if len(g.GetResourceLimits()) > 0 {
+		rl, diags := types.MapValueFrom(ctx, types.Int32Type, g.GetResourceLimits())
 		resp.Diagnostics.Append(diags...)
 		if resp.Diagnostics.HasError() {
 			return
@@ -161,19 +163,24 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 
 	// Attempt to reauthenticate if an organization was created so token
 	// has new organization in scope.
-	if uidp.InRoot(g.Id) {
+	if uidp.InRoot(g.GetUid()) {
 		cfg := r.prov.loginConfig
-		clients, err := r.waitForRoleBindingPropagation(ctx, g.Id, cfg)
+		clients, err := r.waitForRoleBindingPropagation(ctx, g.GetUid(), cfg)
 		if err != nil {
-			resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to verify root group access for %q", g.Id)))
+			resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to verify root group access for %q", g.GetUid())))
 			return
 		}
-		r.prov.setClient(clients)
+		if err := r.prov.setClients(ctx, clients); err != nil {
+			resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to refresh clients for %q", g.GetUid())))
+			return
+		}
 	}
 }
 
 // waitForRoleBindingPropagation waits for role binding propagation after organization creation.
 // It polls the API with exponential backoff until the group is accessible or times out.
+// NB: This uses v1 clients because it creates fresh platform.Clients via newPlatformClients,
+// which only constructs v1 clients. This is a transient retry mechanism, not a core CRUD path.
 func (r *groupResource) waitForRoleBindingPropagation(
 	ctx context.Context,
 	groupID string,
@@ -260,64 +267,51 @@ func (r *groupResource) Read(ctx context.Context, req resource.ReadRequest, resp
 	}
 	tflog.Info(ctx, fmt.Sprintf("read group request: %s", state.ID))
 
-	// Query for the group to update state
-	uf := &common.UIDPFilter{}
-	if uidp.Valid(state.ParentID.ValueString()) {
-		uf.ChildrenOf = state.ParentID.ValueString()
-	}
-	f := &iam.GroupFilter{
-		Id:   state.ID.ValueString(),
-		Name: state.Name.ValueString(),
-		Uidp: uf,
-	}
-	groupList, err := r.prov.client.IAM().Groups().List(ctx, f)
+	// Query for the group using GetGroup instead of List-by-ID.
+	groupID := state.ID.ValueString()
+	g, err := r.prov.clientV2.IAM().GroupsService().GetGroup(ctx, &iamv2.GetGroupRequest{
+		Uid: groupID,
+	})
 	if err != nil {
-		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to list groups"))
+		if status.Code(err) == codes.NotFound {
+			// Group was already deleted outside TF, remove from state
+			resp.State.RemoveResource(ctx)
+			return
+		}
+		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to get group"))
 		return
 	}
 
-	switch c := len(groupList.GetItems()); c {
-	case 0:
-		// Group was already deleted outside TF, remove from state
-		resp.State.RemoveResource(ctx)
-
-	case 1:
-		g := groupList.GetItems()[0]
-		state.ID = types.StringValue(g.Id)
-		state.Name = types.StringValue(g.Name)
-		// Only update the state description if it started as non-null or we receive a description.
-		if !state.Description.IsNull() || g.Description != "" {
-			state.Description = types.StringValue(g.Description)
-		}
-		// Allow ParentID to remain null for organizations, but ensure it is populated
-		// for when importing folders.
-		if !state.ParentID.IsNull() || !uidp.InRoot(g.Id) {
-			state.ParentID = types.StringValue(uidp.Parent(g.Id))
-		}
-		// Keep null verified fields null for backward compatibility
-		// if it hasn't changed upstream.
-		if !state.Verified.IsNull() || g.Verified {
-			state.Verified = types.BoolValue(g.Verified)
-		}
-
-		if len(g.ResourceLimits) > 0 {
-			rl, diags := types.MapValueFrom(ctx, types.Int32Type, g.ResourceLimits)
-			resp.Diagnostics.Append(diags...)
-			if resp.Diagnostics.HasError() {
-				return
-			}
-			state.ResourceLimits = rl
-		} else {
-			state.ResourceLimits = types.MapNull(types.Int32Type)
-		}
-
-		// Set state
-		resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
-
-	default:
-		tflog.Error(ctx, fmt.Sprintf("group list returned %d groups for filter %v", c, f))
-		resp.Diagnostics.AddError("more than one group found matching filters", fmt.Sprintf("filters=%v\nPlease provide more context to narrow query (e.g. parent_id).", state))
+	state.ID = types.StringValue(g.GetUid())
+	state.Name = types.StringValue(g.GetName())
+	// Only update the state description if it started as non-null or we receive a description.
+	if !state.Description.IsNull() || g.GetDescription() != "" {
+		state.Description = types.StringValue(g.GetDescription())
 	}
+	// Allow ParentID to remain null for organizations, but ensure it is populated
+	// for when importing folders.
+	if !state.ParentID.IsNull() || !uidp.InRoot(g.GetUid()) {
+		state.ParentID = types.StringValue(uidp.Parent(g.GetUid()))
+	}
+	// Keep null verified fields null for backward compatibility
+	// if it hasn't changed upstream.
+	if !state.Verified.IsNull() || g.GetVerified() {
+		state.Verified = types.BoolValue(g.GetVerified())
+	}
+
+	if len(g.GetResourceLimits()) > 0 {
+		rl, diags := types.MapValueFrom(ctx, types.Int32Type, g.GetResourceLimits())
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		state.ResourceLimits = rl
+	} else {
+		state.ResourceLimits = types.MapNull(types.Int32Type)
+	}
+
+	// Set state
+	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
 func (r *groupResource) update(ctx context.Context, data *groupResourceModel, state groupResourceModel) diag.Diagnostic {
@@ -330,27 +324,30 @@ func (r *groupResource) update(ctx context.Context, data *groupResourceModel, st
 		return diag.NewErrorDiagnostic("cannot unverify group", fmt.Sprintf("group %s is verified and verified_protection is true or null; apply verified_protection = false before attempting to unverify this group", state.ID.ValueString()))
 	}
 
-	g, err := r.prov.client.IAM().Groups().Update(ctx, &iam.Group{
-		Id:          data.ID.ValueString(),
-		Name:        data.Name.ValueString(),
-		Description: data.Description.ValueString(),
-		Verified:    data.Verified.ValueBool(),
+	g, err := r.prov.clientV2.IAM().GroupsService().UpdateGroup(ctx, &iamv2.UpdateGroupRequest{
+		Group: &iamv2.Group{
+			Uid:         data.ID.ValueString(),
+			Name:        data.Name.ValueString(),
+			Description: data.Description.ValueString(),
+			Verified:    data.Verified.ValueBool(),
+		},
+		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"*"}},
 	})
 	if err != nil {
 		return errorToDiagnostic(err, fmt.Sprintf("failed to update group %q", data.ID.ValueString()))
 	}
 
 	// Update data from the returned value.
-	data.ID = types.StringValue(g.Id)
+	data.ID = types.StringValue(g.GetUid())
 	data.Name = types.StringValue(g.GetName())
-	if !data.Description.IsNull() || g.Description != "" {
+	if !data.Description.IsNull() || g.GetDescription() != "" {
 		data.Description = types.StringValue(g.GetDescription())
 	}
-	if !data.Verified.IsNull() || g.Verified {
-		data.Verified = types.BoolValue(g.Verified)
+	if !data.Verified.IsNull() || g.GetVerified() {
+		data.Verified = types.BoolValue(g.GetVerified())
 	}
-	if len(g.ResourceLimits) > 0 {
-		rl, diags := types.MapValueFrom(ctx, types.Int32Type, g.ResourceLimits)
+	if len(g.GetResourceLimits()) > 0 {
+		rl, diags := types.MapValueFrom(ctx, types.Int32Type, g.GetResourceLimits())
 		if diags.HasError() {
 			return diags[0]
 		}
@@ -398,10 +395,13 @@ func (r *groupResource) Delete(ctx context.Context, req resource.DeleteRequest, 
 	tflog.Info(ctx, fmt.Sprintf("delete group request: %s", state.ID))
 
 	id := state.ID.ValueString()
-	_, err := r.prov.client.IAM().Groups().Delete(ctx, &iam.DeleteGroupRequest{
-		Id: id,
+	_, err := r.prov.clientV2.IAM().GroupsService().DeleteGroup(ctx, &iamv2.DeleteGroupRequest{
+		Uid: id,
 	})
 	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return
+		}
 		resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to delete group %q", id)))
 		return
 	}

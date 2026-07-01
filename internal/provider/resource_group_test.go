@@ -17,11 +17,28 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 
-	iam "chainguard.dev/sdk/proto/platform/iam/v1"
-	iamtest "chainguard.dev/sdk/proto/platform/iam/v1/test"
-	platformtest "chainguard.dev/sdk/proto/platform/test"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
+
+	clientsv2 "chainguard.dev/sdk/proto/chainguard/platform/clients/v2beta1"
+	iamv2 "chainguard.dev/sdk/proto/chainguard/platform/iam/v2beta1"
+	iamv2test "chainguard.dev/sdk/proto/chainguard/platform/iam/v2beta1/test"
+	registry "chainguard.dev/sdk/proto/chainguard/platform/registry/v2beta1"
+	"chainguard.dev/sdk/proto/chainguard/platform/test"
+	vuln "chainguard.dev/sdk/proto/chainguard/platform/vulnerabilities/v2beta1"
 	"github.com/chainguard-dev/clog/slogtest"
 )
+
+// mockV2PlatformClients implements clientsv2.Clients for unit tests.
+type mockV2PlatformClients struct {
+	iamClients iamv2.Clients
+}
+
+var _ clientsv2.Clients = (*mockV2PlatformClients)(nil)
+
+func (m *mockV2PlatformClients) IAM() iamv2.Clients            { return m.iamClients }
+func (m *mockV2PlatformClients) Registry() registry.Clients    { return nil }
+func (m *mockV2PlatformClients) Vulnerabilities() vuln.Clients { return nil }
+func (m *mockV2PlatformClients) Close() error                  { return nil }
 
 func testAccResourceGroup(parent, name, description string) string {
 	const tmpl = `
@@ -46,25 +63,26 @@ resource "chainguard_group" "test" {
 
 func TestGroupResource_update(t *testing.T) {
 	for _, c := range []struct {
-		name     string
-		onUpdate iamtest.GroupOnUpdate
-		data     groupResourceModel
-		state    groupResourceModel
-		wantDiag diag.Diagnostic
+		name          string
+		onUpdateGroup test.On[*iamv2.UpdateGroupRequest, *iamv2.Group]
+		data          groupResourceModel
+		state         groupResourceModel
+		wantDiag      diag.Diagnostic
 	}{{
 		name: "update description",
-		onUpdate: iamtest.GroupOnUpdate{
-			Given: &iam.Group{
-				Id:          "id",
-				Name:        "name",
-				Description: "foo",
-				Verified:    false,
+		onUpdateGroup: test.On[*iamv2.UpdateGroupRequest, *iamv2.Group]{
+			Given: &iamv2.UpdateGroupRequest{
+				Group: &iamv2.Group{
+					Uid:         "id",
+					Name:        "name",
+					Description: "foo",
+				},
+				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"*"}},
 			},
-			Updated: &iam.Group{
-				Id:          "id",
+			Result: &iamv2.Group{
+				Uid:         "id",
 				Name:        "name",
 				Description: "foo",
-				Verified:    false,
 			},
 		},
 		data: groupResourceModel{
@@ -79,14 +97,17 @@ func TestGroupResource_update(t *testing.T) {
 		},
 	}, {
 		name: "set verified when null",
-		onUpdate: iamtest.GroupOnUpdate{
-			Given: &iam.Group{
-				Id:       "id",
-				Name:     "name",
-				Verified: true,
+		onUpdateGroup: test.On[*iamv2.UpdateGroupRequest, *iamv2.Group]{
+			Given: &iamv2.UpdateGroupRequest{
+				Group: &iamv2.Group{
+					Uid:      "id",
+					Name:     "name",
+					Verified: true,
+				},
+				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"*"}},
 			},
-			Updated: &iam.Group{
-				Id:       "id",
+			Result: &iamv2.Group{
+				Uid:      "id",
 				Name:     "name",
 				Verified: true,
 			},
@@ -103,14 +124,17 @@ func TestGroupResource_update(t *testing.T) {
 		},
 	}, {
 		name: "set verified when false",
-		onUpdate: iamtest.GroupOnUpdate{
-			Given: &iam.Group{
-				Id:       "id",
-				Name:     "name",
-				Verified: true,
+		onUpdateGroup: test.On[*iamv2.UpdateGroupRequest, *iamv2.Group]{
+			Given: &iamv2.UpdateGroupRequest{
+				Group: &iamv2.Group{
+					Uid:      "id",
+					Name:     "name",
+					Verified: true,
+				},
+				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"*"}},
 			},
-			Updated: &iam.Group{
-				Id:       "id",
+			Result: &iamv2.Group{
+				Uid:      "id",
 				Name:     "name",
 				Verified: true,
 			},
@@ -128,16 +152,17 @@ func TestGroupResource_update(t *testing.T) {
 		},
 	}, {
 		name: "unverify with verified_protection false",
-		onUpdate: iamtest.GroupOnUpdate{
-			Given: &iam.Group{
-				Id:       "id",
-				Name:     "name",
-				Verified: false,
+		onUpdateGroup: test.On[*iamv2.UpdateGroupRequest, *iamv2.Group]{
+			Given: &iamv2.UpdateGroupRequest{
+				Group: &iamv2.Group{
+					Uid:  "id",
+					Name: "name",
+				},
+				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"*"}},
 			},
-			Updated: &iam.Group{
-				Id:       "id",
-				Name:     "name",
-				Verified: false,
+			Result: &iamv2.Group{
+				Uid:  "id",
+				Name: "name",
 			},
 		},
 		data: groupResourceModel{
@@ -183,13 +208,16 @@ func TestGroupResource_update(t *testing.T) {
 		wantDiag: diag.NewErrorDiagnostic("cannot unverify group", "group id is verified and verified_protection is true or null; apply verified_protection = false before attempting to unverify this group"),
 	}, {
 		name: "update sets resource_limits to null when empty",
-		onUpdate: iamtest.GroupOnUpdate{
-			Given: &iam.Group{
-				Id:   "id",
-				Name: "name",
+		onUpdateGroup: test.On[*iamv2.UpdateGroupRequest, *iamv2.Group]{
+			Given: &iamv2.UpdateGroupRequest{
+				Group: &iamv2.Group{
+					Uid:  "id",
+					Name: "name",
+				},
+				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"*"}},
 			},
-			Updated: &iam.Group{
-				Id:   "id",
+			Result: &iamv2.Group{
+				Uid:  "id",
 				Name: "name",
 			},
 		},
@@ -208,10 +236,11 @@ func TestGroupResource_update(t *testing.T) {
 			r := &groupResource{
 				managedResource: managedResource{
 					prov: &providerData{
-						client: platformtest.MockPlatformClients{
-							IAMClient: iamtest.MockIAMClient{
-								GroupsClient: iamtest.MockGroupsClient{
-									OnUpdate: []iamtest.GroupOnUpdate{c.onUpdate},
+						clientV2: &mockV2PlatformClients{
+							iamClients: &iamv2test.MockClients{
+								GroupsServiceClient: iamv2test.MockGroupsServiceClient{
+									T:             t,
+									OnUpdateGroup: []test.On[*iamv2.UpdateGroupRequest, *iamv2.Group]{c.onUpdateGroup},
 								},
 							},
 						},
@@ -266,16 +295,20 @@ func TestGroupResource_updateResourceLimits(t *testing.T) {
 	r := &groupResource{
 		managedResource: managedResource{
 			prov: &providerData{
-				client: platformtest.MockPlatformClients{
-					IAMClient: iamtest.MockIAMClient{
-						GroupsClient: iamtest.MockGroupsClient{
-							OnUpdate: []iamtest.GroupOnUpdate{{
-								Given: &iam.Group{
-									Id:   "id",
-									Name: "name",
+				clientV2: &mockV2PlatformClients{
+					iamClients: &iamv2test.MockClients{
+						GroupsServiceClient: iamv2test.MockGroupsServiceClient{
+							T: t,
+							OnUpdateGroup: []test.On[*iamv2.UpdateGroupRequest, *iamv2.Group]{{
+								Given: &iamv2.UpdateGroupRequest{
+									Group: &iamv2.Group{
+										Uid:  "id",
+										Name: "name",
+									},
+									UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"*"}},
 								},
-								Updated: &iam.Group{
-									Id:             "id",
+								Result: &iamv2.Group{
+									Uid:            "id",
 									Name:           "name",
 									ResourceLimits: map[string]int32{"identities": 100},
 								},
