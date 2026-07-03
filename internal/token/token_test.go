@@ -8,13 +8,21 @@ package token
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"slices"
+	"strings"
 	"testing"
+	"time"
 
+	"chainguard.dev/sdk/auth"
 	sdktoken "chainguard.dev/sdk/auth/token"
 	"github.com/sigstore/cosign/v2/pkg/providers"
+	// Registers the github-actions ambient provider so providers.Enabled works
+	// in this package's acc test binary (see TestExchangeAmbientRefreshTargetsSessionIdentity).
+	_ "github.com/sigstore/cosign/v2/pkg/providers/github"
 )
 
 // fakeAccessToken builds an unsigned JWT with the given sub claim.
@@ -200,5 +208,95 @@ func TestExchangeAmbient(t *testing.T) {
 				t.Errorf("calls=%v, want %v", calls, tc.wantCalls)
 			}
 		})
+	}
+}
+
+// TestExchangeAmbientRefreshTargetsSessionIdentity is an acceptance-gated
+// integration test against a live issuer: with NO identity pinned, a forced
+// refresh must re-assume the identity the current session already holds. This
+// is what lets callers drop a hardcoded identity_id and still refresh in an
+// environment where a repo maps to multiple identities.
+func TestExchangeAmbientRefreshTargetsSessionIdentity(t *testing.T) {
+	for _, v := range []string{"TF_ACC", "TF_ACC_AMBIENT", "TF_ACC_AUDIENCE", "TF_ACC_ISSUER"} {
+		if os.Getenv(v) == "" {
+			t.Skipf("%s not set; skipping ambient-refresh integration test", v)
+		}
+	}
+	ctx := context.Background()
+	// No IdentityID: this is the pin-free path under test.
+	cfg := LoginConfig{
+		Audience:  os.Getenv("TF_ACC_AUDIENCE"),
+		Issuer:    os.Getenv("TF_ACC_ISSUER"),
+		UserAgent: "terraform-provider-chainguard/acctest-refresh",
+	}
+
+	// Learn the session identity from the token setup-chainctl already cached.
+	if _, err := Get(ctx, cfg, false); err != nil {
+		t.Fatalf("initial token.Get: %v", err)
+	}
+	raw, err := sdktoken.Load(sdktoken.KindAccess, cfg.Audience, withAlias(cfg))
+	if err != nil {
+		t.Fatalf("load cached token: %v", err)
+	}
+	_, sessionID, err := auth.ExtractIssuerAndSubject(string(raw))
+	if err != nil || sessionID == "" {
+		t.Fatalf("read session identity: err=%v sub=%q", err, sessionID)
+	}
+
+	// Route the next refresh through the ambient OIDC exchange (as Configure would).
+	idToken, err := ResolveIdentityToken(ctx, cfg.Issuer, "")
+	if err != nil || idToken == "" {
+		t.Skipf("no ambient OIDC token available: err=%v", err)
+	}
+	cfg.IdentityToken = idToken
+
+	// Make the cached token look expired so the next Get refreshes now.
+	expireCachedAccessToken(t, cfg)
+
+	// Record the identity each refresh exchange targets (delegate to the real one).
+	var calls []string
+	orig := stsExchange
+	t.Cleanup(func() { stsExchange = orig })
+	stsExchange = func(c context.Context, lc LoginConfig, idt, identityID string) (string, error) {
+		calls = append(calls, identityID)
+		return orig(c, lc, idt, identityID)
+	}
+
+	if _, err := Get(ctx, cfg, false); err != nil {
+		t.Fatalf("forced refresh token.Get: %v", err)
+	}
+	if len(calls) == 0 || calls[0] != sessionID {
+		t.Fatalf("refresh targeted %v, want session identity %q first (unpinned refresh must re-assume the session identity)", calls, sessionID)
+	}
+}
+
+// expireCachedAccessToken rewrites the cached access token's exp claim to the
+// past, preserving the rest of the payload, so the provider treats it as expired.
+func expireCachedAccessToken(t *testing.T, cfg LoginConfig) {
+	t.Helper()
+	raw, err := sdktoken.Load(sdktoken.KindAccess, cfg.Audience, withAlias(cfg))
+	if err != nil {
+		t.Fatalf("load token to expire: %v", err)
+	}
+	parts := strings.Split(string(raw), ".")
+	if len(parts) < 2 {
+		t.Fatalf("cached token is not a JWT")
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		t.Fatalf("decode token payload: %v", err)
+	}
+	var claims map[string]any
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		t.Fatalf("unmarshal claims: %v", err)
+	}
+	claims["exp"] = time.Now().Add(-time.Hour).Unix()
+	nb, err := json.Marshal(claims)
+	if err != nil {
+		t.Fatalf("marshal claims: %v", err)
+	}
+	parts[1] = base64.RawURLEncoding.EncodeToString(nb)
+	if err := sdktoken.Save([]byte(strings.Join(parts, ".")), sdktoken.KindAccess, cfg.Audience, withAlias(cfg)); err != nil {
+		t.Fatalf("save expired token: %v", err)
 	}
 }
