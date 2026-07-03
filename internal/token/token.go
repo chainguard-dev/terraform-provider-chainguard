@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"chainguard.dev/sdk/auth"
 	"chainguard.dev/sdk/auth/login"
 	sdktoken "chainguard.dev/sdk/auth/token"
 	"chainguard.dev/sdk/sts"
@@ -107,7 +108,7 @@ func refreshChainguardToken(ctx context.Context, cfg LoginConfig, forceRefresh b
 	}
 
 	if cfg.IdentityToken != "" {
-		accessToken, err = exchangeToken(ctx, identityTokenForExchange(ctx, cfg), cfg)
+		accessToken, err = exchangeAmbient(ctx, cfg)
 	} else {
 		accessToken, refreshToken, err = getChainguardToken(ctx, cfg)
 	}
@@ -199,14 +200,27 @@ func identityTokenForExchange(ctx context.Context, cfg LoginConfig) string {
 	return tok
 }
 
-// exchangeToken gets a Chainguard token by exchanging the given OIDC token or path to a token.
-// No user interaction is required. Refresh tokens are not supported in this login flow.
-func exchangeToken(ctx context.Context, idToken string, cfg LoginConfig) (string, error) {
+// stsExchange runs the STS exchange targeting identityID ("" means untargeted).
+// A package var so tests can substitute it without a live issuer.
+var stsExchange = func(ctx context.Context, cfg LoginConfig, idToken, identityID string) (string, error) {
+	opts := []sts.ExchangerOption{
+		sts.WithUserAgent(cfg.UserAgent),
+		sts.WithIdentity(identityID),
+	}
+	tok, err := sts.ExchangePair(ctx, cfg.Issuer, cfg.Audience, idToken, opts...)
+	if err != nil {
+		return "", err
+	}
+	return tok.AccessToken, nil
+}
+
+// exchangeToken exchanges the given OIDC token (or path to one) for a Chainguard
+// token, targeting identityID ("" means an untargeted exchange).
+func exchangeToken(ctx context.Context, idToken string, cfg LoginConfig, identityID string) (string, error) {
 	tflog.Info(ctx, "exchanging oidc token for chainguard token")
 
-	// Test to see if identity token is a path or not.
+	// If idToken is a path rather than a token, read the token from that file.
 	if _, err := os.Stat(idToken); err == nil {
-		// Token was specified, and it is a path. Read the token in from that file.
 		b, err := os.ReadFile(idToken)
 		if err != nil {
 			return "", err
@@ -214,16 +228,37 @@ func exchangeToken(ctx context.Context, idToken string, cfg LoginConfig) (string
 		idToken = string(b)
 	}
 
-	opts := []sts.ExchangerOption{
-		sts.WithUserAgent(cfg.UserAgent),
-		// If IdentityID is empty this is a noop during exchange.
-		sts.WithIdentity(cfg.IdentityID),
-	}
+	return stsExchange(ctx, cfg, idToken, identityID)
+}
 
-	tok, err := sts.ExchangePair(ctx, cfg.Issuer, cfg.Audience, idToken, opts...)
+// effectiveExchangeIdentity returns the identity to target on refresh: the pin if
+// set, else the current token's sub (the identity it was minted for), else "".
+func effectiveExchangeIdentity(ctx context.Context, cfg LoginConfig) string {
+	if cfg.IdentityID != "" {
+		return cfg.IdentityID
+	}
+	raw, err := sdktoken.Load(sdktoken.KindAccess, cfg.Audience, withAlias(cfg))
 	if err != nil {
-		return "", err
+		// No current token to inherit an identity from; stay untargeted.
+		return ""
 	}
+	_, sub, err := auth.ExtractIssuerAndSubject(string(raw))
+	if err != nil {
+		tflog.Warn(ctx, fmt.Sprintf("cannot read identity from current token; using untargeted exchange: %v", err))
+		return ""
+	}
+	return sub
+}
 
-	return tok.AccessToken, nil
+// exchangeAmbient exchanges the OIDC token targeting the session's current identity.
+// If that identity was derived (not pinned) and the exchange fails, it retries untargeted.
+func exchangeAmbient(ctx context.Context, cfg LoginConfig) (string, error) {
+	idToken := identityTokenForExchange(ctx, cfg)
+	target := effectiveExchangeIdentity(ctx, cfg)
+	tok, err := exchangeToken(ctx, idToken, cfg, target)
+	if err != nil && target != "" && cfg.IdentityID == "" {
+		tflog.Warn(ctx, fmt.Sprintf("targeted exchange for derived identity failed; retrying untargeted: %v", err))
+		return exchangeToken(ctx, idToken, cfg, "")
+	}
+	return tok, err
 }

@@ -194,7 +194,7 @@ only consider the filtered versions.`,
 						Optional:    true,
 					},
 					"identity_id": schema.StringAttribute{
-						Description: "UIDP of the identity to assume when exchanging OIDC token for Chainguard token.",
+						Description: "UIDP of the identity to assume when exchanging an OIDC token. Optional: when unset, token refreshes reuse the identity the current session was minted for; set it to pin a specific identity, or to separate token caches when multiple identities share an environment.",
 						Optional:    true,
 						Validators:  []validator.String{validators.UIDP(false /* allowRootSentinel */)},
 					},
