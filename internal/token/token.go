@@ -22,6 +22,7 @@ import (
 	"chainguard.dev/sdk/auth/login"
 	sdktoken "chainguard.dev/sdk/auth/token"
 	"chainguard.dev/sdk/sts"
+	"chainguard.dev/sdk/uidp"
 )
 
 const (
@@ -245,6 +246,11 @@ func effectiveExchangeIdentity(ctx context.Context, cfg LoginConfig) string {
 	_, sub, err := auth.ExtractIssuerAndSubject(string(raw))
 	if err != nil {
 		tflog.Warn(ctx, fmt.Sprintf("cannot read identity from current token; using untargeted exchange: %v", err))
+		return ""
+	}
+	// Only target a well-formed UIDP; reuse the same check the schema validator applies to a pinned identity_id.
+	if !uidp.Valid(sub) {
+		tflog.Warn(ctx, fmt.Sprintf("current token sub %q is not a valid UIDP; using untargeted exchange", sub))
 		return ""
 	}
 	return sub

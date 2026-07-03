@@ -25,6 +25,14 @@ import (
 	_ "github.com/sigstore/cosign/v2/pkg/providers/github"
 )
 
+// Valid UIDP-shaped identities for tests (40-hex group + 16-hex identity),
+// matching what the issuer sets as a real token's sub.
+const (
+	uidpDerived = "1111111111111111111111111111111111111111/1111111111111111"
+	uidpOther   = "2222222222222222222222222222222222222222/2222222222222222"
+	uidpPin     = "3333333333333333333333333333333333333333/3333333333333333"
+)
+
 // fakeAccessToken builds an unsigned JWT with the given sub claim.
 func fakeAccessToken(sub string) string {
 	payload := base64.RawURLEncoding.EncodeToString(fmt.Appendf(nil, `{"sub":%q}`, sub))
@@ -124,11 +132,12 @@ func TestEffectiveExchangeIdentity(t *testing.T) {
 		saveRaw    string // token to write to the cache ("" => none)
 		want       string
 	}{
-		"pin wins without reading cache":   {identityID: "group/pin", saveRaw: fakeAccessToken("group/other"), want: "group/pin"},
-		"derive from current token sub":    {saveRaw: fakeAccessToken("group/derived"), want: "group/derived"},
+		"pin wins without reading cache":   {identityID: uidpPin, saveRaw: fakeAccessToken(uidpOther), want: uidpPin},
+		"derive from current token sub":    {saveRaw: fakeAccessToken(uidpDerived), want: uidpDerived},
 		"no token stays untargeted":        {want: ""},
 		"malformed token stays untargeted": {saveRaw: "not-a-jwt", want: ""},
 		"empty sub stays untargeted":       {saveRaw: fakeAccessToken(""), want: ""},
+		"non-UIDP sub stays untargeted":    {saveRaw: fakeAccessToken("group/derived"), want: ""},
 	}
 
 	for name, tc := range tests {
@@ -168,9 +177,9 @@ func TestExchangeAmbient(t *testing.T) {
 		wantTok    string
 		wantErr    bool
 	}{
-		"derived identity succeeds":          {saveSub: "group/derived", wantCalls: []string{"group/derived"}, wantTok: "ok"},
-		"derived failure retries untargeted": {saveSub: "group/derived", failOn: []string{"group/derived"}, wantCalls: []string{"group/derived", ""}, wantTok: "ok"},
-		"pin failure does not fall back":     {identityID: "group/pin", failOn: []string{"group/pin"}, wantCalls: []string{"group/pin"}, wantErr: true},
+		"derived identity succeeds":          {saveSub: uidpDerived, wantCalls: []string{uidpDerived}, wantTok: "ok"},
+		"derived failure retries untargeted": {saveSub: uidpDerived, failOn: []string{uidpDerived}, wantCalls: []string{uidpDerived, ""}, wantTok: "ok"},
+		"pin failure does not fall back":     {identityID: uidpPin, failOn: []string{uidpPin}, wantCalls: []string{uidpPin}, wantErr: true},
 		"no token exchanges untargeted":      {wantCalls: []string{""}, wantTok: "ok"},
 	}
 
