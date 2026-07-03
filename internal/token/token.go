@@ -202,7 +202,8 @@ func identityTokenForExchange(ctx context.Context, cfg LoginConfig) string {
 }
 
 // stsExchange runs the STS exchange targeting identityID ("" means untargeted).
-// A package var so tests can substitute it without a live issuer.
+// A package var so tests can substitute it without a live issuer; tests that
+// swap it must not run in parallel (it is process-global mutable state).
 var stsExchange = func(ctx context.Context, cfg LoginConfig, idToken, identityID string) (string, error) {
 	opts := []sts.ExchangerOption{
 		sts.WithUserAgent(cfg.UserAgent),
