@@ -96,7 +96,9 @@ func readIdentity(t *testing.T, ids *sequenceIdentities) (identityDataSourceMode
 }
 
 func TestIdentityDataSourceRead_Retry(t *testing.T) {
-	// No real sleeps between retries.
+	// No real sleeps between retries. Mutates the package-global
+	// retryBaseDelay and restores it via Cleanup — do not add t.Parallel()
+	// to tests in this file, they would race on the global.
 	retryBaseDelay = 0
 	t.Cleanup(func() { retryBaseDelay = 2 * time.Second })
 
