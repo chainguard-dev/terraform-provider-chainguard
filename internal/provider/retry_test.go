@@ -115,6 +115,28 @@ func TestWithRetry(t *testing.T) {
 		}
 	})
 
+	t.Run("prefers context error when cancelled on the final attempt", func(t *testing.T) {
+		// Cancelling exactly as the last attempt fails skips the select's
+		// ctx.Done() branch (the loop breaks first); the exhaustion path must
+		// still return ctx.Err() rather than the stale transient status.
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		calls := 0
+		_, err := withRetryWithDelay(ctx, "op", 0, func(context.Context) (int, error) {
+			calls++
+			if calls == retryMaxAttempts {
+				cancel()
+			}
+			return 0, status.Error(codes.DeadlineExceeded, "slow")
+		})
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("err = %v, want context.Canceled", err)
+		}
+		if calls != retryMaxAttempts {
+			t.Fatalf("calls = %d, want %d", calls, retryMaxAttempts)
+		}
+	})
+
 	t.Run("does not retry non-retryable error", func(t *testing.T) {
 		calls := 0
 		_, err := withRetry(context.Background(), "op", func(context.Context) (int, error) {

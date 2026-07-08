@@ -114,6 +114,14 @@ func withRetryWithDelay[T any](ctx context.Context, operation string, baseDelay 
 		}
 	}
 
+	// If the context was cancelled or its deadline expired, prefer that error.
+	// Otherwise a status that coincided with cancellation on the final attempt
+	// would surface as a raw transient error, inconsistent with the ctx.Done()
+	// branch of the select above, which returns ctx.Err() on earlier attempts.
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return result, ctxErr
+	}
+
 	// All attempts exhausted on a retryable error: surface it in logs since the
 	// per-attempt retries above only log at DEBUG.
 	tflog.Warn(ctx, "exhausted retries after transient errors", map[string]any{
