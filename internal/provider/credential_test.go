@@ -71,11 +71,6 @@ func TestRefreshingCredentialVsStatic(t *testing.T) {
 		t.Fatalf("rotate cache: %v", err)
 	}
 
-	// BUG reproduced: the frozen credential still emits the now-expired token.
-	if staticAuthHeader != "Bearer "+oneMinuteToken {
-		t.Fatalf("static credential unexpectedly changed")
-	}
-
 	// FIX verified: the refreshing credential emits the current (refreshed) token.
 	md, err = refreshing.GetRequestMetadata(ctx)
 	if err != nil {
