@@ -16,6 +16,9 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+
+	registry "chainguard.dev/sdk/proto/platform/registry/v1"
+	"chainguard.dev/sdk/uidp"
 )
 
 type testRepo struct {
@@ -185,6 +188,205 @@ resource "chainguard_image_repo" "example" {
 	}
 
 	return fmt.Sprintf(tmpl, repo.parentID, repo.name, bundlesLine, readmeLine, tierLine, aliasesLine, activeTagsLine)
+}
+
+func TestImageRepo_CustomOverlayReservedEnvPrefix(t *testing.T) {
+	// Fails during plan (schema validator), before any registry RPC.
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: fmt.Sprintf(`
+resource "chainguard_image_repo" "bad" {
+  parent_id = %q
+  name      = "test"
+  custom_overlay {
+    environment = {
+      "CHAINGUARD_FOO" = "bar"
+    }
+  }
+}
+`, os.Getenv("TF_ACC_GROUP_ID")),
+				ExpectError: regexp.MustCompile(`reserved prefix`),
+			},
+		},
+	})
+}
+
+func TestImageRepo_CustomOverlayReservedAnnotationPrefix(t *testing.T) {
+	// Fails during plan (schema validator), before any registry RPC.
+	for _, key := range []string{"dev.chainguard.foo", "org.opencontainers.image.title"} {
+		resource.Test(t, resource.TestCase{
+			PreCheck:                 func() { testAccPreCheck(t) },
+			ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+			Steps: []resource.TestStep{
+				{
+					Config: fmt.Sprintf(`
+resource "chainguard_image_repo" "bad" {
+  parent_id = %q
+  name      = "test"
+  custom_overlay {
+    annotations = {
+      %q = "value"
+    }
+  }
+}
+`, os.Getenv("TF_ACC_GROUP_ID"), key),
+					ExpectError: regexp.MustCompile(`reserved prefix`),
+				},
+			},
+		})
+	}
+}
+
+// testImageRepoCustomOverlay renders a config for the pre-provisioned
+// custom-assembly repo. The sync_config block must always be present and echo
+// the live values: UpdateRepo is a full replacement, so omitting it would
+// strip the repo's sync_config (and with it custom assembly).
+func testImageRepoCustomOverlay(parentID, name, source, expiration, overlay string) string {
+	var expirationLine string
+	if expiration != "" {
+		expirationLine = fmt.Sprintf("expiration = %q", expiration)
+	}
+	return fmt.Sprintf(`
+resource "chainguard_image_repo" "ca" {
+  parent_id = %q
+  name      = %q
+  sync_config {
+    source = %q
+    %s
+  }
+  %s
+}
+`, parentID, name, source, expirationLine, overlay)
+}
+
+// TestAccImageRepo_CustomOverlay exercises the custom_overlay lifecycle
+// end-to-end against a real custom-assembly-enabled repo. It is gated on
+// TF_ACC_CUSTOM_OVERLAY_REPO_ID naming a pre-provisioned repo (the CI
+// identity cannot create one: it cannot authorize any sync_config.source).
+//
+// The shared repo must never be destroyed: the test imports it, ends with
+// the overlay cleared, and forgets the resource with a removed block so the
+// framework's final destroy has nothing to delete.
+func TestAccImageRepo_CustomOverlay(t *testing.T) {
+	repoID := os.Getenv("TF_ACC_CUSTOM_OVERLAY_REPO_ID")
+	if repoID == "" {
+		t.Skip("TF_ACC_CUSTOM_OVERLAY_REPO_ID not set - skipping custom_overlay acceptance test")
+		return
+	}
+
+	clients := testAccPlatformClient(t)
+	if clients == nil {
+		t.Skip("acceptance test env vars not set")
+		return
+	}
+
+	// Fetch the repo so the config mirrors its live identity and
+	// sync_config; see testImageRepoCustomOverlay.
+	repoList, err := clients.Registry().Registry().ListRepos(t.Context(), &registry.RepoFilter{Id: repoID})
+	if err != nil {
+		t.Fatalf("failed to fetch repo %s: %s", repoID, err)
+	}
+	if len(repoList.GetItems()) != 1 {
+		t.Fatalf("expected exactly one repo for %s, got %d", repoID, len(repoList.GetItems()))
+	}
+	repo := repoList.GetItems()[0]
+	if repo.GetSyncConfig().GetApkoOverlay() == "" {
+		t.Fatalf("repo %s is not custom-assembly enabled (sync_config.apko_overlay is empty)", repoID)
+	}
+	parentID := uidp.Parent(repoID)
+	name := repo.GetName()
+	source := repo.GetSyncConfig().GetSource()
+	expiration := ""
+	if exp := repo.GetSyncConfig().GetExpiration(); exp != nil && !exp.AsTime().IsZero() {
+		expiration = exp.AsTime().Format(time.RFC3339)
+	}
+
+	overlay1 := `
+  custom_overlay {
+    contents {
+      packages = ["curl"]
+    }
+    environment = {
+      "HTTP_PROXY" = "http://proxy.example.com:3128"
+    }
+    annotations = {
+      "com.example.team" = "platform"
+    }
+    accounts {
+      run_as = "65532"
+    }
+  }`
+
+	overlay2 := `
+  custom_overlay {
+    contents {
+      packages = ["curl", "jq"]
+    }
+    annotations = {
+      "com.example.team" = "infra"
+    }
+  }`
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			// Adopt the pre-provisioned repo.
+			{
+				Config:             testImageRepoCustomOverlay(parentID, name, source, expiration, ""),
+				ResourceName:       "chainguard_image_repo.ca",
+				ImportState:        true,
+				ImportStateId:      repoID,
+				ImportStatePersist: true,
+			},
+			// Set an overlay.
+			{
+				Config: testImageRepoCustomOverlay(parentID, name, source, expiration, overlay1),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("chainguard_image_repo.ca", "custom_overlay.contents.packages.0", "curl"),
+					resource.TestCheckResourceAttr("chainguard_image_repo.ca", "custom_overlay.environment.HTTP_PROXY", "http://proxy.example.com:3128"),
+					resource.TestCheckResourceAttr("chainguard_image_repo.ca", "custom_overlay.accounts.run_as", "65532"),
+				),
+			},
+			// Mutate it in place.
+			{
+				Config: testImageRepoCustomOverlay(parentID, name, source, expiration, overlay2),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("chainguard_image_repo.ca", "custom_overlay.contents.packages.1", "jq"),
+					resource.TestCheckResourceAttr("chainguard_image_repo.ca", "custom_overlay.annotations.com.example.team", "infra"),
+					resource.TestCheckNoResourceAttr("chainguard_image_repo.ca", "custom_overlay.environment.HTTP_PROXY"),
+				),
+			},
+			// Clear it by removing the block.
+			{
+				Config: testImageRepoCustomOverlay(parentID, name, source, expiration, ""),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckNoResourceAttr("chainguard_image_repo.ca", "custom_overlay"),
+				),
+			},
+			// The cleared overlay reads back from the API as an empty
+			// message; the nil ≡ empty normalization must yield an empty
+			// plan or every clear would leave a perpetual diff.
+			{
+				Config:   testImageRepoCustomOverlay(parentID, name, source, expiration, ""),
+				PlanOnly: true,
+			},
+			// Forget the resource without destroying the shared repo.
+			{
+				Config: `
+removed {
+  from = chainguard_image_repo.ca
+  lifecycle {
+    destroy = false
+  }
+}
+`,
+			},
+		},
+	})
 }
 
 func TestLockRepo_SameKeySerializes(t *testing.T) {
