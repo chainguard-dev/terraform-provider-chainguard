@@ -391,19 +391,20 @@ func (pd *providerData) setupClient(ctx context.Context) error {
 
 	// Get the Chainguard token
 	// If it doesn't exist or is expired, attempt to get a new one, depending on login_options
-	cgToken, err := token.Get(ctx, pd.loginConfig, false /* forceRefresh */)
-	if err != nil {
+	if _, err := token.Get(ctx, pd.loginConfig, false /* forceRefresh */); err != nil {
 		return fmt.Errorf("failed to retrieve token. Either no token was found for audience %q or there was an error reading it.\n"+
 			"Please check the value of \"chainguard.console_api\" in your Terraform provider configuration: %s", pd.loginConfig.Audience, err.Error())
 	}
 
+	cred := &refreshingCredential{loginConfig: pd.loginConfig}
+
 	// Generate platform clients.
-	clients, err := newPlatformClients(ctx, string(cgToken), pd.consoleAPI)
+	uaCtx := platform.WithUserAgent(ctx, UserAgent)
+	clients, err := platform.NewPlatformClients(uaCtx, pd.consoleAPI, cred, retryDialOption())
 	if err != nil {
 		return fmt.Errorf("failed to create API clients: %s", err.Error())
 	}
 
-	cred := auth.NewFromToken(ctx, fmt.Sprintf("Bearer %s", string(cgToken)), false)
 	v2, err := clientsv2.NewClients(ctx, pd.consoleAPI, UserAgent, cred, retryDialOption())
 	if err != nil {
 		return fmt.Errorf("failed to create v2beta1 API clients: %s", err.Error())
@@ -417,11 +418,10 @@ func (pd *providerData) setupClient(ctx context.Context) error {
 // setClients replaces both v1 and v2beta1 clients under the mutex.
 // Used by resource_group after re-authenticating with a new organization scope.
 func (pd *providerData) setClients(ctx context.Context, v1 platform.Clients) error {
-	cgToken, err := token.Get(ctx, pd.loginConfig, false)
-	if err != nil {
+	if _, err := token.Get(ctx, pd.loginConfig, false); err != nil {
 		return fmt.Errorf("failed to retrieve token for v2beta1 client refresh: %w", err)
 	}
-	cred := auth.NewFromToken(ctx, fmt.Sprintf("Bearer %s", string(cgToken)), false)
+	cred := &refreshingCredential{loginConfig: pd.loginConfig}
 	v2, err := clientsv2.NewClients(ctx, pd.consoleAPI, UserAgent, cred, retryDialOption())
 	if err != nil {
 		return fmt.Errorf("failed to create v2beta1 API clients: %w", err)
