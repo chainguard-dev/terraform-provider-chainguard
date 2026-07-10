@@ -9,7 +9,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	regv2 "chainguard.dev/sdk/proto/chainguard/platform/registry/v2beta1"
 	common "chainguard.dev/sdk/proto/platform/common/v1"
@@ -275,8 +274,8 @@ func repoToModel(ctx context.Context, repo *regv2.Repo, readme string) (*imageRe
 	var sc *syncConfig
 	if repo.SyncConfig != nil {
 		expiration := types.StringNull()
-		if repo.GetSyncConfig().GetExpirationTime() != nil && !repo.GetSyncConfig().GetExpirationTime().AsTime().IsZero() {
-			expiration = types.StringValue(repo.GetSyncConfig().GetExpirationTime().AsTime().Format(time.RFC3339))
+		if exp := formatExpiration(repo.GetSyncConfig().GetExpirationTime()); exp != "" {
+			expiration = types.StringValue(exp)
 		}
 		sc = &syncConfig{
 			Source:      types.StringValue(repo.GetSyncConfig().GetSource()),

@@ -397,8 +397,8 @@ func (r *imageRepoResource) Create(ctx context.Context, req resource.CreateReque
 			return
 		}
 		// Populate computed fields from API response
-		if repo.SyncConfig.Expiration != nil && !repo.SyncConfig.Expiration.AsTime().IsZero() {
-			cfg.Expiration = types.StringValue(repo.SyncConfig.Expiration.AsTime().Format(time.RFC3339))
+		if exp := formatExpiration(repo.SyncConfig.Expiration); exp != "" {
+			cfg.Expiration = types.StringValue(exp)
 		}
 		cfg.UniqueTags = types.BoolValue(repo.SyncConfig.UniqueTags)
 		cfg.GracePeriod = types.BoolValue(repo.SyncConfig.GracePeriod)
@@ -480,10 +480,7 @@ func (r *imageRepoResource) Read(ctx context.Context, req resource.ReadRequest, 
 			return
 		}
 		// Convert API expiration to string, treating zero time as empty
-		apiExpiration := ""
-		if repo.SyncConfig.Expiration != nil && !repo.SyncConfig.Expiration.AsTime().IsZero() {
-			apiExpiration = repo.SyncConfig.Expiration.AsTime().Format(time.RFC3339)
-		}
+		apiExpiration := formatExpiration(repo.SyncConfig.Expiration)
 		update := (sc.Source.ValueString() != repo.SyncConfig.Source) ||
 			(sc.Expiration.ValueString() != apiExpiration) ||
 			(sc.UniqueTags.ValueBool() != repo.SyncConfig.UniqueTags) ||
@@ -565,6 +562,20 @@ func (r *imageRepoResource) Read(ctx context.Context, req resource.ReadRequest, 
 
 	// Set state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+}
+
+// formatExpiration renders a sync_config expiration for state. Precision
+// matters: UpdateRepo is a full PUT and the server compares the echoed
+// expiration against the stored one nanosecond-exact when deciding whether
+// the caller (illegally) changed it, so a truncated echo of a
+// server-stamped timestamp is rejected. RFC3339Nano keeps the exact
+// instant while remaining parseable by time.RFC3339 (and checkRFC3339).
+// Returns "" for nil or zero timestamps.
+func formatExpiration(ts *timestamppb.Timestamp) string {
+	if ts == nil || ts.AsTime().IsZero() {
+		return ""
+	}
+	return ts.AsTime().Format(time.RFC3339Nano)
 }
 
 // Update updates the resource and sets the updated Terraform state on success.
@@ -710,8 +721,8 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 			return
 		}
 		// Populate all computed fields from API response (don't overwrite Source)
-		if repo.SyncConfig.Expiration != nil && !repo.SyncConfig.Expiration.AsTime().IsZero() {
-			cfg.Expiration = types.StringValue(repo.SyncConfig.Expiration.AsTime().Format(time.RFC3339))
+		if exp := formatExpiration(repo.SyncConfig.Expiration); exp != "" {
+			cfg.Expiration = types.StringValue(exp)
 		}
 		cfg.UniqueTags = types.BoolValue(repo.SyncConfig.UniqueTags)
 		cfg.GracePeriod = types.BoolValue(repo.SyncConfig.GracePeriod)

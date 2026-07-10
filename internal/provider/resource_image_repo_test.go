@@ -20,6 +20,7 @@ import (
 
 	registry "chainguard.dev/sdk/proto/platform/registry/v1"
 	"chainguard.dev/sdk/uidp"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type testRepo struct {
@@ -245,6 +246,11 @@ resource "chainguard_image_repo" "bad" {
 // custom-assembly repo. The sync_config block must always be present and echo
 // the live values: UpdateRepo is a full replacement, so omitting it would
 // strip the repo's sync_config (and with it custom assembly).
+//
+// prevent_destroy guards the shared repo against the framework's cleanup:
+// when any step fails, the framework destroys whatever is in state, and only
+// the final removed-block step forgets the repo. With prevent_destroy that
+// cleanup errors instead of deleting the repo.
 func testImageRepoCustomOverlay(parentID, name, source, expiration, overlay string) string {
 	var expirationLine string
 	if expiration != "" {
@@ -259,6 +265,9 @@ resource "chainguard_image_repo" "ca" {
     %s
   }
   %s
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 `, parentID, name, source, expirationLine, overlay)
 }
@@ -306,10 +315,10 @@ func TestAccImageRepo_CustomOverlay(t *testing.T) {
 	parentID := uidp.Parent(repoID)
 	name := repo.GetName()
 	source := repo.GetSyncConfig().GetSource()
-	expiration := ""
-	if exp := repo.GetSyncConfig().GetExpiration(); exp != nil && !exp.AsTime().IsZero() {
-		expiration = exp.AsTime().Format(time.RFC3339)
-	}
+	// Echo the expiration at full precision: the server rejects the update
+	// as an (unauthorized) expiration change if the echoed timestamp differs
+	// from the stored one by even a nanosecond.
+	expiration := formatExpiration(repo.GetSyncConfig().GetExpiration())
 
 	overlay1 := `
   custom_overlay {
@@ -400,6 +409,41 @@ removed {
 `,
 			},
 		},
+	})
+}
+
+func Test_formatExpiration(t *testing.T) {
+	t.Parallel()
+	tests := map[string]struct {
+		ts   *timestamppb.Timestamp
+		want string
+	}{
+		"nil is empty":  {ts: nil, want: ""},
+		"zero is empty": {ts: timestamppb.New(time.Time{}), want: ""},
+		"whole seconds": {ts: timestamppb.New(time.Date(2026, 7, 24, 15, 34, 10, 0, time.UTC)), want: "2026-07-24T15:34:10Z"},
+		// The server decides whether a caller "changed" the expiration by
+		// comparing timestamps nanosecond-exact; truncating to whole seconds
+		// made every echo of a server-stamped expiration read as an
+		// unauthorized change.
+		"sub-second precision survives": {ts: timestamppb.New(time.Date(2026, 7, 24, 15, 34, 10, 953000000, time.UTC)), want: "2026-07-24T15:34:10.953Z"},
+	}
+	for name, td := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := formatExpiration(td.ts); got != td.want {
+				t.Errorf("formatExpiration() = %q, want %q", got, td.want)
+			}
+		})
+	}
+
+	t.Run("round-trips to the exact instant", func(t *testing.T) {
+		orig := timestamppb.New(time.Date(2026, 7, 24, 15, 34, 10, 953000000, time.UTC))
+		parsed, err := time.Parse(time.RFC3339, formatExpiration(orig))
+		if err != nil {
+			t.Fatalf("formatted expiration failed to parse: %s", err)
+		}
+		if !parsed.Equal(orig.AsTime()) {
+			t.Errorf("round-trip drifted: got %s, want %s", parsed, orig.AsTime())
+		}
 	})
 }
 
