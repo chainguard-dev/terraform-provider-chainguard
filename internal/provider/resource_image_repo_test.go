@@ -16,6 +16,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/tfversion"
 
 	registry "chainguard.dev/sdk/proto/platform/registry/v1"
 	"chainguard.dev/sdk/uidp"
@@ -276,6 +277,12 @@ func TestAccImageRepo_CustomOverlay(t *testing.T) {
 		t.Skip("TF_ACC_CUSTOM_OVERLAY_REPO_ID not set - skipping custom_overlay acceptance test")
 		return
 	}
+	// Guard the pre-flight RPCs below, not just resource.Test: without this,
+	// a unit-test run with the repo ID set would still hit the real API.
+	if os.Getenv("TF_ACC") == "" {
+		t.Skip("TF_ACC not set - skipping custom_overlay acceptance test")
+		return
+	}
 
 	clients := testAccPlatformClient(t)
 	if clients == nil {
@@ -333,6 +340,13 @@ func TestAccImageRepo_CustomOverlay(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		// The final step's removed block (destroy = false) needs Terraform
+		// 1.7+. Skipping up front on older CLIs matters: if that step merely
+		// errored, the framework's cleanup destroy would run with the shared
+		// repo still in state — and delete it.
+		TerraformVersionChecks: []tfversion.TerraformVersionCheck{
+			tfversion.SkipBelow(tfversion.Version1_7_0),
+		},
 		Steps: []resource.TestStep{
 			// Adopt the pre-provisioned repo.
 			{
