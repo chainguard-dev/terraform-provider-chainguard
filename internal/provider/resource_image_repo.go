@@ -23,11 +23,14 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	registry "chainguard.dev/sdk/proto/platform/registry/v1"
 	"chainguard.dev/sdk/uidp"
 	"chainguard.dev/sdk/validation"
+	"github.com/chainguard-dev/terraform-provider-chainguard/internal/protoutil"
 	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
 )
 
@@ -36,6 +39,7 @@ var (
 	_ resource.Resource                = &imageRepoResource{}
 	_ resource.ResourceWithConfigure   = &imageRepoResource{}
 	_ resource.ResourceWithImportState = &imageRepoResource{}
+	_ resource.ResourceWithModifyPlan  = &imageRepoResource{}
 )
 
 // NewImageRepoResource is a helper function to simplify the provider implementation.
@@ -56,6 +60,8 @@ type imageRepoResourceModel struct {
 	Readme      types.String `tfsdk:"readme"`
 	SyncConfig  types.Object `tfsdk:"sync_config"`
 	Description types.String `tfsdk:"description"`
+	// Client-side deletion gate; never sent to the API. Null is treated as true.
+	DeletionProtection types.Bool `tfsdk:"deletion_protection"`
 	// Image tier (e.g. APPLICATION, BASE, etc.)
 	Tier       types.String `tfsdk:"tier"`
 	Aliases    types.List   `tfsdk:"aliases"`
@@ -86,7 +92,7 @@ func (r *imageRepoResource) Metadata(_ context.Context, req resource.MetadataReq
 // Schema defines the schema for the resource.
 func (r *imageRepoResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Image repo (note: delete is purposefully a no-op).",
+		Description: "Image repo. Deletion is protected by default; see the deletion_protection attribute.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description:   "The UIDP of this repo.",
@@ -109,6 +115,10 @@ func (r *imageRepoResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				Description: "List of bundles associated with this repo. Allowed values are enforced by the Chainguard API.",
 				Optional:    true,
 				ElementType: types.StringType,
+			},
+			"deletion_protection": schema.BoolAttribute{
+				Description: "Prevent this image repo from being deleted through Terraform. Null is treated as true. Set to false (and apply) before destroying.",
+				Optional:    true,
 			},
 			"readme": schema.StringAttribute{
 				Description: "The README for this repo.",
@@ -249,6 +259,34 @@ func validDescriptionValue(s string) error {
 // ImportState imports resources by ID into the current Terraform state.
 func (r *imageRepoResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+}
+
+// ModifyPlan warns on destroy plans: that the apply will fail while
+// deletion_protection is true or null, or that deletion is permanent once it
+// is false. Enforcement happens in Delete; warnings here are plan-time UX only.
+func (r *imageRepoResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	// Only whole-resource destroy plans are of interest: plan is null, state is not.
+	if !req.Plan.Raw.IsNull() || req.State.Raw.IsNull() {
+		return
+	}
+
+	var state imageRepoResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if protoutil.DefaultBool(state.DeletionProtection, true) {
+		resp.Diagnostics.AddWarning(
+			"image repo protected from deletion",
+			fmt.Sprintf("This plan destroys image repo %q, but deletion_protection is true or null so the apply will fail. To delete this repo, apply deletion_protection = false first.", state.ID.ValueString()),
+		)
+		return
+	}
+	resp.Diagnostics.AddWarning(
+		"image repo deletion is permanent",
+		fmt.Sprintf("This plan permanently deletes image repo %q and its tags from the Chainguard registry. Recovery requires contacting Chainguard support.", state.ID.ValueString()),
+	)
 }
 
 // repoLocks provides per-key locking so that operations on different repos
@@ -704,33 +742,42 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// Delete is purposefully a no-op so we don't accidentally delete repos with terraform.
-// Instead, delete them with "chainctl img rm".
+// Delete deletes the resource and removes the Terraform state on success.
 func (r *imageRepoResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	// When not running acceptance tests, add an error to resp so Terraform does not automatically remove this resource from state.
-	// See https://developer.hashicorp.com/terraform/plugin/framework/resources/delete#caveats for details.
-	if !r.prov.testing {
-		resp.Diagnostics.AddError("not implemented", "Image repos cannot be deleted through Terraform. Use `chainctl img repo rm` to manually delete.")
-		return
-	}
-
 	// Read the current state into the resource model.
 	var state imageRepoResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	tflog.Info(ctx, fmt.Sprintf("ACCEPTANCE TEST: delete image repo request: %s", state.ID))
+	id := state.ID.ValueString()
+
+	// NB: When not set, deletion_protection is treated as true.
+	// Erroring here keeps the resource in state; deletion requires two steps:
+	// apply deletion_protection = false, then run the destroy again.
+	if protoutil.DefaultBool(state.DeletionProtection, true) {
+		resp.Diagnostics.AddError(
+			"image repo protected from deletion",
+			fmt.Sprintf("Image repo %q cannot be deleted because deletion_protection is true or null. Deleting an image repo permanently removes it and its tags from the Chainguard registry; recovery requires contacting Chainguard support. To delete this repo, apply deletion_protection = false, then run the destroy again.", id),
+		)
+		return
+	}
+	tflog.Info(ctx, fmt.Sprintf("delete image repo request: %s", id))
 
 	// Lock to prevent concurrent operations on the same repo.
-	unlock := lockRepo(state.ID.ValueString())
+	unlock := lockRepo(id)
 	defer unlock()
 
-	id := state.ID.ValueString()
 	_, err := r.prov.client.Registry().Registry().DeleteRepo(ctx, &registry.DeleteRepoRequest{
 		Id: id,
 	})
 	if err != nil {
+		// The repo may already be gone, or recreated under a new UIDP by the
+		// entitlements reconciler; treat NotFound as a successful delete, like
+		// chainctl's --allow-missing.
+		if status.Code(err) == codes.NotFound {
+			return
+		}
 		resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to delete image repo %q", id)))
 		return
 	}
