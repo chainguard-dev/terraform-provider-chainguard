@@ -83,6 +83,10 @@ jobs:
           persist-credentials: false
           # For pull_request_target, checkout the PR code, not the base branch.
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          # Fork PRs reach this step only after a maintainer approves the gated
+          # acceptance-tests environment, so the PR head is checked out behind
+          # that required-reviewer gate rather than run unreviewed.
+          allow-unsafe-pr-checkout: true
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
