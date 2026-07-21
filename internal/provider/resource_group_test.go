@@ -77,7 +77,7 @@ func TestGroupResource_update(t *testing.T) {
 					Name:        "name",
 					Description: "foo",
 				},
-				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"*"}},
+				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"name", "description", "verified"}},
 			},
 			Result: &iamv2.Group{
 				Uid:         "id",
@@ -104,7 +104,7 @@ func TestGroupResource_update(t *testing.T) {
 					Name:     "name",
 					Verified: true,
 				},
-				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"*"}},
+				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"name", "description", "verified"}},
 			},
 			Result: &iamv2.Group{
 				Uid:      "id",
@@ -131,7 +131,7 @@ func TestGroupResource_update(t *testing.T) {
 					Name:     "name",
 					Verified: true,
 				},
-				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"*"}},
+				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"name", "description", "verified"}},
 			},
 			Result: &iamv2.Group{
 				Uid:      "id",
@@ -158,7 +158,7 @@ func TestGroupResource_update(t *testing.T) {
 					Uid:  "id",
 					Name: "name",
 				},
-				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"*"}},
+				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"name", "description", "verified"}},
 			},
 			Result: &iamv2.Group{
 				Uid:  "id",
@@ -207,6 +207,69 @@ func TestGroupResource_update(t *testing.T) {
 		},
 		wantDiag: diag.NewErrorDiagnostic("cannot unverify group", "group id is verified and verified_protection is true or null; apply verified_protection = false before attempting to unverify this group"),
 	}, {
+		name: "update kind",
+		onUpdateGroup: test.On[*iamv2.UpdateGroupRequest, *iamv2.Group]{
+			Given: &iamv2.UpdateGroupRequest{
+				Group: &iamv2.Group{
+					Uid:      "id",
+					Name:     "name",
+					Verified: true,
+					Kind:     iamv2.OrgKind_ORG_KIND_CUSTOMER,
+				},
+				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"name", "description", "verified", "kind"}},
+			},
+			Result: &iamv2.Group{
+				Uid:      "id",
+				Name:     "name",
+				Verified: true,
+				Kind:     iamv2.OrgKind_ORG_KIND_CUSTOMER,
+			},
+		},
+		data: groupResourceModel{
+			ID:             types.StringValue("id"),
+			Name:           types.StringValue("name"),
+			Verified:       types.BoolValue(true),
+			Kind:           types.StringValue("CUSTOMER"),
+			ResourceLimits: types.MapNull(types.Int32Type),
+		},
+		state: groupResourceModel{
+			ID:       types.StringValue("id"),
+			Name:     types.StringValue("name"),
+			Verified: types.BoolValue(true),
+			Kind:     types.StringValue("STARTER"),
+		},
+	}, {
+		name: "unchanged kind stays out of the mask",
+		onUpdateGroup: test.On[*iamv2.UpdateGroupRequest, *iamv2.Group]{
+			Given: &iamv2.UpdateGroupRequest{
+				Group: &iamv2.Group{
+					Uid:      "id",
+					Name:     "name",
+					Verified: true,
+				},
+				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"name", "description", "verified"}},
+			},
+			Result: &iamv2.Group{
+				Uid:      "id",
+				Name:     "name",
+				Verified: true,
+				Kind:     iamv2.OrgKind_ORG_KIND_CUSTOMER,
+			},
+		},
+		data: groupResourceModel{
+			ID:             types.StringValue("id"),
+			Name:           types.StringValue("name"),
+			Verified:       types.BoolValue(true),
+			Kind:           types.StringValue("CUSTOMER"),
+			ResourceLimits: types.MapNull(types.Int32Type),
+		},
+		state: groupResourceModel{
+			ID:       types.StringValue("id"),
+			Name:     types.StringValue("name"),
+			Verified: types.BoolValue(true),
+			Kind:     types.StringValue("CUSTOMER"),
+		},
+	}, {
 		name: "update sets resource_limits to null when empty",
 		onUpdateGroup: test.On[*iamv2.UpdateGroupRequest, *iamv2.Group]{
 			Given: &iamv2.UpdateGroupRequest{
@@ -214,7 +277,7 @@ func TestGroupResource_update(t *testing.T) {
 					Uid:  "id",
 					Name: "name",
 				},
-				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"*"}},
+				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"name", "description", "verified"}},
 			},
 			Result: &iamv2.Group{
 				Uid:  "id",
@@ -254,6 +317,7 @@ func TestGroupResource_update(t *testing.T) {
 				Description:        c.data.Description,
 				Verified:           c.data.Verified,
 				VerifiedProtection: c.data.VerifiedProtection,
+				Kind:               c.data.Kind,
 				ResourceLimits:     c.data.ResourceLimits,
 			}
 			gotDiag := r.update(ctx, &dc, c.state)
@@ -305,7 +369,7 @@ func TestGroupResource_updateResourceLimits(t *testing.T) {
 										Uid:  "id",
 										Name: "name",
 									},
-									UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"*"}},
+									UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"name", "description", "verified"}},
 								},
 								Result: &iamv2.Group{
 									Uid:            "id",
