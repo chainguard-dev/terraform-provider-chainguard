@@ -19,13 +19,14 @@ import (
 )
 
 type testRepo struct {
-	parentID   string
-	name       string
-	bundles    string
-	readme     string
-	tier       string
-	aliases    string
-	activeTags string
+	parentID           string
+	name               string
+	bundles            string
+	readme             string
+	tier               string
+	aliases            string
+	activeTags         string
+	deletionProtection string
 }
 
 func TestImageRepo(t *testing.T) {
@@ -59,6 +60,10 @@ func TestImageRepo(t *testing.T) {
 		aliases:    `["image:97", "image:98", "image:99"]`,
 		activeTags: `["tag4", "tag5", "tag6"]`,
 	}
+
+	// Unlock deletion so the framework's final destroy can succeed.
+	unprotected := update2
+	unprotected.deletionProtection = "false"
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -125,6 +130,23 @@ func TestImageRepo(t *testing.T) {
 					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `active_tags.2`, "tag6"),
 				),
 			},
+
+			// Destroy while deletion_protection is unset (null): protected by default.
+			{
+				Config:      testImageRepo(update2),
+				Destroy:     true,
+				ExpectError: regexp.MustCompile(`deletion_protection`),
+			},
+
+			// Apply deletion_protection = false to unlock deletion. The
+			// framework's automatic final destroy plus CheckDestroy proves
+			// the repo is then really deleted.
+			{
+				Config: testImageRepo(unprotected),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(`chainguard_image_repo.example`, `deletion_protection`, "false"),
+				),
+			},
 		},
 	})
 }
@@ -157,6 +179,7 @@ resource "chainguard_image_repo" "example" {
   %s
   %s
   %s
+  %s
 }
 `
 	var bundlesLine string
@@ -184,7 +207,12 @@ resource "chainguard_image_repo" "example" {
 		activeTagsLine = fmt.Sprintf("active_tags = %s", repo.activeTags)
 	}
 
-	return fmt.Sprintf(tmpl, repo.parentID, repo.name, bundlesLine, readmeLine, tierLine, aliasesLine, activeTagsLine)
+	var deletionProtectionLine string
+	if repo.deletionProtection != "" {
+		deletionProtectionLine = fmt.Sprintf("deletion_protection = %s", repo.deletionProtection)
+	}
+
+	return fmt.Sprintf(tmpl, repo.parentID, repo.name, bundlesLine, readmeLine, tierLine, aliasesLine, activeTagsLine, deletionProtectionLine)
 }
 
 func TestLockRepo_SameKeySerializes(t *testing.T) {

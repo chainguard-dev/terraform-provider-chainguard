@@ -3,12 +3,12 @@
 page_title: "chainguard_image_repo Resource - terraform-provider-chainguard"
 subcategory: ""
 description: |-
-  Image repo (note: delete is purposefully a no-op).
+  Image repo. Deletion is protected by default; see the deletion_protection attribute.
 ---
 
 # chainguard_image_repo (Resource)
 
-Image repo (note: delete is purposefully a no-op).
+Image repo. Deletion is protected by default; see the deletion_protection attribute.
 
 ## Example Usage
 
@@ -33,6 +33,7 @@ resource "chainguard_image_repo" "example" {
 - `active_tags` (List of String) List of active tags for this repo.
 - `aliases` (List of String) Known aliases for a given image.
 - `bundles` (List of String) List of bundles associated with this repo. Allowed values are enforced by the Chainguard API.
+- `deletion_protection` (Boolean) Prevent this image repo from being deleted through Terraform. Null is treated as true. Set to false (and apply) before destroying.
 - `description` (String) The short description of this repo.
 - `readme` (String) The README for this repo.
 - `sync_config` (Block, Optional) Configuration for catalog syncing. (see [below for nested schema](#nestedblock--sync_config))

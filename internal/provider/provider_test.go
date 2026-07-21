@@ -266,8 +266,8 @@ func checkGroupInviteDestroy(clients platform.Clients) func(*terraform.State) er
 }
 
 // checkImageRepoDestroy verifies the image repo resource was deleted.
-// Note: image_repo delete is a no-op in non-test mode, so this only
-// verifies in acceptance test context where delete is real.
+// Note: image_repo delete is refused while deletion_protection is true or
+// null, so tests must apply deletion_protection = false before final destroy.
 func checkImageRepoDestroy(clients platform.Clients) func(*terraform.State) error {
 	return func(s *terraform.State) error {
 		if clients == nil {
