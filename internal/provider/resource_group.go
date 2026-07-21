@@ -8,11 +8,14 @@ package provider
 import (
 	"context"
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -58,6 +61,7 @@ type groupResourceModel struct {
 	ParentID           types.String `tfsdk:"parent_id"`
 	Verified           types.Bool   `tfsdk:"verified"`
 	VerifiedProtection types.Bool   `tfsdk:"verified_protection"`
+	Kind               types.String `tfsdk:"kind"`
 	ResourceLimits     types.Map    `tfsdk:"resource_limits"`
 }
 
@@ -72,6 +76,16 @@ func (r *groupResource) Metadata(_ context.Context, req resource.MetadataRequest
 
 // Schema defines the schema for the resource.
 func (r *groupResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
+	// Sorted so the generated docs are stable across map iteration order.
+	orgKinds := make([]string, 0, len(iamv2.OrgKind_value))
+	for name, val := range iamv2.OrgKind_value {
+		if val == 0 {
+			continue
+		}
+		orgKinds = append(orgKinds, strings.TrimPrefix(name, "ORG_KIND_"))
+	}
+	slices.Sort(orgKinds)
+
 	resp.Schema = schema.Schema{
 		Description: "IAM Group on the Chainguard platform.",
 		Attributes: map[string]schema.Attribute{
@@ -103,6 +117,16 @@ func (r *groupResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 				Description: "Prevent the group from being unverified through Terraform. Null is treated as true.",
 				Optional:    true,
 			},
+			"kind": schema.StringAttribute{
+				Description: "The organization kind. Required when creating a verified organization (top-level group); may only be set on verified organizations. Subgroups inherit kind from their organization. One of: " + strings.Join(orgKinds, ", ") + ".",
+				Optional:    true,
+				Computed:    true,
+				Validators: []validator.String{
+					stringvalidator.OneOf(orgKinds...),
+					stringvalidator.ConflictsWith(path.MatchRoot("parent_id")),
+				},
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
 			"resource_limits": schema.MapAttribute{
 				Description: "Maximum number of resources allowed by type.",
 				Computed:    true,
@@ -133,6 +157,7 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 			Name:        plan.Name.ValueString(),
 			Description: plan.Description.ValueString(),
 			Verified:    plan.Verified.ValueBool(),
+			Kind:        iamv2.OrgKind(iamv2.OrgKind_value["ORG_KIND_"+plan.Kind.ValueString()]),
 		},
 	}
 	// Only include Parent UIDP for non-organization (folder) groups.
@@ -149,6 +174,13 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 
 	// Save group details in the state.
 	plan.ID = types.StringValue(g.GetUid())
+	// Kind is computed and must resolve to a known value: subgroups
+	// inherit it from their organization, unverified groups leave it null.
+	if k := g.GetKind(); k != iamv2.OrgKind_ORG_KIND_UNSPECIFIED {
+		plan.Kind = types.StringValue(strings.TrimPrefix(k.String(), "ORG_KIND_"))
+	} else {
+		plan.Kind = types.StringNull()
+	}
 	if len(g.GetResourceLimits()) > 0 {
 		rl, diags := types.MapValueFrom(ctx, types.Int32Type, g.GetResourceLimits())
 		resp.Diagnostics.Append(diags...)
@@ -298,6 +330,12 @@ func (r *groupResource) Read(ctx context.Context, req resource.ReadRequest, resp
 	if !state.Verified.IsNull() || g.GetVerified() {
 		state.Verified = types.BoolValue(g.GetVerified())
 	}
+	// Kind is computed: reflect the server value (null when unset).
+	if k := g.GetKind(); k != iamv2.OrgKind_ORG_KIND_UNSPECIFIED {
+		state.Kind = types.StringValue(strings.TrimPrefix(k.String(), "ORG_KIND_"))
+	} else {
+		state.Kind = types.StringNull()
+	}
 
 	if len(g.GetResourceLimits()) > 0 {
 		rl, diags := types.MapValueFrom(ctx, types.Int32Type, g.GetResourceLimits())
@@ -324,14 +362,25 @@ func (r *groupResource) update(ctx context.Context, data *groupResourceModel, st
 		return diag.NewErrorDiagnostic("cannot unverify group", fmt.Sprintf("group %s is verified and verified_protection is true or null; apply verified_protection = false before attempting to unverify this group", state.ID.ValueString()))
 	}
 
+	ug := &iamv2.Group{
+		Uid:         data.ID.ValueString(),
+		Name:        data.Name.ValueString(),
+		Description: data.Description.ValueString(),
+		Verified:    data.Verified.ValueBool(),
+	}
+	// The server treats a wildcard mask as intent to update every field --
+	// including kind and status, which this resource does not set -- and
+	// rejects such updates once those fields hold values. Kind must also be
+	// named explicitly to take effect, so name only the managed fields and
+	// kind only when it changes.
+	paths := []string{"name", "description", "verified"}
+	if !data.Kind.IsUnknown() && !data.Kind.IsNull() && !data.Kind.Equal(state.Kind) {
+		ug.Kind = iamv2.OrgKind(iamv2.OrgKind_value["ORG_KIND_"+data.Kind.ValueString()])
+		paths = append(paths, "kind")
+	}
 	g, err := r.prov.clientV2.IAM().GroupsService().UpdateGroup(ctx, &iamv2.UpdateGroupRequest{
-		Group: &iamv2.Group{
-			Uid:         data.ID.ValueString(),
-			Name:        data.Name.ValueString(),
-			Description: data.Description.ValueString(),
-			Verified:    data.Verified.ValueBool(),
-		},
-		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"*"}},
+		Group:      ug,
+		UpdateMask: &fieldmaskpb.FieldMask{Paths: paths},
 	})
 	if err != nil {
 		return errorToDiagnostic(err, fmt.Sprintf("failed to update group %q", data.ID.ValueString()))
