@@ -29,7 +29,6 @@ import (
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	iamv2 "chainguard.dev/sdk/proto/chainguard/platform/iam/v2beta1"
-	"chainguard.dev/sdk/proto/platform"
 	iam "chainguard.dev/sdk/proto/platform/iam/v1"
 	"chainguard.dev/sdk/uidp"
 	"github.com/chainguard-dev/terraform-provider-chainguard/internal/protoutil"
@@ -193,31 +192,28 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 
-	// Attempt to reauthenticate if an organization was created so token
-	// has new organization in scope.
+	// Reauthenticate if an organization was created so the cached token has
+	// the new organization in scope.
 	if uidp.InRoot(g.GetUid()) {
-		cfg := r.prov.loginConfig
-		clients, err := r.waitForRoleBindingPropagation(ctx, g.GetUid(), cfg)
-		if err != nil {
+		if err := r.waitForRoleBindingPropagation(ctx, g.GetUid(), r.prov.loginConfig); err != nil {
 			resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to verify root group access for %q", g.GetUid())))
-			return
-		}
-		if err := r.prov.setClients(ctx, clients); err != nil {
-			resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to refresh clients for %q", g.GetUid())))
 			return
 		}
 	}
 }
 
-// waitForRoleBindingPropagation waits for role binding propagation after organization creation.
-// It polls the API with exponential backoff until the group is accessible or times out.
-// NB: This uses v1 clients because it creates fresh platform.Clients via newPlatformClients,
-// which only constructs v1 clients. This is a transient retry mechanism, not a core CRUD path.
+// waitForRoleBindingPropagation waits for role binding propagation after
+// organization creation. Each attempt force-refreshes the cached token so the
+// new organization is in scope — clients attach the cached token per RPC, so
+// the shared connections pick it up without being replaced. (Replacing them
+// would close connections that concurrent resource operations may still have
+// RPCs in flight on.) It polls with exponential backoff until the group is
+// accessible or times out.
 func (r *groupResource) waitForRoleBindingPropagation(
 	ctx context.Context,
 	groupID string,
 	cfg token.LoginConfig,
-) (platform.Clients, error) {
+) error {
 	const (
 		maxAttempts = 5
 		baseDelay   = 2 * time.Second
@@ -226,19 +222,12 @@ func (r *groupResource) waitForRoleBindingPropagation(
 
 	for attempt := range maxAttempts {
 		// Refresh token to pick up new capabilities
-		cgToken, err := token.Get(ctx, cfg, true /* forceRefresh */)
-		if err != nil {
-			return nil, fmt.Errorf("failed to refresh token: %w", err)
-		}
-
-		// Create new clients with refreshed token
-		clients, err := newPlatformClients(ctx, string(cgToken), r.prov.consoleAPI)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create clients: %w", err)
+		if _, err := token.Get(ctx, cfg, true /* forceRefresh */); err != nil {
+			return fmt.Errorf("failed to refresh token: %w", err)
 		}
 
 		// Verify group is accessible by attempting to list it
-		gl, err := clients.IAM().Groups().List(ctx, &iam.GroupFilter{
+		gl, err := r.prov.client.IAM().Groups().List(ctx, &iam.GroupFilter{
 			Id: groupID,
 		})
 
@@ -249,7 +238,7 @@ func (r *groupResource) waitForRoleBindingPropagation(
 			code := status.Code(err)
 			if code != codes.Unauthenticated && code != codes.PermissionDenied {
 				// Non-auth errors are not recoverable.
-				return nil, fmt.Errorf("failed to list group: %w", err)
+				return fmt.Errorf("failed to list group: %w", err)
 			}
 			tflog.Debug(ctx, "Auth error during propagation (retrying)", map[string]any{
 				"group_id": groupID,
@@ -263,7 +252,7 @@ func (r *groupResource) waitForRoleBindingPropagation(
 				"group_id": groupID,
 				"attempts": attempt + 1,
 			})
-			return clients, nil
+			return nil
 		}
 
 		// Group not yet visible - retry with backoff (unless this was the last attempt)
@@ -281,12 +270,12 @@ func (r *groupResource) waitForRoleBindingPropagation(
 			case <-time.After(delay):
 				// Continue to next attempt
 			case <-ctx.Done():
-				return nil, ctx.Err()
+				return ctx.Err()
 			}
 		}
 	}
 
-	return nil, fmt.Errorf("group %q not found after %d attempts", groupID, maxAttempts)
+	return fmt.Errorf("group %q not found after %d attempts", groupID, maxAttempts)
 }
 
 // Read refreshes the Terraform state with the latest data.

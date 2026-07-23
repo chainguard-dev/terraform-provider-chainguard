@@ -6,45 +6,10 @@ SPDX-License-Identifier: Apache-2.0
 package provider
 
 import (
-	"sync"
 	"testing"
 
 	platform "chainguard.dev/sdk/proto/platform"
 )
-
-// setClient is a test helper that sets only the v1 client under the mutex.
-// Production code uses setClients which also refreshes the v2beta1 client,
-// but these tests only exercise the mutex-protected swap pattern.
-func (pd *providerData) setClient(clients platform.Clients) {
-	pd.clientMu.Lock()
-	defer pd.clientMu.Unlock()
-	pd.client = clients
-}
-
-// TestSetClient_ThreadSafe verifies that setClient and the double-check
-// in setupClient work correctly under concurrent access.
-func TestSetClient_ThreadSafe(t *testing.T) {
-	pd := &providerData{}
-
-	// Initially nil.
-	if pd.client != nil {
-		t.Fatal("client should be nil initially")
-	}
-
-	// setClient sets the client under the mutex.
-	fake := &fakeClients{}
-	pd.setClient(fake)
-	if pd.client != fake {
-		t.Fatal("client should be set after setClient")
-	}
-
-	// setClient can replace the client.
-	fake2 := &fakeClients{}
-	pd.setClient(fake2)
-	if pd.client != fake2 {
-		t.Fatal("client should be replaced after second setClient")
-	}
-}
 
 // TestSetupClient_DoubleCheckSkipsWhenSet verifies that setupClient is a
 // no-op when the client is already initialized (the double-check pattern).
@@ -63,29 +28,9 @@ func TestSetupClient_DoubleCheckSkipsWhenSet(t *testing.T) {
 	}
 }
 
-// TestSetClient_ConcurrentAccess verifies that concurrent setClient calls
-// don't race.
-func TestSetClient_ConcurrentAccess(t *testing.T) {
-	pd := &providerData{}
-
-	var wg sync.WaitGroup
-	for i := range 10 {
-		wg.Go(func() {
-			pd.setClient(&fakeClients{id: i})
-		})
-	}
-	wg.Wait()
-
-	// After all goroutines complete, client should be non-nil (last writer wins).
-	if pd.client == nil {
-		t.Fatal("client should be non-nil after concurrent setClient calls")
-	}
-}
-
 // fakeClients satisfies platform.Clients for testing.
 type fakeClients struct {
 	platform.Clients
-	id int
 }
 
 func (f *fakeClients) Close() error { return nil }

@@ -414,30 +414,3 @@ func (pd *providerData) setupClient(ctx context.Context) error {
 	pd.clientV2 = v2
 	return nil
 }
-
-// setClients replaces both v1 and v2beta1 clients under the mutex.
-// Used by resource_group after re-authenticating with a new organization scope.
-func (pd *providerData) setClients(ctx context.Context, v1 platform.Clients) error {
-	if _, err := token.Get(ctx, pd.loginConfig, false); err != nil {
-		return fmt.Errorf("failed to retrieve token for v2beta1 client refresh: %w", err)
-	}
-	cred := &refreshingCredential{loginConfig: pd.loginConfig}
-	v2, err := clientsv2.NewClients(ctx, pd.consoleAPI, UserAgent, cred, retryDialOption())
-	if err != nil {
-		return fmt.Errorf("failed to create v2beta1 API clients: %w", err)
-	}
-
-	pd.clientMu.Lock()
-	defer pd.clientMu.Unlock()
-	oldV1 := pd.client
-	oldV2 := pd.clientV2
-	pd.client = v1
-	pd.clientV2 = v2
-	if oldV1 != nil {
-		oldV1.Close()
-	}
-	if oldV2 != nil {
-		oldV2.Close()
-	}
-	return nil
-}
