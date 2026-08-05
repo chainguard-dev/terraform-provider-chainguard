@@ -8,7 +8,10 @@ on:
       - "releases/**"
     paths-ignore:
       - "README.md"
-  pull_request_target:
+  # pull_request_target is required so fork PRs can receive OIDC credentials.
+  # Untrusted code is gated behind the reviewer-approved acceptance-tests
+  # environment, see the comments on the test job below.
+  pull_request_target: # zizmor: ignore[dangerous-triggers]
     branches:
       - "main"
     paths-ignore:
