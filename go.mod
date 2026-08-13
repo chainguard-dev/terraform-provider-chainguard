@@ -15,7 +15,7 @@ require (
 	github.com/hashicorp/terraform-plugin-go v0.31.0
 	github.com/hashicorp/terraform-plugin-log v0.11.0
 	github.com/hashicorp/terraform-plugin-testing v1.16.0
-	github.com/sigstore/cosign/v2 v2.6.4
+	github.com/sigstore/cosign/v2 v2.6.5
 	golang.org/x/exp v0.0.0-20260727155853-b88d891fe743
 	google.golang.org/grpc v1.83.0
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af
