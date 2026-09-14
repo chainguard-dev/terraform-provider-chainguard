@@ -19,7 +19,9 @@ func TestAccResourceSubscription(t *testing.T) {
 
 	clients := testAccPlatformClient(t)
 	parent := os.Getenv("TF_ACC_GROUP_ID")
-	sink := `https://localhost/callback`
+	// The API rejects loopback/private sink hosts (SSRF guard, CUS-1180),
+	// so the sink must be a public destination.
+	sink := `https://example.com/callback`
 	childpattern := regexp.MustCompile(fmt.Sprintf(`%s\/[a-z0-9]{16}`, parent))
 
 	resource.Test(t, resource.TestCase{

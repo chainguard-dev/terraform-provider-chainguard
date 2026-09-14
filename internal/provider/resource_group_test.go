@@ -299,14 +299,12 @@ func TestGroupResource_update(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			ctx := slogtest.Context(t)
 			r := &groupResource{
-				managedResource: managedResource{
-					prov: &providerData{
-						clientV2: &mockV2PlatformClients{
-							iamClients: &iamv2test.MockClients{
-								GroupsServiceClient: iamv2test.MockGroupsServiceClient{
-									T:             t,
-									OnUpdateGroup: []test.On[*iamv2.UpdateGroupRequest, *iamv2.Group]{c.onUpdateGroup},
-								},
+				prov: &providerData{
+					clientV2: &mockV2PlatformClients{
+						iamClients: &iamv2test.MockClients{
+							GroupsServiceClient: iamv2test.MockGroupsServiceClient{
+								T:             t,
+								OnUpdateGroup: []test.On[*iamv2.UpdateGroupRequest, *iamv2.Group]{c.onUpdateGroup},
 							},
 						},
 					},
@@ -359,27 +357,25 @@ func TestGroupResourceModel_ComputedFieldsAreKnown(t *testing.T) {
 func TestGroupResource_updateResourceLimits(t *testing.T) {
 	ctx := slogtest.Context(t)
 	r := &groupResource{
-		managedResource: managedResource{
-			prov: &providerData{
-				clientV2: &mockV2PlatformClients{
-					iamClients: &iamv2test.MockClients{
-						GroupsServiceClient: iamv2test.MockGroupsServiceClient{
-							T: t,
-							OnUpdateGroup: []test.On[*iamv2.UpdateGroupRequest, *iamv2.Group]{{
-								Given: &iamv2.UpdateGroupRequest{
-									Group: &iamv2.Group{
-										Uid:  "id",
-										Name: "name",
-									},
-									UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"name", "description", "verified"}},
+		prov: &providerData{
+			clientV2: &mockV2PlatformClients{
+				iamClients: &iamv2test.MockClients{
+					GroupsServiceClient: iamv2test.MockGroupsServiceClient{
+						T: t,
+						OnUpdateGroup: []test.On[*iamv2.UpdateGroupRequest, *iamv2.Group]{{
+							Given: &iamv2.UpdateGroupRequest{
+								Group: &iamv2.Group{
+									Uid:  "id",
+									Name: "name",
 								},
-								Result: &iamv2.Group{
-									Uid:            "id",
-									Name:           "name",
-									ResourceLimits: map[string]int32{"identities": 100},
-								},
-							}},
-						},
+								UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"name", "description", "verified"}},
+							},
+							Result: &iamv2.Group{
+								Uid:            "id",
+								Name:           "name",
+								ResourceLimits: map[string]int32{"identities": 100},
+							},
+						}},
 					},
 				},
 			},
