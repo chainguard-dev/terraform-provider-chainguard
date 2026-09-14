@@ -21,6 +21,8 @@ type testTag struct {
 }
 
 func TestImageTag(t *testing.T) {
+	t.Skip("Skipping: a mid-August 2026 platform caching change returns stale tag bundles on refresh, producing a non-empty refresh plan")
+
 	clients := testAccPlatformClient(t)
 	parentID := os.Getenv("TF_ACC_GROUP_ID")
 	name := acctest.RandString(10)
