@@ -17,6 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -233,11 +234,13 @@ func (r *accountAssociationsResource) Schema(_ context.Context, _ resource.Schem
 						Description:        "Deprecated: no longer populated by the API.",
 						DeprecationMessage: "This field is no longer populated and will be removed in a future version.",
 						Computed:           true,
+						PlanModifiers:      []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 					},
 					"app_id": schema.Int64Attribute{
-						Description: "GitHub App ID.",
-						Optional:    true,
-						Computed:    true,
+						Description:   "GitHub App ID.",
+						Optional:      true,
+						Computed:      true,
+						PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
 					},
 					"installation_id": schema.Int64Attribute{
 						Description: "GitHub App Installation ID.",
@@ -486,15 +489,7 @@ func (r *accountAssociationsResource) Read(ctx context.Context, req resource.Rea
 				return
 			}
 
-			// Assume they're equal, until proven otherwise.
-			update = false
-			for k, sv := range cm.ServiceBindings.Elements() {
-				s, _ := sv.(types.String)
-				if v, ok := assoc.Chainguard.ServiceBindings[k]; !ok || v != s.ValueString() {
-					update = true
-					break
-				}
-			}
+			update = !compareMaps(assoc.Chainguard.ServiceBindings, cm.ServiceBindings)
 		}
 
 		if update {
@@ -621,10 +616,36 @@ func compareMaps(a map[string]string, b types.Map) bool {
 
 // Update updates the resource and sets the updated Terraform state on success.
 func (r *accountAssociationsResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	// Read the plan into the resource model.
-	var data accountAssociationsResourceModel
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	var plan, state types.Object
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	var data accountAssociationsResourceModel
+	resp.Diagnostics.Append(plan.As(ctx, &data, basetypes.ObjectAsOptions{})...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// Only write fields changed by this plan, preserving independently managed
+	// associations and changes made after Terraform refreshed the state.
+	planned, previous := plan.Attributes(), state.Attributes()
+	paths := make([]string, 0, 7)
+	for _, field := range []string{"name", "description", "amazon", "google", "azure", "chainguard", "github", "github_installation"} {
+		if planned[field].Equal(previous[field]) {
+			continue
+		}
+		if field == "github_installation" {
+			field = "github"
+		}
+		if !slices.Contains(paths, field) {
+			paths = append(paths, field)
+		}
+	}
+	if len(paths) == 0 {
+		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 		return
 	}
 	tflog.Info(ctx, fmt.Sprintf("update account association request: group=%s, amazon=%t, google=%t, chainguard=%t", data.Group, !data.Google.IsNull(), !data.Amazon.IsNull(), !data.Chainguard.IsNull()))
@@ -638,7 +659,7 @@ func (r *accountAssociationsResource) Update(ctx context.Context, req resource.U
 	assoc.Uid = data.ID.ValueString()
 	_, err := r.prov.clientV2.IAM().AccountAssociationsService().UpdateAccountAssociation(ctx, &iamv2.UpdateAccountAssociationRequest{
 		AccountAssociation: assoc,
-		UpdateMask:         &fieldmaskpb.FieldMask{Paths: []string{"*"}},
+		UpdateMask:         &fieldmaskpb.FieldMask{Paths: paths},
 	})
 	if err != nil {
 		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to update account associations"))
