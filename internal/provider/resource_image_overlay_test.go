@@ -125,3 +125,94 @@ resource "chainguard_image_overlay_binding" "example" {
 `
 	return fmt.Sprintf(tmpl, o.parentID, o.name, o.parentID, o.name, o.packages, o.selector)
 }
+
+func TestImageOverlayConfig(t *testing.T) {
+	clients := testAccV2Client(t)
+	parentID := os.Getenv("TF_ACC_GROUP_ID")
+	name := acctest.RandString(10)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             checkImageOverlayDestroy(clients),
+		Steps: []resource.TestStep{
+			// Create and Read testing with a full config instead of packages.
+			{
+				Config: testImageOverlayConfig(parentID, name),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(`chainguard_image_overlay.config_example`, `name`, name),
+					resource.TestCheckResourceAttr(`chainguard_image_overlay.config_example`, `parent_id`, parentID),
+					resource.TestCheckResourceAttrSet(`chainguard_image_overlay.config_example`, `config`),
+					resource.TestCheckNoResourceAttr(`chainguard_image_overlay.config_example`, `packages`),
+					resource.TestCheckResourceAttrSet(`chainguard_image_overlay.config_example`, `id`),
+				),
+			},
+			// ImportState testing. An imported overlay is packages-managed
+			// until the practitioner's config says otherwise, so the
+			// content attributes are excluded from verification.
+			{
+				ResourceName:            "chainguard_image_overlay.config_example",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"config", "packages"},
+			},
+		},
+	})
+}
+
+func testImageOverlayConfig(parentID, name string) string {
+	const tmpl = `
+resource "chainguard_image_overlay" "config_example" {
+  parent_id = %q
+  name      = %q
+  config = jsonencode({
+    contents = {
+      packages = ["curl"]
+    }
+    environment = {
+      TZ = "UTC"
+    }
+    annotations = {
+      "com.example/note" = "hi"
+    }
+  })
+}
+`
+	return fmt.Sprintf(tmpl, parentID, name)
+}
+
+func TestValidOverlayConfigValue(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		config  string
+		wantErr bool
+	}{{
+		name: "every customer-settable field",
+		config: `{
+			"contents": {
+				"packages": ["curl"],
+				"runtime_repositories": ["https://apk.example.com"],
+				"runtime_keyring": [{"name": "mirror.rsa.pub", "content": "PEM"}]
+			},
+			"environment": {"TZ": "UTC"},
+			"annotations": {"com.example/note": "hi"},
+			"accounts": {"run_as": "65532", "users": [{"username": "app", "uid": 65532}], "groups": [{"groupname": "app", "gid": 65532}]},
+			"certificates": {"additional": [{"name": "corp-ca", "content": "PEM"}]}
+		}`,
+	}, {
+		name:    "unknown field rejected",
+		config:  `{"entrypoint": {"command": "/bin/sh"}}`,
+		wantErr: true,
+	}, {
+		name:    "malformed json rejected",
+		config:  `{`,
+		wantErr: true,
+	}} {
+		t.Run(c.name, func(t *testing.T) {
+			err := validOverlayConfigValue(c.config)
+			if gotErr := err != nil; gotErr != c.wantErr {
+				t.Errorf("validOverlayConfigValue: got err = %v, want error = %t", err, c.wantErr)
+			}
+		})
+	}
+}
