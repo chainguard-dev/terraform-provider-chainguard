@@ -6,12 +6,17 @@ SPDX-License-Identifier: Apache-2.0
 package provider
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	regv2 "chainguard.dev/sdk/proto/chainguard/platform/registry/v2beta1"
 )
 
 type testOverlay struct {
@@ -130,6 +135,33 @@ func TestImageOverlayConfig(t *testing.T) {
 	clients := testAccV2Client(t)
 	parentID := os.Getenv("TF_ACC_GROUP_ID")
 	name := acctest.RandString(10)
+
+	// Pre-flight: skip while the deployed API still enforces the
+	// packages-only restriction on overlay configs. The full-config
+	// surface ships with chainguard-dev/mono#59398; this probe self-arms
+	// the test — it skips today and runs for real once the API accepts a
+	// non-package field. A regression after that flips the test back to
+	// skipped, so treat unexpected skips of this test as a signal.
+	if clients != nil {
+		ctx := context.Background()
+		probe, err := clients.Registry().OverlaysService().CreateOverlay(ctx, &regv2.CreateOverlayRequest{
+			Parent: parentID,
+			Overlay: &regv2.Overlay{
+				Name:   "acc-config-probe-" + acctest.RandString(6),
+				Config: &regv2.CustomOverlay{Environment: map[string]string{"TF_ACC_PROBE": "1"}},
+			},
+		})
+		switch {
+		case err == nil:
+			if _, err := clients.Registry().OverlaysService().DeleteOverlay(ctx, &regv2.DeleteOverlayRequest{Uid: probe.GetUid()}); err != nil {
+				t.Logf("cleanup of probe overlay %s: %v", probe.GetUid(), err)
+			}
+		case status.Code(err) == codes.InvalidArgument:
+			t.Skipf("API does not yet accept full overlay configs (deploys with chainguard-dev/mono#59398): %v", err)
+		default:
+			t.Fatalf("probing full-overlay support: %v", err)
+		}
+	}
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
