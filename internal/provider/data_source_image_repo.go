@@ -9,7 +9,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	regv2 "chainguard.dev/sdk/proto/chainguard/platform/registry/v2beta1"
 	common "chainguard.dev/sdk/proto/platform/common/v1"
@@ -50,15 +49,16 @@ func (d imageRepoDataSourceModel) InputParams() string {
 }
 
 type imageRepoModel struct {
-	ID          types.String `tfsdk:"id"`
-	Name        types.String `tfsdk:"name"`
-	Bundles     types.List   `tfsdk:"bundles"`
-	Readme      types.String `tfsdk:"readme"`
-	SyncConfig  *syncConfig  `tfsdk:"sync_config"`
-	Tier        types.String `tfsdk:"tier"`
-	Description types.String `tfsdk:"description"`
-	Aliases     types.List   `tfsdk:"aliases"`
-	ActiveTags  types.List   `tfsdk:"active_tags"`
+	ID            types.String        `tfsdk:"id"`
+	Name          types.String        `tfsdk:"name"`
+	Bundles       types.List          `tfsdk:"bundles"`
+	Readme        types.String        `tfsdk:"readme"`
+	SyncConfig    *syncConfig         `tfsdk:"sync_config"`
+	Tier          types.String        `tfsdk:"tier"`
+	Description   types.String        `tfsdk:"description"`
+	Aliases       types.List          `tfsdk:"aliases"`
+	ActiveTags    types.List          `tfsdk:"active_tags"`
+	CustomOverlay *customOverlayModel `tfsdk:"custom_overlay"`
 }
 
 // Metadata returns the data source type name.
@@ -139,6 +139,7 @@ func (d *imageRepoDataSource) Schema(_ context.Context, _ datasource.SchemaReque
 								"apko_overlay": types.StringType,
 							},
 						},
+						"custom_overlay": customOverlayDataSourceAttribute(),
 						"aliases": schema.ListAttribute{
 							Description: "Known aliases for a given image.",
 							Optional:    true,
@@ -273,8 +274,8 @@ func repoToModel(ctx context.Context, repo *regv2.Repo, readme string) (*imageRe
 	var sc *syncConfig
 	if repo.SyncConfig != nil {
 		expiration := types.StringNull()
-		if repo.GetSyncConfig().GetExpirationTime() != nil && !repo.GetSyncConfig().GetExpirationTime().AsTime().IsZero() {
-			expiration = types.StringValue(repo.GetSyncConfig().GetExpirationTime().AsTime().Format(time.RFC3339))
+		if exp := formatExpiration(repo.GetSyncConfig().GetExpirationTime()); exp != "" {
+			expiration = types.StringValue(exp)
 		}
 		sc = &syncConfig{
 			Source:      types.StringValue(repo.GetSyncConfig().GetSource()),
@@ -288,16 +289,23 @@ func repoToModel(ctx context.Context, repo *regv2.Repo, readme string) (*imageRe
 		}
 	}
 
+	overlay, d := customOverlayV2ToModel(ctx, repo.GetCustomOverlay())
+	diags.Append(d...)
+	if d.HasError() {
+		return nil, diags
+	}
+
 	return &imageRepoModel{
-		ID:          types.StringValue(repo.GetUid()),
-		Name:        types.StringValue(repo.GetName()),
-		Bundles:     bundles,
-		Readme:      types.StringValue(readme),
-		SyncConfig:  sc,
-		Tier:        types.StringValue(catalogTierString(repo.GetCatalogTier())),
-		Description: types.StringValue(repo.GetDescription()),
-		Aliases:     aliases,
-		ActiveTags:  activeTags,
+		ID:            types.StringValue(repo.GetUid()),
+		Name:          types.StringValue(repo.GetName()),
+		Bundles:       bundles,
+		Readme:        types.StringValue(readme),
+		SyncConfig:    sc,
+		Tier:          types.StringValue(catalogTierString(repo.GetCatalogTier())),
+		Description:   types.StringValue(repo.GetDescription()),
+		Aliases:       aliases,
+		ActiveTags:    activeTags,
+		CustomOverlay: overlay,
 	}, diags
 }
 

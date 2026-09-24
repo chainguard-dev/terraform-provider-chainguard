@@ -33,12 +33,85 @@ Read-Only:
 - `active_tags` (List of String) List of active tags for this repo.
 - `aliases` (List of String) Known aliases for a given image.
 - `bundles` (List of String) List of bundles associated with this repo (a-z freeform keywords for sales purposes).
+- `custom_overlay` (Attributes) Custom assembly overlay applied to images in this repo during rebuilds. (see [below for nested schema](#nestedatt--items--custom_overlay))
 - `description` (String) The short description of this repo.
 - `id` (String) The UIDP of this repo.
 - `name` (String) The name of this repo.
 - `readme` (String) The README for this repo.
 - `sync_config` (Object) (see [below for nested schema](#nestedatt--items--sync_config))
 - `tier` (String) Image tier associated with this repo.
+
+<a id="nestedatt--items--custom_overlay"></a>
+### Nested Schema for `items.custom_overlay`
+
+Read-Only:
+
+- `accounts` (Attributes) Account customizations applied during rebuilds. (see [below for nested schema](#nestedatt--items--custom_overlay--accounts))
+- `annotations` (Map of String) OCI annotations added to the image.
+- `certificates` (Attributes) Custom certificates included in the image. (see [below for nested schema](#nestedatt--items--custom_overlay--certificates))
+- `contents` (Attributes) Additional image contents. (see [below for nested schema](#nestedatt--items--custom_overlay--contents))
+- `environment` (Map of String) Environment variables set in the image.
+
+<a id="nestedatt--items--custom_overlay--accounts"></a>
+### Nested Schema for `items.custom_overlay.accounts`
+
+Read-Only:
+
+- `group` (Attributes List) Group accounts added to the image. (see [below for nested schema](#nestedatt--items--custom_overlay--accounts--group))
+- `run_as` (String) User (name or UID) the image runs as.
+- `user` (Attributes List) User accounts added to the image. (see [below for nested schema](#nestedatt--items--custom_overlay--accounts--user))
+
+<a id="nestedatt--items--custom_overlay--accounts--group"></a>
+### Nested Schema for `items.custom_overlay.accounts.group`
+
+Read-Only:
+
+- `gid` (Number) Group ID for the account.
+- `groupname` (String) Name of the group.
+- `members` (List of String) Members of the group.
+
+
+<a id="nestedatt--items--custom_overlay--accounts--user"></a>
+### Nested Schema for `items.custom_overlay.accounts.user`
+
+Read-Only:
+
+- `gid` (Number) Primary group ID for the account.
+- `group_name` (String) Primary group name for the account.
+- `home_dir` (String) Home directory for the account.
+- `shell` (String) Login shell for the account.
+- `uid` (Number) User ID for the account.
+- `username` (String) Username for the account.
+
+
+
+<a id="nestedatt--items--custom_overlay--certificates"></a>
+### Nested Schema for `items.custom_overlay.certificates`
+
+Read-Only:
+
+- `additional` (Attributes List) Additional certificates included. (see [below for nested schema](#nestedatt--items--custom_overlay--certificates--additional))
+- `providers` (List of String) Certificate providers via packages.
+
+<a id="nestedatt--items--custom_overlay--certificates--additional"></a>
+### Nested Schema for `items.custom_overlay.certificates.additional`
+
+Read-Only:
+
+- `content` (String) PEM-encoded certificate content.
+- `name` (String) Name of the certificate file.
+
+
+
+<a id="nestedatt--items--custom_overlay--contents"></a>
+### Nested Schema for `items.custom_overlay.contents`
+
+Read-Only:
+
+- `packages` (List of String) Packages to append to the image.
+- `runtime_repositories` (List of String) Custom APK repository URLs used in the assembled image.
+
+
 
 <a id="nestedatt--items--sync_config"></a>
 ### Nested Schema for `items.sync_config`
