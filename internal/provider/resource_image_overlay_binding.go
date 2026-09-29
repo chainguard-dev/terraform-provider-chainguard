@@ -104,12 +104,14 @@ func (r *imageOverlayBindingResource) Schema(_ context.Context, _ resource.Schem
 		Blocks: map[string]schema.Block{
 			"tag_selector": schema.SingleNestedBlock{
 				Description: "Selects which tags on the repo the overlay applies to. " +
-					"When multiple bindings match a tag, they layer in fixed precedence: ALL, then VARIANT, then EXACT.",
+					"When bindings of different kinds match a tag, they layer in fixed precedence: ALL, then VARIANT, then EXACT. " +
+					"An overlay can be bound to a given repo only once.",
 				PlanModifiers: []planmodifier.Object{objectplanmodifier.RequiresReplace()},
 				Attributes: map[string]schema.Attribute{
 					"kind": schema.StringAttribute{
-						Description: "The matching mode: EXACT (tags listed in `tags`), ALL (every tag; at most one per repo), " +
-							"or VARIANT (tags of the variant named by `variant_type`; at most one per repo and variant).",
+						Description: "The matching mode: EXACT (tags listed in `tags`), ALL (every tag), " +
+							"or VARIANT (tags of the variant named by `variant_type`). " +
+							"A repo may hold several bindings of the same kind that match the same tags only when their overlays don't conflict.",
 						Required: true,
 						Validators: []validator.String{
 							stringvalidator.OneOf("EXACT", "ALL", "VARIANT"),

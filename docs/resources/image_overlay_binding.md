@@ -22,42 +22,56 @@ resource "chainguard_image_repo" "example" {
   name      = "example-repo"
 }
 
-resource "chainguard_image_overlay" "example" {
+# An overlay can be bound to a given repo only once, so each binding
+# below references its own overlay.
+resource "chainguard_image_overlay" "base_tools" {
   parent_id = chainguard_group.example.id
-  name      = "debug-tools"
+  name      = "base-tools"
   packages  = ["curl", "jq"]
 }
 
-# Apply the overlay to two specific tags.
-resource "chainguard_image_overlay_binding" "exact" {
-  repo_id    = chainguard_image_repo.example.id
-  overlay_id = chainguard_image_overlay.example.id
-
-  tag_selector {
-    kind = "EXACT"
-    tags = ["latest", "latest-dev"]
-  }
+resource "chainguard_image_overlay" "debug_tools" {
+  parent_id = chainguard_group.example.id
+  name      = "debug-tools"
+  packages  = ["strace", "gdb"]
 }
 
-# Apply the overlay to every tag of the repo (at most one ALL binding
-# per repo).
+resource "chainguard_image_overlay" "latest_extras" {
+  parent_id = chainguard_group.example.id
+  name      = "latest-extras"
+  packages  = ["git"]
+}
+
+# Apply an overlay to every tag of the repo. Several ALL bindings may
+# coexist on a repo when their overlays don't conflict.
 resource "chainguard_image_overlay_binding" "all" {
   repo_id    = chainguard_image_repo.example.id
-  overlay_id = chainguard_image_overlay.example.id
+  overlay_id = chainguard_image_overlay.base_tools.id
 
   tag_selector {
     kind = "ALL"
   }
 }
 
-# Apply the overlay to all "-dev" tags of the repo.
+# Apply an overlay to all "-dev" tags of the repo.
 resource "chainguard_image_overlay_binding" "dev_variant" {
   repo_id    = chainguard_image_repo.example.id
-  overlay_id = chainguard_image_overlay.example.id
+  overlay_id = chainguard_image_overlay.debug_tools.id
 
   tag_selector {
     kind         = "VARIANT"
     variant_type = "DEV"
+  }
+}
+
+# Apply an overlay to two specific tags.
+resource "chainguard_image_overlay_binding" "exact" {
+  repo_id    = chainguard_image_repo.example.id
+  overlay_id = chainguard_image_overlay.latest_extras.id
+
+  tag_selector {
+    kind = "EXACT"
+    tags = ["latest", "latest-dev"]
   }
 }
 ```
@@ -72,7 +86,7 @@ resource "chainguard_image_overlay_binding" "dev_variant" {
 
 ### Optional
 
-- `tag_selector` (Block, Optional) Selects which tags on the repo the overlay applies to. When multiple bindings match a tag, they layer in fixed precedence: ALL, then VARIANT, then EXACT. (see [below for nested schema](#nestedblock--tag_selector))
+- `tag_selector` (Block, Optional) Selects which tags on the repo the overlay applies to. When bindings of different kinds match a tag, they layer in fixed precedence: ALL, then VARIANT, then EXACT. An overlay can be bound to a given repo only once. (see [below for nested schema](#nestedblock--tag_selector))
 
 ### Read-Only
 
@@ -83,7 +97,7 @@ resource "chainguard_image_overlay_binding" "dev_variant" {
 
 Required:
 
-- `kind` (String) The matching mode: EXACT (tags listed in `tags`), ALL (every tag; at most one per repo), or VARIANT (tags of the variant named by `variant_type`; at most one per repo and variant).
+- `kind` (String) The matching mode: EXACT (tags listed in `tags`), ALL (every tag), or VARIANT (tags of the variant named by `variant_type`). A repo may hold several bindings of the same kind that match the same tags only when their overlays don't conflict.
 
 Optional:
 
