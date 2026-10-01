@@ -20,7 +20,7 @@ description: |-
 
 ## Authentication and Configuration
 
-The provider authenticates every Chainguard API call it makes. It obtains a
+Chainguard API calls require authentication. By default, the provider obtains a
 Chainguard token in one of two ways:
 
 - **Ambient credentials** — the token that `chainctl auth login` caches on
@@ -183,5 +183,13 @@ provider "chainguard" {
 
 Pair `disabled` with `identity_token` in CI so a failed token exchange reports
 an error instead of trying to open a browser.
+
+### Proxy-managed authentication
+
+Set `TF_CHAINGUARD_PROXY_AUTH=true` only when a trusted outbound proxy
+authenticates each Chainguard API request. In this mode the provider sends no
+Authorization header and does not load, refresh, or cache a Chainguard token.
+Without that proxy, API calls fail authentication. The proxy must restrict
+which requests receive credentials; this setting does not grant permissions.
 
 {{ .SchemaMarkdown | trimspace }}
