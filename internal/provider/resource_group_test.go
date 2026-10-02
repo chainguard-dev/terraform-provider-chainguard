@@ -6,6 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 package provider
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"regexp"
@@ -16,7 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
-
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	advisory "chainguard.dev/sdk/proto/chainguard/platform/advisory/v2beta1"
@@ -26,7 +27,10 @@ import (
 	registry "chainguard.dev/sdk/proto/chainguard/platform/registry/v2beta1"
 	"chainguard.dev/sdk/proto/chainguard/platform/test"
 	vuln "chainguard.dev/sdk/proto/chainguard/platform/vulnerabilities/v2beta1"
+	platform "chainguard.dev/sdk/proto/platform"
+	iam "chainguard.dev/sdk/proto/platform/iam/v1"
 	"github.com/chainguard-dev/clog/slogtest"
+	"github.com/chainguard-dev/terraform-provider-chainguard/internal/token"
 )
 
 // mockV2PlatformClients implements clientsv2.Clients for unit tests.
@@ -41,6 +45,50 @@ func (m *mockV2PlatformClients) IAM() iamv2.Clients            { return m.iamCli
 func (m *mockV2PlatformClients) Registry() registry.Clients    { return nil }
 func (m *mockV2PlatformClients) Vulnerabilities() vuln.Clients { return nil }
 func (m *mockV2PlatformClients) Close() error                  { return nil }
+
+type propagationPlatformClients struct {
+	platform.Clients
+	iamClients iam.Clients
+}
+
+func (c propagationPlatformClients) IAM() iam.Clients { return c.iamClients }
+
+type propagationIAMClients struct {
+	iam.Clients
+	groups iam.GroupsClient
+}
+
+func (c propagationIAMClients) Groups() iam.GroupsClient { return c.groups }
+
+type propagationGroupsClient struct {
+	iam.GroupsClient
+	wantID string
+	calls  int
+}
+
+func (c *propagationGroupsClient) List(_ context.Context, filter *iam.GroupFilter, _ ...grpc.CallOption) (*iam.GroupList, error) {
+	c.calls++
+	if filter.GetId() != c.wantID {
+		return nil, fmt.Errorf("listed group %q, want %q", filter.GetId(), c.wantID)
+	}
+	return &iam.GroupList{Items: []*iam.Group{{Id: c.wantID}}}, nil
+}
+
+func TestWaitForRoleBindingPropagationProxyAuth(t *testing.T) {
+	const groupID = "0123456789abcdef0123456789abcdef01234567"
+	groups := &propagationGroupsClient{wantID: groupID}
+	r := &groupResource{prov: &providerData{
+		client:    propagationPlatformClients{iamClients: propagationIAMClients{groups: groups}},
+		proxyAuth: true,
+	}}
+
+	if err := r.waitForRoleBindingPropagation(t.Context(), groupID, token.LoginConfig{Disabled: true}); err != nil {
+		t.Fatalf("proxy-managed propagation: %v", err)
+	}
+	if groups.calls != 1 {
+		t.Fatalf("group list calls: got %d, want 1", groups.calls)
+	}
+}
 
 func testAccResourceGroup(parent, name, description string) string {
 	const tmpl = `

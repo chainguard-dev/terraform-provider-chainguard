@@ -28,6 +28,24 @@ func TestSetupClient_DoubleCheckSkipsWhenSet(t *testing.T) {
 	}
 }
 
+func TestSetupClientProxyAuthNeedsNoToken(t *testing.T) {
+	pd := &providerData{consoleAPI: "https://console-api.enforce.dev", proxyAuth: true}
+	if err := pd.setupClient(t.Context()); err != nil {
+		t.Fatalf("setupClient with proxy authentication: %v", err)
+	}
+	t.Cleanup(func() {
+		if pd.client != nil {
+			_ = pd.client.Close()
+		}
+		if pd.clientV2 != nil {
+			_ = pd.clientV2.Close()
+		}
+	})
+	if pd.client == nil || pd.clientV2 == nil {
+		t.Fatal("proxy authentication did not initialize both clients")
+	}
+}
+
 // fakeClients satisfies platform.Clients for testing.
 type fakeClients struct {
 	platform.Clients
