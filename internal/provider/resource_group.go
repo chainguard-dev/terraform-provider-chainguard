@@ -192,8 +192,7 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 
-	// Reauthenticate if an organization was created so the cached token has
-	// the new organization in scope.
+	// Root group access may lag creation while its role binding propagates.
 	if uidp.InRoot(g.GetUid()) {
 		if err := r.waitForRoleBindingPropagation(ctx, g.GetUid(), r.prov.loginConfig); err != nil {
 			resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to verify root group access for %q", g.GetUid())))
@@ -202,13 +201,9 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 	}
 }
 
-// waitForRoleBindingPropagation waits for role binding propagation after
-// organization creation. Each attempt force-refreshes the cached token so the
-// new organization is in scope — clients attach the cached token per RPC, so
-// the shared connections pick it up without being replaced. (Replacing them
-// would close connections that concurrent resource operations may still have
-// RPCs in flight on.) It polls with exponential backoff until the group is
-// accessible or times out.
+// waitForRoleBindingPropagation polls until a new organization is accessible.
+// Locally managed tokens must refresh to include the new scope; proxy mode
+// leaves credential scope to the host.
 func (r *groupResource) waitForRoleBindingPropagation(
 	ctx context.Context,
 	groupID string,
@@ -221,9 +216,10 @@ func (r *groupResource) waitForRoleBindingPropagation(
 	)
 
 	for attempt := range maxAttempts {
-		// Refresh token to pick up new capabilities
-		if _, err := token.Get(ctx, cfg, true /* forceRefresh */); err != nil {
-			return fmt.Errorf("failed to refresh token: %w", err)
+		if !r.prov.proxyAuth {
+			if _, err := token.Get(ctx, cfg, true /* forceRefresh */); err != nil {
+				return fmt.Errorf("failed to refresh token: %w", err)
+			}
 		}
 
 		// Verify group is accessible by attempting to list it
@@ -231,9 +227,8 @@ func (r *groupResource) waitForRoleBindingPropagation(
 			Id: groupID,
 		})
 
-		// Auth errors during propagation are transient — the role binding
-		// hasn't propagated yet, so the refreshed token may not have
-		// capabilities for the new group. Retry these like empty results.
+		// Auth errors can be transient while the role binding propagates.
+		// Retry these like empty results.
 		if err != nil {
 			code := status.Code(err)
 			if code != codes.Unauthenticated && code != codes.PermissionDenied {
