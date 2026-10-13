@@ -17,24 +17,29 @@ import (
 	"google.golang.org/grpc/status"
 
 	regv2 "chainguard.dev/sdk/proto/chainguard/platform/registry/v2beta1"
+	"chainguard.dev/sdk/uidp"
 )
 
 type testOverlay struct {
-	parentID string
-	name     string
-	packages string
-	selector string
+	repoParentID string
+	parentID     string
+	name         string
+	packages     string
+	selector     string
 }
 
 func TestImageOverlay(t *testing.T) {
 	clients := testAccV2Client(t)
-	parentID := os.Getenv("TF_ACC_GROUP_ID")
+	repoParentID := os.Getenv("TF_ACC_GROUP_ID")
+	// Overlays can only be created on the organization.
+	parentID := uidp.Root(repoParentID)
 	name := acctest.RandString(10)
 
 	original := testOverlay{
-		parentID: parentID,
-		name:     name,
-		packages: `["curl"]`,
+		repoParentID: repoParentID,
+		parentID:     parentID,
+		name:         name,
+		packages:     `["curl"]`,
 		selector: `
     kind = "EXACT"
     tags = ["latest"]
@@ -44,9 +49,10 @@ func TestImageOverlay(t *testing.T) {
 	// Changing packages forces replacement of the overlay, which in turn
 	// forces replacement of the binding (overlay_id changes).
 	update := testOverlay{
-		parentID: parentID,
-		name:     name,
-		packages: `["curl", "jq"]`,
+		repoParentID: repoParentID,
+		parentID:     parentID,
+		name:         name,
+		packages:     `["curl", "jq"]`,
 		selector: `
     kind = "VARIANT"
     variant_type = "DEV"
@@ -128,12 +134,13 @@ resource "chainguard_image_overlay_binding" "example" {
   tag_selector {%s  }
 }
 `
-	return fmt.Sprintf(tmpl, o.parentID, o.name, o.parentID, o.name, o.packages, o.selector)
+	return fmt.Sprintf(tmpl, o.repoParentID, o.name, o.parentID, o.name, o.packages, o.selector)
 }
 
 func TestImageOverlayConfig(t *testing.T) {
 	clients := testAccV2Client(t)
-	parentID := os.Getenv("TF_ACC_GROUP_ID")
+	// Overlays can only be created on the organization.
+	parentID := uidp.Root(os.Getenv("TF_ACC_GROUP_ID"))
 	name := acctest.RandString(10)
 
 	// Pre-flight: skip while the deployed API still enforces the
