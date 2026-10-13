@@ -17,6 +17,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 
+	"chainguard.dev/sdk/auth"
+	clientsv2 "chainguard.dev/sdk/proto/chainguard/platform/clients/v2beta1"
+	regv2 "chainguard.dev/sdk/proto/chainguard/platform/registry/v2beta1"
 	events "chainguard.dev/sdk/proto/platform/events/v1"
 	iam "chainguard.dev/sdk/proto/platform/iam/v1"
 	registry "chainguard.dev/sdk/proto/platform/registry/v1"
@@ -311,6 +314,76 @@ func checkImageTagDestroy(clients platform.Clients) func(*terraform.State) error
 			}
 			if len(list.GetItems()) > 0 {
 				return fmt.Errorf("image tag %s still exists after destroy", id)
+			}
+		}
+		return nil
+	}
+}
+
+// testAccV2Client creates v2beta1 API clients for CheckDestroy verification.
+// Returns nil if acceptance test env vars are not set (non-acceptance test runs).
+func testAccV2Client(t *testing.T) clientsv2.Clients {
+	t.Helper()
+	consoleAPI := os.Getenv(EnvAccConsoleAPI)
+	audience := os.Getenv(EnvAccAudience)
+	if consoleAPI == "" || audience == "" {
+		return nil
+	}
+	ctx := context.Background()
+
+	cfg := token.LoginConfig{
+		Audience:  audience,
+		Issuer:    strings.Replace(consoleAPI, "console-api", "issuer", 1),
+		UserAgent: "terraform-provider-chainguard/acctest",
+	}
+	tok, err := token.Get(ctx, cfg, false)
+	if err != nil {
+		t.Fatalf("failed to get token for CheckDestroy: %s", err)
+	}
+	cred := auth.NewFromToken(ctx, fmt.Sprintf("Bearer %s", tok), false)
+	clients, err := clientsv2.NewClients(ctx, consoleAPI, UserAgent, cred, retryDialOption())
+	if err != nil {
+		t.Fatalf("failed to create v2beta1 clients for CheckDestroy: %s", err)
+	}
+	return clients
+}
+
+// checkImageOverlayDestroy verifies the image overlay resource was deleted.
+func checkImageOverlayDestroy(clients clientsv2.Clients) func(*terraform.State) error {
+	return func(s *terraform.State) error {
+		if clients == nil {
+			return nil
+		}
+		ctx := context.Background()
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "chainguard_image_overlay" {
+				continue
+			}
+			id := rs.Primary.ID
+			_, err := clients.Registry().OverlaysService().GetOverlay(ctx, &regv2.GetOverlayRequest{Uid: id})
+			if err == nil {
+				return fmt.Errorf("image overlay %s still exists after destroy", id)
+			}
+		}
+		return nil
+	}
+}
+
+// checkImageOverlayBindingDestroy verifies the image overlay binding resource was deleted.
+func checkImageOverlayBindingDestroy(clients clientsv2.Clients) func(*terraform.State) error {
+	return func(s *terraform.State) error {
+		if clients == nil {
+			return nil
+		}
+		ctx := context.Background()
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "chainguard_image_overlay_binding" {
+				continue
+			}
+			id := rs.Primary.ID
+			_, err := clients.Registry().OverlayBindingsService().GetOverlayBinding(ctx, &regv2.GetOverlayBindingRequest{Uid: id})
+			if err == nil {
+				return fmt.Errorf("image overlay binding %s still exists after destroy", id)
 			}
 		}
 		return nil

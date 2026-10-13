@@ -6,6 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 package provider
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"regexp"
@@ -16,16 +17,20 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
-
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
+	advisory "chainguard.dev/sdk/proto/chainguard/platform/advisory/v2beta1"
 	clientsv2 "chainguard.dev/sdk/proto/chainguard/platform/clients/v2beta1"
 	iamv2 "chainguard.dev/sdk/proto/chainguard/platform/iam/v2beta1"
 	iamv2test "chainguard.dev/sdk/proto/chainguard/platform/iam/v2beta1/test"
 	registry "chainguard.dev/sdk/proto/chainguard/platform/registry/v2beta1"
 	"chainguard.dev/sdk/proto/chainguard/platform/test"
 	vuln "chainguard.dev/sdk/proto/chainguard/platform/vulnerabilities/v2beta1"
+	platform "chainguard.dev/sdk/proto/platform"
+	iam "chainguard.dev/sdk/proto/platform/iam/v1"
 	"github.com/chainguard-dev/clog/slogtest"
+	"github.com/chainguard-dev/terraform-provider-chainguard/internal/token"
 )
 
 // mockV2PlatformClients implements clientsv2.Clients for unit tests.
@@ -35,10 +40,55 @@ type mockV2PlatformClients struct {
 
 var _ clientsv2.Clients = (*mockV2PlatformClients)(nil)
 
+func (m *mockV2PlatformClients) Advisory() advisory.Clients    { return nil }
 func (m *mockV2PlatformClients) IAM() iamv2.Clients            { return m.iamClients }
 func (m *mockV2PlatformClients) Registry() registry.Clients    { return nil }
 func (m *mockV2PlatformClients) Vulnerabilities() vuln.Clients { return nil }
 func (m *mockV2PlatformClients) Close() error                  { return nil }
+
+type propagationPlatformClients struct {
+	platform.Clients
+	iamClients iam.Clients
+}
+
+func (c propagationPlatformClients) IAM() iam.Clients { return c.iamClients }
+
+type propagationIAMClients struct {
+	iam.Clients
+	groups iam.GroupsClient
+}
+
+func (c propagationIAMClients) Groups() iam.GroupsClient { return c.groups }
+
+type propagationGroupsClient struct {
+	iam.GroupsClient
+	wantID string
+	calls  int
+}
+
+func (c *propagationGroupsClient) List(_ context.Context, filter *iam.GroupFilter, _ ...grpc.CallOption) (*iam.GroupList, error) {
+	c.calls++
+	if filter.GetId() != c.wantID {
+		return nil, fmt.Errorf("listed group %q, want %q", filter.GetId(), c.wantID)
+	}
+	return &iam.GroupList{Items: []*iam.Group{{Id: c.wantID}}}, nil
+}
+
+func TestWaitForRoleBindingPropagationProxyAuth(t *testing.T) {
+	const groupID = "0123456789abcdef0123456789abcdef01234567"
+	groups := &propagationGroupsClient{wantID: groupID}
+	r := &groupResource{prov: &providerData{
+		client:    propagationPlatformClients{iamClients: propagationIAMClients{groups: groups}},
+		proxyAuth: true,
+	}}
+
+	if err := r.waitForRoleBindingPropagation(t.Context(), groupID, token.LoginConfig{Disabled: true}); err != nil {
+		t.Fatalf("proxy-managed propagation: %v", err)
+	}
+	if groups.calls != 1 {
+		t.Fatalf("group list calls: got %d, want 1", groups.calls)
+	}
+}
 
 func testAccResourceGroup(parent, name, description string) string {
 	const tmpl = `
@@ -77,7 +127,7 @@ func TestGroupResource_update(t *testing.T) {
 					Name:        "name",
 					Description: "foo",
 				},
-				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"*"}},
+				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"name", "description", "verified"}},
 			},
 			Result: &iamv2.Group{
 				Uid:         "id",
@@ -104,7 +154,7 @@ func TestGroupResource_update(t *testing.T) {
 					Name:     "name",
 					Verified: true,
 				},
-				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"*"}},
+				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"name", "description", "verified"}},
 			},
 			Result: &iamv2.Group{
 				Uid:      "id",
@@ -131,7 +181,7 @@ func TestGroupResource_update(t *testing.T) {
 					Name:     "name",
 					Verified: true,
 				},
-				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"*"}},
+				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"name", "description", "verified"}},
 			},
 			Result: &iamv2.Group{
 				Uid:      "id",
@@ -158,7 +208,7 @@ func TestGroupResource_update(t *testing.T) {
 					Uid:  "id",
 					Name: "name",
 				},
-				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"*"}},
+				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"name", "description", "verified"}},
 			},
 			Result: &iamv2.Group{
 				Uid:  "id",
@@ -207,6 +257,69 @@ func TestGroupResource_update(t *testing.T) {
 		},
 		wantDiag: diag.NewErrorDiagnostic("cannot unverify group", "group id is verified and verified_protection is true or null; apply verified_protection = false before attempting to unverify this group"),
 	}, {
+		name: "update kind",
+		onUpdateGroup: test.On[*iamv2.UpdateGroupRequest, *iamv2.Group]{
+			Given: &iamv2.UpdateGroupRequest{
+				Group: &iamv2.Group{
+					Uid:      "id",
+					Name:     "name",
+					Verified: true,
+					Kind:     iamv2.OrgKind_ORG_KIND_CUSTOMER,
+				},
+				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"name", "description", "verified", "kind"}},
+			},
+			Result: &iamv2.Group{
+				Uid:      "id",
+				Name:     "name",
+				Verified: true,
+				Kind:     iamv2.OrgKind_ORG_KIND_CUSTOMER,
+			},
+		},
+		data: groupResourceModel{
+			ID:             types.StringValue("id"),
+			Name:           types.StringValue("name"),
+			Verified:       types.BoolValue(true),
+			Kind:           types.StringValue("CUSTOMER"),
+			ResourceLimits: types.MapNull(types.Int32Type),
+		},
+		state: groupResourceModel{
+			ID:       types.StringValue("id"),
+			Name:     types.StringValue("name"),
+			Verified: types.BoolValue(true),
+			Kind:     types.StringValue("STARTER"),
+		},
+	}, {
+		name: "unchanged kind stays out of the mask",
+		onUpdateGroup: test.On[*iamv2.UpdateGroupRequest, *iamv2.Group]{
+			Given: &iamv2.UpdateGroupRequest{
+				Group: &iamv2.Group{
+					Uid:      "id",
+					Name:     "name",
+					Verified: true,
+				},
+				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"name", "description", "verified"}},
+			},
+			Result: &iamv2.Group{
+				Uid:      "id",
+				Name:     "name",
+				Verified: true,
+				Kind:     iamv2.OrgKind_ORG_KIND_CUSTOMER,
+			},
+		},
+		data: groupResourceModel{
+			ID:             types.StringValue("id"),
+			Name:           types.StringValue("name"),
+			Verified:       types.BoolValue(true),
+			Kind:           types.StringValue("CUSTOMER"),
+			ResourceLimits: types.MapNull(types.Int32Type),
+		},
+		state: groupResourceModel{
+			ID:       types.StringValue("id"),
+			Name:     types.StringValue("name"),
+			Verified: types.BoolValue(true),
+			Kind:     types.StringValue("CUSTOMER"),
+		},
+	}, {
 		name: "update sets resource_limits to null when empty",
 		onUpdateGroup: test.On[*iamv2.UpdateGroupRequest, *iamv2.Group]{
 			Given: &iamv2.UpdateGroupRequest{
@@ -214,7 +327,7 @@ func TestGroupResource_update(t *testing.T) {
 					Uid:  "id",
 					Name: "name",
 				},
-				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"*"}},
+				UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"name", "description", "verified"}},
 			},
 			Result: &iamv2.Group{
 				Uid:  "id",
@@ -234,14 +347,12 @@ func TestGroupResource_update(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			ctx := slogtest.Context(t)
 			r := &groupResource{
-				managedResource: managedResource{
-					prov: &providerData{
-						clientV2: &mockV2PlatformClients{
-							iamClients: &iamv2test.MockClients{
-								GroupsServiceClient: iamv2test.MockGroupsServiceClient{
-									T:             t,
-									OnUpdateGroup: []test.On[*iamv2.UpdateGroupRequest, *iamv2.Group]{c.onUpdateGroup},
-								},
+				prov: &providerData{
+					clientV2: &mockV2PlatformClients{
+						iamClients: &iamv2test.MockClients{
+							GroupsServiceClient: iamv2test.MockGroupsServiceClient{
+								T:             t,
+								OnUpdateGroup: []test.On[*iamv2.UpdateGroupRequest, *iamv2.Group]{c.onUpdateGroup},
 							},
 						},
 					},
@@ -254,6 +365,7 @@ func TestGroupResource_update(t *testing.T) {
 				Description:        c.data.Description,
 				Verified:           c.data.Verified,
 				VerifiedProtection: c.data.VerifiedProtection,
+				Kind:               c.data.Kind,
 				ResourceLimits:     c.data.ResourceLimits,
 			}
 			gotDiag := r.update(ctx, &dc, c.state)
@@ -293,27 +405,25 @@ func TestGroupResourceModel_ComputedFieldsAreKnown(t *testing.T) {
 func TestGroupResource_updateResourceLimits(t *testing.T) {
 	ctx := slogtest.Context(t)
 	r := &groupResource{
-		managedResource: managedResource{
-			prov: &providerData{
-				clientV2: &mockV2PlatformClients{
-					iamClients: &iamv2test.MockClients{
-						GroupsServiceClient: iamv2test.MockGroupsServiceClient{
-							T: t,
-							OnUpdateGroup: []test.On[*iamv2.UpdateGroupRequest, *iamv2.Group]{{
-								Given: &iamv2.UpdateGroupRequest{
-									Group: &iamv2.Group{
-										Uid:  "id",
-										Name: "name",
-									},
-									UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"*"}},
+		prov: &providerData{
+			clientV2: &mockV2PlatformClients{
+				iamClients: &iamv2test.MockClients{
+					GroupsServiceClient: iamv2test.MockGroupsServiceClient{
+						T: t,
+						OnUpdateGroup: []test.On[*iamv2.UpdateGroupRequest, *iamv2.Group]{{
+							Given: &iamv2.UpdateGroupRequest{
+								Group: &iamv2.Group{
+									Uid:  "id",
+									Name: "name",
 								},
-								Result: &iamv2.Group{
-									Uid:            "id",
-									Name:           "name",
-									ResourceLimits: map[string]int32{"identities": 100},
-								},
-							}},
-						},
+								UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"name", "description", "verified"}},
+							},
+							Result: &iamv2.Group{
+								Uid:            "id",
+								Name:           "name",
+								ResourceLimits: map[string]int32{"identities": 100},
+							},
+						}},
 					},
 				},
 			},

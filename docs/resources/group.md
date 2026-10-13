@@ -37,6 +37,7 @@ resource "chainguard_group" "example_sub" {
 ### Optional
 
 - `description` (String) Description of this IAM group.
+- `kind` (String) The organization kind. Required when creating a verified organization (top-level group); may only be set on verified organizations. Subgroups inherit kind from their organization. One of: AWS_MARKETPLACE, CUSTOMER, DEV, INFRA, STARTER.
 - `parent_id` (String) Parent group (organization or folder) of this group. If not set, this group is an organization.
 - `verified` (Boolean) Whether the organization has been verified by a Chainguardian. Only applicable to organizations (top-level groups).
 - `verified_protection` (Boolean) Prevent the group from being unverified through Terraform. Null is treated as true.

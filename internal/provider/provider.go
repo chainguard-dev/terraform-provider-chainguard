@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -27,6 +28,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 
 	"chainguard.dev/sdk/auth"
@@ -54,6 +56,7 @@ const (
 	EnvAccAmbient = "TF_ACC_AMBIENT"
 
 	EnvChainguardVersionAllow = "CHAINGUARD_VERSION_ALLOW"
+	EnvChainguardProxyAuth    = "TF_CHAINGUARD_PROXY_AUTH"
 )
 
 var EnvAccVars = []string{
@@ -143,6 +146,8 @@ func (p *Provider) Resources(_ context.Context) []func() resource.Resource {
 		NewIdentityResource,
 		NewIdentityProviderResource,
 		NewImageRepoResource,
+		NewImageOverlayResource,
+		NewImageOverlayBindingResource,
 		NewImageTagResource,
 		NewRoleResource,
 		NewRolebindingResource,
@@ -243,6 +248,7 @@ type providerData struct {
 
 	consoleAPI          string
 	loginConfig         token.LoginConfig
+	proxyAuth           bool
 	testing             bool
 	versionStreamAllows map[string]struct{}
 }
@@ -279,6 +285,15 @@ func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest,
 
 	consoleAPI := protoutil.FirstNonEmpty(os.Getenv(EnvChainguardConsoleAPI), pm.ConsoleAPI.ValueString(), DefaultConsoleAPI)
 	audience := protoutil.FirstNonEmpty(os.Getenv(EnvChainguardAudience), consoleAPI)
+	proxyAuth := false
+	if raw, ok := os.LookupEnv(EnvChainguardProxyAuth); ok {
+		var err error
+		proxyAuth, err = strconv.ParseBool(raw)
+		if err != nil {
+			resp.Diagnostics.AddError("Invalid proxy authentication setting", EnvChainguardProxyAuth+" must be true or false")
+			return
+		}
+	}
 	// Decorate the UserAgent with version and runtime info.
 	UserAgent = fmt.Sprintf("%s/%s %s/%s", UserAgent, p.version, runtime.GOOS, runtime.GOARCH)
 
@@ -308,12 +323,14 @@ func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest,
 		// when providing an explicit OIDC token.
 		cfg.UseRefreshTokens = protoutil.DefaultBool(lo.EnableRefreshTokens, cfg.IdentityID == "" && cfg.IdentityToken == "")
 
-		// Resolve the OIDC token by source precedence: TF_CHAINGUARD_IDENTITY_TOKEN
-		// env > ambient credentials > login_options.identity_token (allowed empty).
-		var err error
-		cfg.IdentityToken, err = token.ResolveIdentityToken(ctx, cfg.Issuer, lo.IdentityToken.ValueString())
-		if err != nil {
-			tflog.Error(ctx, fmt.Sprintf("failed to get identity token from ambient credentials: %s", err.Error()))
+		if !proxyAuth {
+			// Resolve the OIDC token by source precedence: TF_CHAINGUARD_IDENTITY_TOKEN
+			// env > ambient credentials > login_options.identity_token (allowed empty).
+			identityToken, err := token.ResolveIdentityToken(ctx, cfg.Issuer, lo.IdentityToken.ValueString())
+			cfg.IdentityToken = identityToken
+			if err != nil {
+				tflog.Error(ctx, fmt.Sprintf("failed to get identity token from ambient credentials: %s", err.Error()))
+			}
 		}
 	}
 
@@ -333,6 +350,7 @@ func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest,
 	d := &providerData{
 		client:      nil,
 		loginConfig: cfg,
+		proxyAuth:   proxyAuth,
 		consoleAPI:  consoleAPI,
 		testing:     p.version == "acctest",
 	}
@@ -389,14 +407,14 @@ func (pd *providerData) setupClient(ctx context.Context) error {
 
 	tflog.Info(ctx, "configuring chainguard client")
 
-	// Get the Chainguard token
-	// If it doesn't exist or is expired, attempt to get a new one, depending on login_options
-	if _, err := token.Get(ctx, pd.loginConfig, false /* forceRefresh */); err != nil {
-		return fmt.Errorf("failed to retrieve token. Either no token was found for audience %q or there was an error reading it.\n"+
-			"Please check the value of \"chainguard.console_api\" in your Terraform provider configuration: %s", pd.loginConfig.Audience, err.Error())
+	var cred credentials.PerRPCCredentials
+	if !pd.proxyAuth {
+		if _, err := token.Get(ctx, pd.loginConfig, false /* forceRefresh */); err != nil {
+			return fmt.Errorf("failed to retrieve token. Either no token was found for audience %q or there was an error reading it.\n"+
+				"Please check the value of \"chainguard.console_api\" in your Terraform provider configuration: %s", pd.loginConfig.Audience, err.Error())
+		}
+		cred = &refreshingCredential{loginConfig: pd.loginConfig}
 	}
-
-	cred := &refreshingCredential{loginConfig: pd.loginConfig}
 
 	// Generate platform clients.
 	uaCtx := platform.WithUserAgent(ctx, UserAgent)
@@ -412,32 +430,5 @@ func (pd *providerData) setupClient(ctx context.Context) error {
 
 	pd.client = clients
 	pd.clientV2 = v2
-	return nil
-}
-
-// setClients replaces both v1 and v2beta1 clients under the mutex.
-// Used by resource_group after re-authenticating with a new organization scope.
-func (pd *providerData) setClients(ctx context.Context, v1 platform.Clients) error {
-	if _, err := token.Get(ctx, pd.loginConfig, false); err != nil {
-		return fmt.Errorf("failed to retrieve token for v2beta1 client refresh: %w", err)
-	}
-	cred := &refreshingCredential{loginConfig: pd.loginConfig}
-	v2, err := clientsv2.NewClients(ctx, pd.consoleAPI, UserAgent, cred, retryDialOption())
-	if err != nil {
-		return fmt.Errorf("failed to create v2beta1 API clients: %w", err)
-	}
-
-	pd.clientMu.Lock()
-	defer pd.clientMu.Unlock()
-	oldV1 := pd.client
-	oldV2 := pd.clientV2
-	pd.client = v1
-	pd.clientV2 = v2
-	if oldV1 != nil {
-		oldV1.Close()
-	}
-	if oldV2 != nil {
-		oldV2.Close()
-	}
 	return nil
 }
