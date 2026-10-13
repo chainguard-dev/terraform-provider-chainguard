@@ -8,11 +8,14 @@ package provider
 import (
 	"context"
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -26,7 +29,6 @@ import (
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	iamv2 "chainguard.dev/sdk/proto/chainguard/platform/iam/v2beta1"
-	"chainguard.dev/sdk/proto/platform"
 	iam "chainguard.dev/sdk/proto/platform/iam/v1"
 	"chainguard.dev/sdk/uidp"
 	"github.com/chainguard-dev/terraform-provider-chainguard/internal/protoutil"
@@ -58,6 +60,7 @@ type groupResourceModel struct {
 	ParentID           types.String `tfsdk:"parent_id"`
 	Verified           types.Bool   `tfsdk:"verified"`
 	VerifiedProtection types.Bool   `tfsdk:"verified_protection"`
+	Kind               types.String `tfsdk:"kind"`
 	ResourceLimits     types.Map    `tfsdk:"resource_limits"`
 }
 
@@ -72,6 +75,16 @@ func (r *groupResource) Metadata(_ context.Context, req resource.MetadataRequest
 
 // Schema defines the schema for the resource.
 func (r *groupResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
+	// Sorted so the generated docs are stable across map iteration order.
+	orgKinds := make([]string, 0, len(iamv2.OrgKind_value))
+	for name, val := range iamv2.OrgKind_value {
+		if val == 0 {
+			continue
+		}
+		orgKinds = append(orgKinds, strings.TrimPrefix(name, "ORG_KIND_"))
+	}
+	slices.Sort(orgKinds)
+
 	resp.Schema = schema.Schema{
 		Description: "IAM Group on the Chainguard platform.",
 		Attributes: map[string]schema.Attribute{
@@ -103,6 +116,16 @@ func (r *groupResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 				Description: "Prevent the group from being unverified through Terraform. Null is treated as true.",
 				Optional:    true,
 			},
+			"kind": schema.StringAttribute{
+				Description: "The organization kind. Required when creating a verified organization (top-level group); may only be set on verified organizations. Subgroups inherit kind from their organization. One of: " + strings.Join(orgKinds, ", ") + ".",
+				Optional:    true,
+				Computed:    true,
+				Validators: []validator.String{
+					stringvalidator.OneOf(orgKinds...),
+					stringvalidator.ConflictsWith(path.MatchRoot("parent_id")),
+				},
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
 			"resource_limits": schema.MapAttribute{
 				Description: "Maximum number of resources allowed by type.",
 				Computed:    true,
@@ -133,6 +156,7 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 			Name:        plan.Name.ValueString(),
 			Description: plan.Description.ValueString(),
 			Verified:    plan.Verified.ValueBool(),
+			Kind:        iamv2.OrgKind(iamv2.OrgKind_value["ORG_KIND_"+plan.Kind.ValueString()]),
 		},
 	}
 	// Only include Parent UIDP for non-organization (folder) groups.
@@ -149,6 +173,13 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 
 	// Save group details in the state.
 	plan.ID = types.StringValue(g.GetUid())
+	// Kind is computed and must resolve to a known value: subgroups
+	// inherit it from their organization, unverified groups leave it null.
+	if k := g.GetKind(); k != iamv2.OrgKind_ORG_KIND_UNSPECIFIED {
+		plan.Kind = types.StringValue(strings.TrimPrefix(k.String(), "ORG_KIND_"))
+	} else {
+		plan.Kind = types.StringNull()
+	}
 	if len(g.GetResourceLimits()) > 0 {
 		rl, diags := types.MapValueFrom(ctx, types.Int32Type, g.GetResourceLimits())
 		resp.Diagnostics.Append(diags...)
@@ -161,31 +192,23 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 
-	// Attempt to reauthenticate if an organization was created so token
-	// has new organization in scope.
+	// Root group access may lag creation while its role binding propagates.
 	if uidp.InRoot(g.GetUid()) {
-		cfg := r.prov.loginConfig
-		clients, err := r.waitForRoleBindingPropagation(ctx, g.GetUid(), cfg)
-		if err != nil {
+		if err := r.waitForRoleBindingPropagation(ctx, g.GetUid(), r.prov.loginConfig); err != nil {
 			resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to verify root group access for %q", g.GetUid())))
-			return
-		}
-		if err := r.prov.setClients(ctx, clients); err != nil {
-			resp.Diagnostics.Append(errorToDiagnostic(err, fmt.Sprintf("failed to refresh clients for %q", g.GetUid())))
 			return
 		}
 	}
 }
 
-// waitForRoleBindingPropagation waits for role binding propagation after organization creation.
-// It polls the API with exponential backoff until the group is accessible or times out.
-// NB: This uses v1 clients because it creates fresh platform.Clients via newPlatformClients,
-// which only constructs v1 clients. This is a transient retry mechanism, not a core CRUD path.
+// waitForRoleBindingPropagation polls until a new organization is accessible.
+// Locally managed tokens must refresh to include the new scope; proxy mode
+// leaves credential scope to the host.
 func (r *groupResource) waitForRoleBindingPropagation(
 	ctx context.Context,
 	groupID string,
 	cfg token.LoginConfig,
-) (platform.Clients, error) {
+) error {
 	const (
 		maxAttempts = 5
 		baseDelay   = 2 * time.Second
@@ -193,31 +216,24 @@ func (r *groupResource) waitForRoleBindingPropagation(
 	)
 
 	for attempt := range maxAttempts {
-		// Refresh token to pick up new capabilities
-		cgToken, err := token.Get(ctx, cfg, true /* forceRefresh */)
-		if err != nil {
-			return nil, fmt.Errorf("failed to refresh token: %w", err)
-		}
-
-		// Create new clients with refreshed token
-		clients, err := newPlatformClients(ctx, string(cgToken), r.prov.consoleAPI)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create clients: %w", err)
+		if !r.prov.proxyAuth {
+			if _, err := token.Get(ctx, cfg, true /* forceRefresh */); err != nil {
+				return fmt.Errorf("failed to refresh token: %w", err)
+			}
 		}
 
 		// Verify group is accessible by attempting to list it
-		gl, err := clients.IAM().Groups().List(ctx, &iam.GroupFilter{
+		gl, err := r.prov.client.IAM().Groups().List(ctx, &iam.GroupFilter{
 			Id: groupID,
 		})
 
-		// Auth errors during propagation are transient — the role binding
-		// hasn't propagated yet, so the refreshed token may not have
-		// capabilities for the new group. Retry these like empty results.
+		// Auth errors can be transient while the role binding propagates.
+		// Retry these like empty results.
 		if err != nil {
 			code := status.Code(err)
 			if code != codes.Unauthenticated && code != codes.PermissionDenied {
 				// Non-auth errors are not recoverable.
-				return nil, fmt.Errorf("failed to list group: %w", err)
+				return fmt.Errorf("failed to list group: %w", err)
 			}
 			tflog.Debug(ctx, "Auth error during propagation (retrying)", map[string]any{
 				"group_id": groupID,
@@ -231,7 +247,7 @@ func (r *groupResource) waitForRoleBindingPropagation(
 				"group_id": groupID,
 				"attempts": attempt + 1,
 			})
-			return clients, nil
+			return nil
 		}
 
 		// Group not yet visible - retry with backoff (unless this was the last attempt)
@@ -249,12 +265,12 @@ func (r *groupResource) waitForRoleBindingPropagation(
 			case <-time.After(delay):
 				// Continue to next attempt
 			case <-ctx.Done():
-				return nil, ctx.Err()
+				return ctx.Err()
 			}
 		}
 	}
 
-	return nil, fmt.Errorf("group %q not found after %d attempts", groupID, maxAttempts)
+	return fmt.Errorf("group %q not found after %d attempts", groupID, maxAttempts)
 }
 
 // Read refreshes the Terraform state with the latest data.
@@ -298,6 +314,12 @@ func (r *groupResource) Read(ctx context.Context, req resource.ReadRequest, resp
 	if !state.Verified.IsNull() || g.GetVerified() {
 		state.Verified = types.BoolValue(g.GetVerified())
 	}
+	// Kind is computed: reflect the server value (null when unset).
+	if k := g.GetKind(); k != iamv2.OrgKind_ORG_KIND_UNSPECIFIED {
+		state.Kind = types.StringValue(strings.TrimPrefix(k.String(), "ORG_KIND_"))
+	} else {
+		state.Kind = types.StringNull()
+	}
 
 	if len(g.GetResourceLimits()) > 0 {
 		rl, diags := types.MapValueFrom(ctx, types.Int32Type, g.GetResourceLimits())
@@ -324,14 +346,25 @@ func (r *groupResource) update(ctx context.Context, data *groupResourceModel, st
 		return diag.NewErrorDiagnostic("cannot unverify group", fmt.Sprintf("group %s is verified and verified_protection is true or null; apply verified_protection = false before attempting to unverify this group", state.ID.ValueString()))
 	}
 
+	ug := &iamv2.Group{
+		Uid:         data.ID.ValueString(),
+		Name:        data.Name.ValueString(),
+		Description: data.Description.ValueString(),
+		Verified:    data.Verified.ValueBool(),
+	}
+	// The server treats a wildcard mask as intent to update every field --
+	// including kind and status, which this resource does not set -- and
+	// rejects such updates once those fields hold values. Kind must also be
+	// named explicitly to take effect, so name only the managed fields and
+	// kind only when it changes.
+	paths := []string{"name", "description", "verified"}
+	if !data.Kind.IsUnknown() && !data.Kind.IsNull() && !data.Kind.Equal(state.Kind) {
+		ug.Kind = iamv2.OrgKind(iamv2.OrgKind_value["ORG_KIND_"+data.Kind.ValueString()])
+		paths = append(paths, "kind")
+	}
 	g, err := r.prov.clientV2.IAM().GroupsService().UpdateGroup(ctx, &iamv2.UpdateGroupRequest{
-		Group: &iamv2.Group{
-			Uid:         data.ID.ValueString(),
-			Name:        data.Name.ValueString(),
-			Description: data.Description.ValueString(),
-			Verified:    data.Verified.ValueBool(),
-		},
-		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"*"}},
+		Group:      ug,
+		UpdateMask: &fieldmaskpb.FieldMask{Paths: paths},
 	})
 	if err != nil {
 		return errorToDiagnostic(err, fmt.Sprintf("failed to update group %q", data.ID.ValueString()))
