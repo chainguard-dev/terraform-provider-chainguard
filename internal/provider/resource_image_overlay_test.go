@@ -6,33 +6,41 @@ SPDX-License-Identifier: Apache-2.0
 package provider
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-
-	regv2 "chainguard.dev/sdk/proto/chainguard/platform/registry/v2beta1"
 )
 
 type testOverlay struct {
-	parentID string
+	orgName  string
 	name     string
 	packages string
 	selector string
 }
 
+// skipUnlessRootGroupCapable skips tests whose config creates a throwaway
+// organization, which requires ambient GHA credentials or an identity token
+// (same gate as TestAccRootGroupResource). Overlays can only be created on an
+// organization's root group, and the CI identity has no rights at the
+// chainguard org root, so the overlay tests own a throwaway org instead.
+func skipUnlessRootGroupCapable(t *testing.T) {
+	t.Helper()
+	if os.Getenv(EnvAccAmbient) == "" && os.Getenv("TF_CHAINGUARD_IDENTITY_TOKEN") == "" {
+		t.Skip("TF_CHAINGUARD_IDENTITY_TOKEN or TF_ACC_AMBIENT required to create a throwaway org")
+	}
+}
+
 func TestImageOverlay(t *testing.T) {
+	skipUnlessRootGroupCapable(t)
 	clients := testAccV2Client(t)
-	parentID := os.Getenv("TF_ACC_GROUP_ID")
+	orgName := acctest.RandString(10)
 	name := acctest.RandString(10)
 
 	original := testOverlay{
-		parentID: parentID,
+		orgName:  orgName,
 		name:     name,
 		packages: `["curl"]`,
 		selector: `
@@ -44,7 +52,7 @@ func TestImageOverlay(t *testing.T) {
 	// Changing packages forces replacement of the overlay, which in turn
 	// forces replacement of the binding (overlay_id changes).
 	update := testOverlay{
-		parentID: parentID,
+		orgName:  orgName,
 		name:     name,
 		packages: `["curl", "jq"]`,
 		selector: `
@@ -66,7 +74,9 @@ func TestImageOverlay(t *testing.T) {
 				Config: testImageOverlay(original),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(`chainguard_image_overlay.example`, `name`, name),
-					resource.TestCheckResourceAttr(`chainguard_image_overlay.example`, `parent_id`, parentID),
+					resource.TestCheckResourceAttrPair(
+						`chainguard_image_overlay.example`, `parent_id`,
+						`chainguard_group.overlay_org`, `id`),
 					resource.TestCheckResourceAttr(`chainguard_image_overlay.example`, `packages.0`, "curl"),
 					resource.TestCheckResourceAttrSet(`chainguard_image_overlay.example`, `id`),
 					resource.TestCheckResourceAttr(`chainguard_image_overlay_binding.example`, `tag_selector.kind`, "EXACT"),
@@ -109,14 +119,21 @@ func TestImageOverlay(t *testing.T) {
 
 func testImageOverlay(o testOverlay) string {
 	const tmpl = `
+# Overlays can only be created on an organization's root group, so the test
+# owns a throwaway org rather than using TF_ACC_GROUP_ID (a nested folder).
+resource "chainguard_group" "overlay_org" {
+  name        = %q
+  description = "terraform-provider-chainguard TestImageOverlay"
+}
+
 # The binding needs a repo to attach to.
 resource "chainguard_image_repo" "overlay_example" {
-  parent_id = %q
+  parent_id = chainguard_group.overlay_org.id
   name      = %q
 }
 
 resource "chainguard_image_overlay" "example" {
-  parent_id = %q
+  parent_id = chainguard_group.overlay_org.id
   name      = %q
   packages  = %s
 }
@@ -128,40 +145,14 @@ resource "chainguard_image_overlay_binding" "example" {
   tag_selector {%s  }
 }
 `
-	return fmt.Sprintf(tmpl, o.parentID, o.name, o.parentID, o.name, o.packages, o.selector)
+	return fmt.Sprintf(tmpl, o.orgName, o.name, o.name, o.packages, o.selector)
 }
 
 func TestImageOverlayConfig(t *testing.T) {
+	skipUnlessRootGroupCapable(t)
 	clients := testAccV2Client(t)
-	parentID := os.Getenv("TF_ACC_GROUP_ID")
+	orgName := acctest.RandString(10)
 	name := acctest.RandString(10)
-
-	// Pre-flight: skip while the deployed API still enforces the
-	// packages-only restriction on overlay configs. The full-config
-	// surface ships with chainguard-dev/mono#59398; this probe self-arms
-	// the test — it skips today and runs for real once the API accepts a
-	// non-package field. A regression after that flips the test back to
-	// skipped, so treat unexpected skips of this test as a signal.
-	if clients != nil {
-		ctx := context.Background()
-		probe, err := clients.Registry().OverlaysService().CreateOverlay(ctx, &regv2.CreateOverlayRequest{
-			Parent: parentID,
-			Overlay: &regv2.Overlay{
-				Name:   "acc-config-probe-" + acctest.RandString(6),
-				Config: &regv2.CustomOverlay{Environment: map[string]string{"TF_ACC_PROBE": "1"}},
-			},
-		})
-		switch {
-		case err == nil:
-			if _, err := clients.Registry().OverlaysService().DeleteOverlay(ctx, &regv2.DeleteOverlayRequest{Uid: probe.GetUid()}); err != nil {
-				t.Logf("cleanup of probe overlay %s: %v", probe.GetUid(), err)
-			}
-		case status.Code(err) == codes.InvalidArgument:
-			t.Skipf("API does not yet accept full overlay configs (deploys with chainguard-dev/mono#59398): %v", err)
-		default:
-			t.Fatalf("probing full-overlay support: %v", err)
-		}
-	}
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -170,10 +161,12 @@ func TestImageOverlayConfig(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create and Read testing with a full config instead of packages.
 			{
-				Config: testImageOverlayConfig(parentID, name),
+				Config: testImageOverlayConfig(orgName, name),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(`chainguard_image_overlay.config_example`, `name`, name),
-					resource.TestCheckResourceAttr(`chainguard_image_overlay.config_example`, `parent_id`, parentID),
+					resource.TestCheckResourceAttrPair(
+						`chainguard_image_overlay.config_example`, `parent_id`,
+						`chainguard_group.overlay_config_org`, `id`),
 					resource.TestCheckResourceAttrSet(`chainguard_image_overlay.config_example`, `config`),
 					resource.TestCheckNoResourceAttr(`chainguard_image_overlay.config_example`, `packages`),
 					resource.TestCheckResourceAttrSet(`chainguard_image_overlay.config_example`, `id`),
@@ -192,10 +185,17 @@ func TestImageOverlayConfig(t *testing.T) {
 	})
 }
 
-func testImageOverlayConfig(parentID, name string) string {
+func testImageOverlayConfig(orgName, name string) string {
 	const tmpl = `
+# Overlays can only be created on an organization's root group, so the test
+# owns a throwaway org rather than using TF_ACC_GROUP_ID (a nested folder).
+resource "chainguard_group" "overlay_config_org" {
+  name        = %q
+  description = "terraform-provider-chainguard TestImageOverlayConfig"
+}
+
 resource "chainguard_image_overlay" "config_example" {
-  parent_id = %q
+  parent_id = chainguard_group.overlay_config_org.id
   name      = %q
   config = jsonencode({
     contents = {
@@ -210,7 +210,7 @@ resource "chainguard_image_overlay" "config_example" {
   })
 }
 `
-	return fmt.Sprintf(tmpl, parentID, name)
+	return fmt.Sprintf(tmpl, orgName, name)
 }
 
 func TestValidOverlayConfigValue(t *testing.T) {
