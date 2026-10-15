@@ -24,8 +24,10 @@ import (
 	clientsv2 "chainguard.dev/sdk/proto/chainguard/platform/clients/v2beta1"
 	iamv2 "chainguard.dev/sdk/proto/chainguard/platform/iam/v2beta1"
 	iamv2test "chainguard.dev/sdk/proto/chainguard/platform/iam/v2beta1/test"
+	libraries "chainguard.dev/sdk/proto/chainguard/platform/libraries/v2beta1"
 	registry "chainguard.dev/sdk/proto/chainguard/platform/registry/v2beta1"
 	"chainguard.dev/sdk/proto/chainguard/platform/test"
+	versions "chainguard.dev/sdk/proto/chainguard/platform/versions/v2beta1"
 	vuln "chainguard.dev/sdk/proto/chainguard/platform/vulnerabilities/v2beta1"
 	platform "chainguard.dev/sdk/proto/platform"
 	iam "chainguard.dev/sdk/proto/platform/iam/v1"
@@ -42,7 +44,9 @@ var _ clientsv2.Clients = (*mockV2PlatformClients)(nil)
 
 func (m *mockV2PlatformClients) Advisory() advisory.Clients    { return nil }
 func (m *mockV2PlatformClients) IAM() iamv2.Clients            { return m.iamClients }
+func (m *mockV2PlatformClients) Libraries() libraries.Clients  { return nil }
 func (m *mockV2PlatformClients) Registry() registry.Clients    { return nil }
+func (m *mockV2PlatformClients) Versions() versions.Clients    { return nil }
 func (m *mockV2PlatformClients) Vulnerabilities() vuln.Clients { return nil }
 func (m *mockV2PlatformClients) Close() error                  { return nil }
 
