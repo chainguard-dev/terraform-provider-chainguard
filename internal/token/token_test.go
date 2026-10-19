@@ -122,6 +122,72 @@ func TestIdentityTokenForExchange(t *testing.T) {
 	}
 }
 
+// TestResolveIdentityTokenHCPTerraform verifies that the HCP Terraform workload
+// identity token is used only when no other token source is configured, and
+// that the tagged Chainguard token wins over the untagged one.
+func TestResolveIdentityTokenHCPTerraform(t *testing.T) {
+	// Clear the real github-actions provider's variables so that only the
+	// fake provider decides whether ambient credentials are enabled.
+	t.Setenv("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "")
+	t.Setenv("ACTIONS_ID_TOKEN_REQUEST_URL", "")
+
+	tests := map[string]struct {
+		envToken      string // TF_CHAINGUARD_IDENTITY_TOKEN
+		ambient       bool
+		identityToken string // login_options.identity_token
+		hcpToken      string // TFC_WORKLOAD_IDENTITY_TOKEN
+		hcpTagged     string // TFC_WORKLOAD_IDENTITY_TOKEN_CHAINGUARD
+		want          string
+	}{
+		"untagged HCP Terraform token used when nothing else is set": {
+			hcpToken: "hcp-token",
+			want:     "hcp-token",
+		},
+		"tagged HCP Terraform token wins over untagged": {
+			hcpToken:  "hcp-token",
+			hcpTagged: "hcp-tagged-token",
+			want:      "hcp-tagged-token",
+		},
+		"configured identity_token wins over HCP Terraform token": {
+			identityToken: "configured-token",
+			hcpTagged:     "hcp-tagged-token",
+			want:          "configured-token",
+		},
+		"TF_CHAINGUARD_IDENTITY_TOKEN wins over HCP Terraform token": {
+			envToken:  "explicit-env-token",
+			hcpTagged: "hcp-tagged-token",
+			want:      "explicit-env-token",
+		},
+		"ambient credentials win over HCP Terraform token": {
+			ambient:   true,
+			hcpTagged: "hcp-tagged-token",
+			want:      "fresh-ambient-token",
+		},
+		"no token source returns empty": {
+			want: "",
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("TF_CHAINGUARD_IDENTITY_TOKEN", tc.envToken)
+			t.Setenv("TFC_WORKLOAD_IDENTITY_TOKEN", tc.hcpToken)
+			t.Setenv("TFC_WORKLOAD_IDENTITY_TOKEN_CHAINGUARD", tc.hcpTagged)
+			testProvider.enabled = tc.ambient
+			testProvider.token = "fresh-ambient-token"
+			testProvider.err = nil
+
+			got, err := ResolveIdentityToken(context.Background(), "https://issuer.example.test", tc.identityToken)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 // TestEffectiveExchangeIdentity verifies the refresh target: an explicit pin wins,
 // otherwise the identity is derived from the current token's sub (else untargeted).
 func TestEffectiveExchangeIdentity(t *testing.T) {
