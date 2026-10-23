@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -189,7 +190,7 @@ func ResolveIdentityToken(ctx context.Context, issuer, fallback string) (string,
 	case fallback != "":
 		return fallback, nil
 	default:
-		return hcpTerraformIdentityToken(), nil
+		return hcpTerraformIdentityToken(ctx, issuer), nil
 	}
 }
 
@@ -203,11 +204,27 @@ func ResolveIdentityToken(ctx context.Context, issuer, fallback string) (string,
 // TFC_WORKLOAD_IDENTITY_AUDIENCE_CHAINGUARD gets a separate
 // TFC_WORKLOAD_IDENTITY_TOKEN_CHAINGUARD, which leaves the untagged token free
 // for other tools. The tagged token wins when both are present.
-func hcpTerraformIdentityToken() string {
+//
+// The untagged token may have been minted for another tool, so it is used only
+// when its audience includes the Chainguard issuer. Otherwise the provider
+// would send another service's credential to Chainguard. The tagged token
+// exists only for Chainguard, so it needs no check.
+func hcpTerraformIdentityToken(ctx context.Context, issuer string) string {
 	if tok := os.Getenv("TFC_WORKLOAD_IDENTITY_TOKEN_CHAINGUARD"); tok != "" {
 		return tok
 	}
-	return os.Getenv("TFC_WORKLOAD_IDENTITY_TOKEN")
+
+	tok := os.Getenv("TFC_WORKLOAD_IDENTITY_TOKEN")
+	if tok == "" {
+		return ""
+	}
+	audiences, err := auth.ExtractAudiences(tok)
+	if err != nil || !slices.Contains(audiences, issuer) {
+		tflog.Warn(ctx, fmt.Sprintf("ignoring TFC_WORKLOAD_IDENTITY_TOKEN: its audience %v does not include %q; "+
+			"set TFC_WORKLOAD_IDENTITY_AUDIENCE to %q, or use TFC_WORKLOAD_IDENTITY_AUDIENCE_CHAINGUARD", audiences, issuer, issuer))
+		return ""
+	}
+	return tok
 }
 
 // identityTokenForExchange resolves the OIDC token to exchange on refresh, falling
