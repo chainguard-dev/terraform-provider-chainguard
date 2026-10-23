@@ -325,7 +325,8 @@ func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest,
 
 		if !proxyAuth {
 			// Resolve the OIDC token by source precedence: TF_CHAINGUARD_IDENTITY_TOKEN
-			// env > ambient credentials > login_options.identity_token (allowed empty).
+			// env > ambient credentials > login_options.identity_token > HCP Terraform
+			// workload identity token (all allowed empty).
 			identityToken, err := token.ResolveIdentityToken(ctx, cfg.Issuer, lo.IdentityToken.ValueString())
 			cfg.IdentityToken = identityToken
 			if err != nil {
