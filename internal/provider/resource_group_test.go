@@ -21,7 +21,9 @@ import (
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	advisory "chainguard.dev/sdk/proto/chainguard/platform/advisory/v2beta1"
+	billing "chainguard.dev/sdk/proto/chainguard/platform/billing/v2beta1"
 	clientsv2 "chainguard.dev/sdk/proto/chainguard/platform/clients/v2beta1"
+	entitlements "chainguard.dev/sdk/proto/chainguard/platform/entitlements/v2beta1"
 	iamv2 "chainguard.dev/sdk/proto/chainguard/platform/iam/v2beta1"
 	iamv2test "chainguard.dev/sdk/proto/chainguard/platform/iam/v2beta1/test"
 	libraries "chainguard.dev/sdk/proto/chainguard/platform/libraries/v2beta1"
@@ -42,13 +44,15 @@ type mockV2PlatformClients struct {
 
 var _ clientsv2.Clients = (*mockV2PlatformClients)(nil)
 
-func (m *mockV2PlatformClients) Advisory() advisory.Clients    { return nil }
-func (m *mockV2PlatformClients) IAM() iamv2.Clients            { return m.iamClients }
-func (m *mockV2PlatformClients) Libraries() libraries.Clients  { return nil }
-func (m *mockV2PlatformClients) Registry() registry.Clients    { return nil }
-func (m *mockV2PlatformClients) Versions() versions.Clients    { return nil }
-func (m *mockV2PlatformClients) Vulnerabilities() vuln.Clients { return nil }
-func (m *mockV2PlatformClients) Close() error                  { return nil }
+func (m *mockV2PlatformClients) Advisory() advisory.Clients         { return nil }
+func (m *mockV2PlatformClients) Billing() billing.Clients           { return nil }
+func (m *mockV2PlatformClients) Entitlements() entitlements.Clients { return nil }
+func (m *mockV2PlatformClients) IAM() iamv2.Clients                 { return m.iamClients }
+func (m *mockV2PlatformClients) Libraries() libraries.Clients       { return nil }
+func (m *mockV2PlatformClients) Registry() registry.Clients         { return nil }
+func (m *mockV2PlatformClients) Versions() versions.Clients         { return nil }
+func (m *mockV2PlatformClients) Vulnerabilities() vuln.Clients      { return nil }
+func (m *mockV2PlatformClients) Close() error                       { return nil }
 
 type propagationPlatformClients struct {
 	platform.Clients
