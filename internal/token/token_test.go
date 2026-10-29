@@ -12,6 +12,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -20,6 +22,9 @@ import (
 	"chainguard.dev/sdk/auth"
 	sdktoken "chainguard.dev/sdk/auth/token"
 	"github.com/sigstore/cosign/v2/pkg/providers"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	// Registers the github-actions ambient provider so providers.Enabled works
 	// in this package's acc test binary (see TestExchangeAmbientRefreshTargetsSessionIdentity).
 	_ "github.com/sigstore/cosign/v2/pkg/providers/github"
@@ -416,16 +421,35 @@ func TestRefreshChainguardTokenFamilyFailureFallsBack(t *testing.T) {
 	t.Setenv("TF_CHAINGUARD_IDENTITY_TOKEN", "")
 	testProvider.enabled = false
 
+	superseded, err := status.New(codes.Unauthenticated, "refresh token superseded").WithDetails(&errdetails.ErrorInfo{
+		Domain: "oidc.chainguard.dev",
+		Reason: "REFRESH_TOKEN_SUPERSEDED",
+	})
+	if err != nil {
+		t.Fatalf("building superseded status: %v", err)
+	}
+	parent := fakeRefreshToken(t, "https://issuer.example.dev", "https://console-api.example.dev", "parent")
+
+	// Each case refreshes twice. wantPresented is every refresh token handed
+	// to the issuer across both: a generic refusal leaves the token stored for
+	// the next run, a superseded one must never be presented again.
 	tests := []struct {
-		name       string
-		saveFamily bool
-		refreshErr error
+		name          string
+		saveFamily    bool
+		refreshErr    error
+		wantPresented []string
 	}{{
 		name: "no refresh token in the store",
 	}, {
-		name:       "exchange refused",
-		saveFamily: true,
-		refreshErr: errors.New("refresh refused"),
+		name:          "exchange refused",
+		saveFamily:    true,
+		refreshErr:    errors.New("refresh refused"),
+		wantPresented: []string{parent, parent},
+	}, {
+		name:          "presented token superseded",
+		saveFamily:    true,
+		refreshErr:    superseded.Err(),
+		wantPresented: []string{parent},
 	}}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -437,12 +461,14 @@ func TestRefreshChainguardTokenFamilyFailureFallsBack(t *testing.T) {
 				UseRefreshTokens: true,
 			}
 			if tc.saveFamily {
-				saveChainctlFamily(t, cfg, fakeRefreshToken(t, cfg.Issuer, cfg.Audience, "parent"))
+				saveChainctlFamily(t, cfg, parent)
 			}
 
 			origRefresh, origExchange := stsRefresh, stsExchange
 			t.Cleanup(func() { stsRefresh, stsExchange = origRefresh, origExchange })
-			stsRefresh = func(context.Context, LoginConfig, string) (string, string, error) {
+			var presented []string
+			stsRefresh = func(_ context.Context, _ LoginConfig, tok string) (string, string, error) {
+				presented = append(presented, tok)
 				return "", "", tc.refreshErr
 			}
 			access := fakeAccessToken(uidpOther)
@@ -465,6 +491,75 @@ func TestRefreshChainguardTokenFamilyFailureFallsBack(t *testing.T) {
 			if string(got) != access {
 				t.Errorf("access token: got = %q, want = %q", got, access)
 			}
+
+			if err := refreshChainguardToken(t.Context(), cfg, true); err != nil {
+				t.Fatalf("second refreshChainguardToken: %v", err)
+			}
+			if !slices.Equal(presented, tc.wantPresented) {
+				t.Errorf("presented: got = %v, want = %v", presented, tc.wantPresented)
+			}
 		})
+	}
+}
+
+// TestRefreshChainguardTokenSuccessorNotStored covers an exchange that
+// succeeds but whose successor the SDK cannot write: the access token the
+// exchange minted is still valid, so it is cached and no fallback
+// authentication runs.
+func TestRefreshChainguardTokenSuccessorNotStored(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("a read-only directory mode does not block writes on Windows")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("running as root ignores the read-only mode this test depends on")
+	}
+	isolateTokenCache(t)
+	cfg := LoginConfig{
+		Audience:         "https://console-api.example.dev",
+		Issuer:           "https://issuer.example.dev",
+		UseRefreshTokens: true,
+		// Set so a fallback reaches the stubbed exchange below rather than a
+		// browser login.
+		IdentityToken: "configured-oidc-token",
+	}
+	saveChainctlFamily(t, cfg, fakeRefreshToken(t, cfg.Issuer, cfg.Audience, "parent"))
+
+	// The SDK keeps families in this directory beside the audience
+	// directories; the stat fails loudly if it ever moves.
+	audiencePath, err := sdktoken.Path(sdktoken.KindRefresh, cfg.Audience)
+	if err != nil {
+		t.Fatalf("per-audience path: %v", err)
+	}
+	familiesDir := filepath.Join(filepath.Dir(filepath.Dir(audiencePath)), ".refresh-families")
+	if _, err := os.Stat(familiesDir); err != nil {
+		t.Fatalf("families directory: %v", err)
+	}
+
+	origRefresh, origExchange := stsRefresh, stsExchange
+	t.Cleanup(func() { stsRefresh, stsExchange = origRefresh, origExchange })
+	stsExchange = func(context.Context, LoginConfig, string, string) (string, error) {
+		t.Error("refresh fell back to the identity token exchange")
+		return "", errors.New("unexpected fallback")
+	}
+	access := fakeAccessToken(uidpDerived)
+	successor := fakeRefreshToken(t, cfg.Issuer, cfg.Audience, "successor")
+	stsRefresh = func(context.Context, LoginConfig, string) (string, string, error) {
+		// Read-only from here on, so the SDK cannot write the successor.
+		if err := os.Chmod(familiesDir, 0o500); err != nil {
+			t.Fatalf("chmod families directory: %v", err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(familiesDir, 0o700) })
+		return access, successor, nil
+	}
+
+	if err := refreshChainguardToken(t.Context(), cfg, true); err != nil {
+		t.Fatalf("refreshChainguardToken: %v", err)
+	}
+	got, err := sdktoken.Load(sdktoken.KindAccess, cfg.Audience, withAlias(cfg))
+	if err != nil {
+		t.Fatalf("load access token: %v", err)
+	}
+	if string(got) != access {
+		t.Errorf("access token: got = %q, want = %q", got, access)
 	}
 }
