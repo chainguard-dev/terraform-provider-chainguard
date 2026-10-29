@@ -7,6 +7,7 @@ package token
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -100,8 +101,15 @@ func refreshChainguardToken(ctx context.Context, cfg LoginConfig, forceRefresh b
 
 	// If configured to use refresh tokens, attempt to exchange it for a new access token.
 	if cfg.UseRefreshTokens {
-		accessToken, refreshToken, err = exchangeRefreshToken(ctx, cfg)
-		if err == nil && accessToken != "" && refreshToken != "" {
+		if cfg.IdentityID == "" {
+			accessToken, err = refreshFromFamily(ctx, cfg)
+		} else {
+			accessToken, refreshToken, err = exchangeRefreshToken(ctx, cfg)
+			if err == nil && refreshToken == "" {
+				err = errors.New("refresh exchange returned no refresh token")
+			}
+		}
+		if err == nil && accessToken != "" {
 			return saveTokens(accessToken, refreshToken, cfg)
 		}
 		// If refresh token exchange failed, fall through to login flow
@@ -163,15 +171,56 @@ func getChainguardToken(ctx context.Context, cfg LoginConfig) (accessToken strin
 	return login.Login(loginCtx, opts...)
 }
 
+// stsRefresh presents refreshToken to the issuer and returns the access token
+// and the refresh token the issuer answered with. A package var so tests can
+// substitute it without a live issuer; tests that swap it must not run in
+// parallel.
+var stsRefresh = func(ctx context.Context, cfg LoginConfig, refreshToken string) (accessToken, successor string, err error) {
+	return sts.New(cfg.Issuer, cfg.Audience, sts.WithUserAgent(cfg.UserAgent)).Refresh(ctx, refreshToken)
+}
+
+// refreshFromFamily exchanges the refresh token that covers cfg.Audience in the
+// SDK's refresh-token family store, which chainctl shares, and returns the new
+// access token. The SDK stores the successor refresh token itself.
+//
+// The exchange runs under the store's cross-process lock. Without it, the
+// provider and chainctl could both present the same token of a rotating
+// family, and the issuer treats the second presentation as replay and revokes
+// the family. chainctl writes no per-audience copy of a rotating family, so
+// the family store is the only place its refresh token can be read from.
+func refreshFromFamily(ctx context.Context, cfg LoginConfig) (string, error) {
+	tflog.Info(ctx, "exchanging refresh token for access token")
+	var accessToken string
+	err := sdktoken.Refresh(ctx, cfg.Audience, func(ctx context.Context, presented string) (string, error) {
+		access, successor, err := stsRefresh(ctx, cfg, presented)
+		if err != nil {
+			return "", sts.AsSupersededRefreshToken(err)
+		}
+		accessToken = access
+		return successor, nil
+	}, sdktoken.WithIssuer(cfg.Issuer))
+	if errors.Is(err, sdktoken.ErrSuccessorNotStored) {
+		// The access token is valid, and failing would not bring back the
+		// refresh token the exchange superseded.
+		tflog.Warn(ctx, fmt.Sprintf("%v; the next refresh needs a new login", err))
+		return accessToken, nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("refreshing from the token family: %w", err)
+	}
+	return accessToken, nil
+}
+
+// exchangeRefreshToken exchanges the provider's own refresh token stored under
+// the identity alias. The family store does not support aliases, and chainctl
+// never writes under one, so a pinned identity keeps its own token here.
 func exchangeRefreshToken(ctx context.Context, cfg LoginConfig) (cgToken string, refreshToken string, err error) {
 	tflog.Info(ctx, "exchanging refresh token for access token")
 	refreshTokenBytes, err := sdktoken.Load(sdktoken.KindRefresh, cfg.Audience, withAlias(cfg))
 	if err != nil {
 		return "", "", fmt.Errorf("failed to load refresh token: %w", err)
 	}
-
-	e := sts.New(cfg.Issuer, cfg.Audience, sts.WithUserAgent(cfg.UserAgent))
-	return e.Refresh(ctx, string(refreshTokenBytes))
+	return stsRefresh(ctx, cfg, string(refreshTokenBytes))
 }
 
 // ResolveIdentityToken applies the OIDC identity token source precedence:
