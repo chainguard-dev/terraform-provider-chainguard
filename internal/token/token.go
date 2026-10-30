@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -224,19 +225,55 @@ func exchangeRefreshToken(ctx context.Context, cfg LoginConfig) (cgToken string,
 }
 
 // ResolveIdentityToken applies the OIDC identity token source precedence:
-// TF_CHAINGUARD_IDENTITY_TOKEN env > ambient credentials > fallback. The ambient
-// branch mints a fresh token on every call, so reusing this at refresh time
-// re-mints rather than reusing a possibly-expired token. It is the single source
-// of precedence shared by provider Configure and refresh.
+// TF_CHAINGUARD_IDENTITY_TOKEN env > ambient credentials > fallback > HCP
+// Terraform workload identity token. The ambient branch mints a fresh token on
+// every call, so reusing this at refresh time re-mints rather than reusing a
+// possibly-expired token. It is the single source of precedence shared by
+// provider Configure and refresh.
 func ResolveIdentityToken(ctx context.Context, issuer, fallback string) (string, error) {
 	switch {
 	case os.Getenv("TF_CHAINGUARD_IDENTITY_TOKEN") != "":
 		return os.Getenv("TF_CHAINGUARD_IDENTITY_TOKEN"), nil
 	case providers.Enabled(ctx):
 		return providers.Provide(ctx, issuer)
-	default:
+	case fallback != "":
 		return fallback, nil
+	default:
+		return hcpTerraformIdentityToken(ctx, issuer), nil
 	}
+}
+
+// hcpTerraformIdentityToken returns the workload identity token that HCP
+// Terraform injects into each plan and apply, or "" outside HCP Terraform.
+// HCP Terraform exposes the token only as an environment variable, which a
+// Terraform configuration cannot read, so the provider reads it directly.
+//
+// A workspace that sets TFC_WORKLOAD_IDENTITY_AUDIENCE gets
+// TFC_WORKLOAD_IDENTITY_TOKEN. A workspace that sets the tagged
+// TFC_WORKLOAD_IDENTITY_AUDIENCE_CHAINGUARD gets a separate
+// TFC_WORKLOAD_IDENTITY_TOKEN_CHAINGUARD, which leaves the untagged token free
+// for other tools. The tagged token wins when both are present.
+//
+// The untagged token may have been minted for another tool, so it is used only
+// when its audience includes the Chainguard issuer. Otherwise the provider
+// would send another service's credential to Chainguard. The tagged token
+// exists only for Chainguard, so it needs no check.
+func hcpTerraformIdentityToken(ctx context.Context, issuer string) string {
+	if tok := os.Getenv("TFC_WORKLOAD_IDENTITY_TOKEN_CHAINGUARD"); tok != "" {
+		return tok
+	}
+
+	tok := os.Getenv("TFC_WORKLOAD_IDENTITY_TOKEN")
+	if tok == "" {
+		return ""
+	}
+	audiences, err := auth.ExtractAudiences(tok)
+	if err != nil || !slices.Contains(audiences, issuer) {
+		tflog.Warn(ctx, fmt.Sprintf("ignoring TFC_WORKLOAD_IDENTITY_TOKEN: its audience %v does not include %q; "+
+			"set TFC_WORKLOAD_IDENTITY_AUDIENCE to %q, or use TFC_WORKLOAD_IDENTITY_AUDIENCE_CHAINGUARD", audiences, issuer, issuer))
+		return ""
+	}
+	return tok
 }
 
 // identityTokenForExchange resolves the OIDC token to exchange on refresh, falling
