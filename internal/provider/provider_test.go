@@ -18,7 +18,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 
 	"chainguard.dev/sdk/auth"
+	clientsv2ga "chainguard.dev/sdk/proto/chainguard/platform/clients/v2"
 	clientsv2 "chainguard.dev/sdk/proto/chainguard/platform/clients/v2beta1"
+	iamv2ga "chainguard.dev/sdk/proto/chainguard/platform/iam/v2"
 	regv2 "chainguard.dev/sdk/proto/chainguard/platform/registry/v2beta1"
 	events "chainguard.dev/sdk/proto/platform/events/v1"
 	iam "chainguard.dev/sdk/proto/platform/iam/v1"
@@ -346,6 +348,59 @@ func testAccV2Client(t *testing.T) clientsv2.Clients {
 		t.Fatalf("failed to create v2beta1 clients for CheckDestroy: %s", err)
 	}
 	return clients
+}
+
+// testAccV2GAClient creates v2 API clients for CheckDestroy verification.
+// Returns nil if acceptance test env vars are not set (non-acceptance test runs).
+func testAccV2GAClient(t *testing.T) clientsv2ga.Clients {
+	t.Helper()
+	consoleAPI := os.Getenv(EnvAccConsoleAPI)
+	audience := os.Getenv(EnvAccAudience)
+	if consoleAPI == "" || audience == "" {
+		return nil
+	}
+	ctx := context.Background()
+
+	cfg := token.LoginConfig{
+		Audience:  audience,
+		Issuer:    strings.Replace(consoleAPI, "console-api", "issuer", 1),
+		UserAgent: "terraform-provider-chainguard/acctest",
+	}
+	tok, err := token.Get(ctx, cfg, false)
+	if err != nil {
+		t.Fatalf("failed to get token for CheckDestroy: %s", err)
+	}
+	cred := auth.NewFromToken(ctx, fmt.Sprintf("Bearer %s", tok), false)
+	clients, err := clientsv2ga.NewClients(ctx, consoleAPI, UserAgent, cred, retryDialOption())
+	if err != nil {
+		t.Fatalf("failed to create v2 clients for CheckDestroy: %s", err)
+	}
+	return clients
+}
+
+// checkAuthPolicyDestroy verifies destroying the auth policy resource returned
+// the organization's session length to the default.
+func checkAuthPolicyDestroy(clients clientsv2ga.Clients) func(*terraform.State) error {
+	return func(s *terraform.State) error {
+		if clients == nil {
+			return nil
+		}
+		ctx := context.Background()
+		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "chainguard_auth_policy" {
+				continue
+			}
+			id := rs.Primary.ID
+			policy, err := clients.IAM().AuthPoliciesService().GetAuthPolicy(ctx, &iamv2ga.GetAuthPolicyRequest{Uid: id})
+			if err != nil {
+				return fmt.Errorf("failed to read auth policy %s after destroy: %w", id, err)
+			}
+			if d := policy.GetSessionDuration(); d != nil {
+				return fmt.Errorf("auth policy %s still has session_duration %s after destroy", id, d.AsDuration())
+			}
+		}
+		return nil
+	}
 }
 
 // checkImageOverlayDestroy verifies the image overlay resource was deleted.
