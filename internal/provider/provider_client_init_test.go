@@ -40,9 +40,12 @@ func TestSetupClientProxyAuthNeedsNoToken(t *testing.T) {
 		if pd.clientV2 != nil {
 			_ = pd.clientV2.Close()
 		}
+		if pd.clientV2GA != nil {
+			_ = pd.clientV2GA.Close()
+		}
 	})
-	if pd.client == nil || pd.clientV2 == nil {
-		t.Fatal("proxy authentication did not initialize both clients")
+	if pd.client == nil || pd.clientV2 == nil || pd.clientV2GA == nil {
+		t.Fatal("proxy authentication did not initialize every client")
 	}
 }
 

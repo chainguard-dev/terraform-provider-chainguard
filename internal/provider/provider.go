@@ -32,6 +32,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"chainguard.dev/sdk/auth"
+	clientsv2ga "chainguard.dev/sdk/proto/chainguard/platform/clients/v2"
 	clientsv2 "chainguard.dev/sdk/proto/chainguard/platform/clients/v2beta1"
 	"chainguard.dev/sdk/proto/platform"
 	"github.com/chainguard-dev/terraform-provider-chainguard/internal/protoutil"
@@ -140,6 +141,7 @@ func (p *Provider) DataSources(_ context.Context) []func() datasource.DataSource
 func (p *Provider) Resources(_ context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		NewAccountAssociationsResource,
+		NewAuthPolicyResource,
 		NewDeploymentResource,
 		NewGroupResource,
 		NewGroupInviteResource,
@@ -244,7 +246,10 @@ only consider the filtered versions.`,
 type providerData struct {
 	client   platform.Clients
 	clientV2 clientsv2.Clients
-	clientMu sync.Mutex
+	// clientV2GA reaches the services published only at v2, not v2beta1,
+	// such as the IAM AuthPoliciesService.
+	clientV2GA clientsv2ga.Clients
+	clientMu   sync.Mutex
 
 	consoleAPI          string
 	loginConfig         token.LoginConfig
@@ -428,7 +433,13 @@ func (pd *providerData) setupClient(ctx context.Context) error {
 		return fmt.Errorf("failed to create v2beta1 API clients: %s", err.Error())
 	}
 
+	v2ga, err := clientsv2ga.NewClients(ctx, pd.consoleAPI, UserAgent, cred, retryDialOption())
+	if err != nil {
+		return fmt.Errorf("failed to create v2 API clients: %s", err.Error())
+	}
+
 	pd.client = clients
 	pd.clientV2 = v2
+	pd.clientV2GA = v2ga
 	return nil
 }
