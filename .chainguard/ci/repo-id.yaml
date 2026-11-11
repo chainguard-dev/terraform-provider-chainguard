@@ -1,0 +1,13 @@
+# Throwaway: one trivial check so Chainguard Checks records a run for this
+# repository. Do not merge.
+version: 1
+
+environment:
+  packages: [busybox]
+
+checks:
+  hello:
+    description: Does nothing.
+    trigger: [presubmit]
+    timeout: 1m
+    cmd: ["true"]
