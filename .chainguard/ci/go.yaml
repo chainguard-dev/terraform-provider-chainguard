@@ -1,0 +1,147 @@
+# Copyright 2026 Chainguard, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+# Build, lint, and the acceptance tests on each supported Terraform version.
+version: 1
+
+environment:
+  packages:
+    - go-1.27~1.27
+    - bash
+    - git
+  vars:
+    GOTOOLCHAIN: local
+    GOTMPDIR: /var/tmp
+
+checks:
+  build:
+    description: Builds the provider.
+    trigger: [presubmit, postsubmit]
+    timeout: 10m
+    network:
+      egress: &goproxy
+        - proxy.golang.org
+        - sum.golang.org
+        - storage.googleapis.com
+    cmd: [go, build, -v, .]
+
+  lint:
+    description: >-
+      golangci-lint over the module, then go generate (terraform fmt on the
+      examples and tfplugindocs), failing if it leaves the tree dirty.
+    environment:
+      packages:
+        - go-1.27~1.27
+        - bash
+        - git
+        - golangci-lint~2.15
+        - terraform-1.17~1.17
+      vars:
+        GOTOOLCHAIN: local
+        GOTMPDIR: /var/tmp
+        CHECKPOINT_DISABLE: "1"
+    trigger: [presubmit, postsubmit]
+    resources: medium
+    timeout: 15m
+    network:
+      egress: *goproxy
+    steps:
+      - name: golangci-lint
+        cmd: golangci-lint run
+      - name: generate
+        script: |
+          go generate ./...
+          git diff --compact-summary --exit-code
+
+  # Every terraform-1.x package installs /usr/bin/terraform, so each version
+  # is its own check with its own environment.
+  acceptance-1-14:
+    description: &description >-
+      Runs go test ./internal/... with TF_ACC=1 against the acceptance test
+      group on console-api.enforce.dev. The host authenticates the requests
+      with the acceptance identity (identities.yaml), which a pull request
+      only gets when its opener is in the member subring and its head is
+      approved. Without it the tests fail on auth, so rerun them after
+      approving. The tests that
+      create a root group or a throwaway organization skip, since the
+      identity is scoped to the test group.
+    identity: acceptance
+    environment:
+      packages:
+        - go-1.27~1.27
+        - bash
+        - git
+        - terraform-1.14~1.14
+      vars: &vars
+        GOTOOLCHAIN: local
+        GOTMPDIR: /var/tmp
+        CHECKPOINT_DISABLE: "1"
+        TF_ACC: "1"
+        TF_CHAINGUARD_PROXY_AUTH: "true"
+        TF_ACC_GROUP_ID: 95f659cf6ed9407b6cd7dc67101c14c3bf999dcc/b57570622bb0eba2
+        TF_ACC_CONSOLE_API: https://console-api.enforce.dev
+        TF_ACC_AUDIENCE: https://console-api.enforce.dev
+        TF_ACC_ISSUER: https://issuer.enforce.dev
+    trigger: [presubmit, postsubmit]
+    resources: medium
+    timeout: 20m
+    network:
+      egress: &egress
+        - proxy.golang.org
+        - sum.golang.org
+        - storage.googleapis.com
+        - console-api.enforce.dev
+        - issuer.enforce.dev
+        - justtrustme.dev
+    cmd: &test [go, test, -v, -cover, -count=1, ./internal/...]
+
+  acceptance-1-15:
+    description: *description
+    identity: acceptance
+    environment:
+      packages:
+        - go-1.27~1.27
+        - bash
+        - git
+        - terraform-1.15~1.15
+      vars: *vars
+    trigger: [presubmit, postsubmit]
+    resources: medium
+    timeout: 20m
+    network:
+      egress: *egress
+    cmd: *test
+
+  acceptance-1-16:
+    description: *description
+    identity: acceptance
+    environment:
+      packages:
+        - go-1.27~1.27
+        - bash
+        - git
+        - terraform-1.16~1.16
+      vars: *vars
+    trigger: [presubmit, postsubmit]
+    resources: medium
+    timeout: 20m
+    network:
+      egress: *egress
+    cmd: *test
+
+  acceptance-1-17:
+    description: *description
+    identity: acceptance
+    environment:
+      packages:
+        - go-1.27~1.27
+        - bash
+        - git
+        - terraform-1.17~1.17
+      vars: *vars
+    trigger: [presubmit, postsubmit]
+    resources: medium
+    timeout: 20m
+    network:
+      egress: *egress
+    cmd: *test

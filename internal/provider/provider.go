@@ -31,7 +31,6 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 
-	"chainguard.dev/sdk/auth"
 	clientsv2ga "chainguard.dev/sdk/proto/chainguard/platform/clients/v2"
 	clientsv2 "chainguard.dev/sdk/proto/chainguard/platform/clients/v2beta1"
 	"chainguard.dev/sdk/proto/platform"
@@ -370,17 +369,6 @@ func (p *Provider) Configure(ctx context.Context, req provider.ConfigureRequest,
 
 	resp.DataSourceData = d
 	resp.ResourceData = d
-}
-
-// newPlatformClients fetches a Chainguard token for the given audience and creates new platform gRPC clients.
-func newPlatformClients(ctx context.Context, token, consoleAPI string) (platform.Clients, error) {
-	cred := auth.NewFromToken(ctx, fmt.Sprintf("Bearer %s", token), false)
-	ctx = platform.WithUserAgent(ctx, UserAgent)
-	clients, err := platform.NewPlatformClients(ctx, consoleAPI, cred, retryDialOption())
-	if err != nil {
-		return nil, err
-	}
-	return clients, nil
 }
 
 // errorToDiagnostic converts an error into a diag.Diagnostic.
