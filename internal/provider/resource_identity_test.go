@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -651,6 +652,12 @@ func randString(n int) string {
 }
 
 func TestAccResourceIdentityUsage(t *testing.T) {
+	// The test exchanges an external token for the identities it creates.
+	// Under proxy authentication the host answers every token exchange itself,
+	// and only for its own identity, so that exchange is refused.
+	if proxyAuth, _ := strconv.ParseBool(os.Getenv(EnvChainguardProxyAuth)); proxyAuth {
+		t.Skip("TF_CHAINGUARD_PROXY_AUTH is set: the host refuses token exchanges for other identities")
+	}
 	clients := testAccPlatformClient(t)
 	group := os.Getenv("TF_ACC_GROUP_ID")
 
