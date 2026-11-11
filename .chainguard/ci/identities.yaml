@@ -1,0 +1,49 @@
+# Copyright 2026 Chainguard, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+# A pull request reaches subring `member` when its opener is a chainguard-dev
+# member or dependabot. The acceptance identity can write to the test group, so
+# it is held there and also behind the review gate: a presubmit gets it only
+# once a reviewer with write access, who did not author or push to the pull
+# request, approves its exact head, and the acceptance checks are rerun. Fork
+# pull requests never get it, so push branches to this repository instead. The
+# merged commit runs them with it on postsubmit.
+version: 1
+
+trust:
+  groups:
+    members: {github: {org: chainguard-dev}}
+    bots:
+      github:
+        app:
+          dependabot: 49699333
+  subrings:
+    member: {authors: [members, bots]}
+  github_token: 1.member
+
+identities:
+  # The target identity trusts issuer https://issuer.enforce.dev, subject
+  # chainguard:<repository-id>:acceptance and the exchange audience below. Its
+  # IAM grants on the test group decide what the tests may do.
+  acceptance:
+    ring: 1.member
+    approval: required
+    description: Creates and deletes resources in the acceptance test group.
+    checks:
+      - go.checks.acceptance-1-14
+      - go.checks.acceptance-1-15
+      - go.checks.acceptance-1-16
+      - go.checks.acceptance-1-17
+    audiences:
+      - urn:chainguard:terraform-provider-chainguard:acceptance
+    chainguard:
+      console-api.enforce.dev:
+        identity: 95f659cf6ed9407b6cd7dc67101c14c3bf999dcc/6e1b3e07fd500670
+        exchange_audience: urn:chainguard:terraform-provider-chainguard:acceptance
+        scopes:
+          - 95f659cf6ed9407b6cd7dc67101c14c3bf999dcc/b57570622bb0eba2
+    allow:
+      - run: presubmit
+        target_ref: refs/heads/main
+      - run: postsubmit
+        ref: refs/heads/main

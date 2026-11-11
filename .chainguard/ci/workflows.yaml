@@ -1,0 +1,28 @@
+# Copyright 2026 Chainguard, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+# Lints the GitHub Actions workflows. zizmor stays on GitHub Actions until the
+# workflows that Chainguard Checks replaces are removed.
+version: 1
+
+environment:
+  packages: [actionlint~1.7, shellcheck~0.11, bash, findutils, grep]
+
+checks:
+  actionlint:
+    when:
+      changed:
+        - ".github/workflows/**"
+        - ".github/actions/**"
+        - ".chainguard/ci/workflows.yaml"
+    description: >-
+      Runs actionlint, with shellcheck on, over every workflow under
+      .github/workflows.
+    trigger: [presubmit, postsubmit]
+    timeout: 5m
+    shell: bash
+    script: |
+      set -eu
+      mapfile -t yamls < <(find .github/workflows -name "*.y*ml" | grep -v dependabot.)
+      actionlint "${yamls[@]}"
+
