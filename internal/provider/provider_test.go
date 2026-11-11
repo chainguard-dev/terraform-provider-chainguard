@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	"google.golang.org/grpc/credentials"
 
 	"chainguard.dev/sdk/auth"
 	clientsv2ga "chainguard.dev/sdk/proto/chainguard/platform/clients/v2"
@@ -61,6 +63,23 @@ func testAccPlatformClient(t *testing.T) platform.Clients {
 	}
 	ctx := context.Background()
 
+	cred := testAccCredential(t, consoleAPI, audience)
+	clients, err := platform.NewPlatformClients(platform.WithUserAgent(ctx, UserAgent), consoleAPI, cred, retryDialOption())
+	if err != nil {
+		t.Fatalf("failed to create platform clients for CheckDestroy: %s", err)
+	}
+	return clients
+}
+
+// testAccCredential returns the credential for the CheckDestroy clients. With
+// TF_CHAINGUARD_PROXY_AUTH the host attaches it to each request, so there is
+// none to fetch.
+func testAccCredential(t *testing.T, consoleAPI, audience string) credentials.PerRPCCredentials {
+	t.Helper()
+	if proxyAuth, _ := strconv.ParseBool(os.Getenv(EnvChainguardProxyAuth)); proxyAuth {
+		return nil
+	}
+	ctx := context.Background()
 	cfg := token.LoginConfig{
 		Audience:  audience,
 		Issuer:    strings.Replace(consoleAPI, "console-api", "issuer", 1),
@@ -70,11 +89,7 @@ func testAccPlatformClient(t *testing.T) platform.Clients {
 	if err != nil {
 		t.Fatalf("failed to get token for CheckDestroy: %s", err)
 	}
-	clients, err := newPlatformClients(ctx, string(tok), consoleAPI)
-	if err != nil {
-		t.Fatalf("failed to create platform clients for CheckDestroy: %s", err)
-	}
-	return clients
+	return auth.NewFromToken(ctx, fmt.Sprintf("Bearer %s", tok), false)
 }
 
 // checkGroupDestroy verifies the group resource was deleted.
@@ -333,16 +348,7 @@ func testAccV2Client(t *testing.T) clientsv2.Clients {
 	}
 	ctx := context.Background()
 
-	cfg := token.LoginConfig{
-		Audience:  audience,
-		Issuer:    strings.Replace(consoleAPI, "console-api", "issuer", 1),
-		UserAgent: "terraform-provider-chainguard/acctest",
-	}
-	tok, err := token.Get(ctx, cfg, false)
-	if err != nil {
-		t.Fatalf("failed to get token for CheckDestroy: %s", err)
-	}
-	cred := auth.NewFromToken(ctx, fmt.Sprintf("Bearer %s", tok), false)
+	cred := testAccCredential(t, consoleAPI, audience)
 	clients, err := clientsv2.NewClients(ctx, consoleAPI, UserAgent, cred, retryDialOption())
 	if err != nil {
 		t.Fatalf("failed to create v2beta1 clients for CheckDestroy: %s", err)
@@ -361,16 +367,7 @@ func testAccV2GAClient(t *testing.T) clientsv2ga.Clients {
 	}
 	ctx := context.Background()
 
-	cfg := token.LoginConfig{
-		Audience:  audience,
-		Issuer:    strings.Replace(consoleAPI, "console-api", "issuer", 1),
-		UserAgent: "terraform-provider-chainguard/acctest",
-	}
-	tok, err := token.Get(ctx, cfg, false)
-	if err != nil {
-		t.Fatalf("failed to get token for CheckDestroy: %s", err)
-	}
-	cred := auth.NewFromToken(ctx, fmt.Sprintf("Bearer %s", tok), false)
+	cred := testAccCredential(t, consoleAPI, audience)
 	clients, err := clientsv2ga.NewClients(ctx, consoleAPI, UserAgent, cred, retryDialOption())
 	if err != nil {
 		t.Fatalf("failed to create v2 clients for CheckDestroy: %s", err)
