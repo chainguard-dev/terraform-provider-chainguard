@@ -108,7 +108,7 @@ resource "chainguard_rolebinding" "cg-binding" {
   for_each = toset(local.filtered_identities)
   identity = each.value
   group    = "1a6bcc003e8fac173e2c60c98011c79f5d561901"
-  role     = data.chainguard_roles.viewer.items[0].id
+  role     = data.chainguard_role.viewer.items[0].id
 }
 ```
 
@@ -139,6 +139,6 @@ data "chainguard_identity" "ajaykchainguardbinding" {
 resource "chainguard_rolebinding" "ajayk-binding" {
   identity = data.chainguard_identity.ajaykchainguardbinding.id
   group    = "1a6bcc003e8fac173e2c60c98011c79f5d561901"
-  role     = data.chainguard_roles.viewer.items[0].id
+  role     = data.chainguard_role.viewer.items[0].id
 }
 ```
