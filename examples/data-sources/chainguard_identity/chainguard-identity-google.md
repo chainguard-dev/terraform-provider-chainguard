@@ -85,7 +85,7 @@ Finally, grant access to a Chainguard group using the identity:
 resource "chainguard_rolebinding" "ajaychainguardrolebinding" {
   identity = data.chainguard_identity.ajaychainguardbinding.id
   group    = "1a6bcc003e8fac173e2c60c98011c79f5d561901"
-  role     = data.chainguard_roles.viewer.items[0].id
+  role     = data.chainguard_role.viewer.items[0].id
 }
 ```
 
