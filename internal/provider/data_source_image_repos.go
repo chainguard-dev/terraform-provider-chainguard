@@ -116,6 +116,7 @@ func (d *imageReposDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 								"apko_overlay": types.StringType,
 							},
 						},
+						"custom_overlay": customOverlayDataSourceAttribute(),
 						"aliases": schema.ListAttribute{
 							Description: "Known aliases for a given image.",
 							Computed:    true,

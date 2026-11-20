@@ -23,6 +23,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	registry "chainguard.dev/sdk/proto/platform/registry/v1"
@@ -57,10 +58,11 @@ type imageRepoResourceModel struct {
 	SyncConfig  types.Object `tfsdk:"sync_config"`
 	Description types.String `tfsdk:"description"`
 	// Image tier (e.g. APPLICATION, BASE, etc.)
-	Tier       types.String `tfsdk:"tier"`
-	Aliases    types.List   `tfsdk:"aliases"`
-	ActiveTags types.List   `tfsdk:"active_tags"`
-	CreateTime types.String `tfsdk:"create_time"`
+	Tier          types.String        `tfsdk:"tier"`
+	Aliases       types.List          `tfsdk:"aliases"`
+	ActiveTags    types.List          `tfsdk:"active_tags"`
+	CreateTime    types.String        `tfsdk:"create_time"`
+	CustomOverlay *customOverlayModel `tfsdk:"custom_overlay"`
 }
 
 type syncConfig struct {
@@ -202,6 +204,7 @@ func (r *imageRepoResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 					},
 				},
 			},
+			"custom_overlay": customOverlayResourceBlock(),
 		},
 	}
 }
@@ -353,21 +356,28 @@ func (r *imageRepoResource) Create(ctx context.Context, req resource.CreateReque
 		return
 	}
 
+	overlay, diags := customOverlayToProto(ctx, plan.CustomOverlay)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	repo, err := r.prov.client.Registry().Registry().CreateRepo(ctx, &registry.CreateRepoRequest{
 		ParentId: plan.ParentID.ValueString(),
 		Repo: &registry.Repo{
-			Name:        plan.Name.ValueString(),
-			Bundles:     bundles,
-			Readme:      plan.Readme.ValueString(),
-			SyncConfig:  sc,
-			CatalogTier: registry.CatalogTier(registry.CatalogTier_value[plan.Tier.ValueString()]),
-			Aliases:     aliases,
-			ActiveTags:  activeTags,
-			Description: plan.Description.ValueString(),
+			Name:          plan.Name.ValueString(),
+			Bundles:       bundles,
+			Readme:        plan.Readme.ValueString(),
+			SyncConfig:    sc,
+			CatalogTier:   registry.CatalogTier(registry.CatalogTier_value[plan.Tier.ValueString()]),
+			Aliases:       aliases,
+			ActiveTags:    activeTags,
+			Description:   plan.Description.ValueString(),
+			CustomOverlay: overlay,
 		},
 	})
 	if err != nil {
-		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to create image repo"))
+		resp.Diagnostics.Append(overlayErrorDiagnostic(err, "failed to create image repo"))
 		return
 	}
 
@@ -387,8 +397,8 @@ func (r *imageRepoResource) Create(ctx context.Context, req resource.CreateReque
 			return
 		}
 		// Populate computed fields from API response
-		if repo.SyncConfig.Expiration != nil && !repo.SyncConfig.Expiration.AsTime().IsZero() {
-			cfg.Expiration = types.StringValue(repo.SyncConfig.Expiration.AsTime().Format(time.RFC3339))
+		if exp := formatExpiration(repo.SyncConfig.Expiration); exp != "" {
+			cfg.Expiration = types.StringValue(exp)
 		}
 		cfg.UniqueTags = types.BoolValue(repo.SyncConfig.UniqueTags)
 		cfg.GracePeriod = types.BoolValue(repo.SyncConfig.GracePeriod)
@@ -470,10 +480,7 @@ func (r *imageRepoResource) Read(ctx context.Context, req resource.ReadRequest, 
 			return
 		}
 		// Convert API expiration to string, treating zero time as empty
-		apiExpiration := ""
-		if repo.SyncConfig.Expiration != nil && !repo.SyncConfig.Expiration.AsTime().IsZero() {
-			apiExpiration = repo.SyncConfig.Expiration.AsTime().Format(time.RFC3339)
-		}
+		apiExpiration := formatExpiration(repo.SyncConfig.Expiration)
 		update := (sc.Source.ValueString() != repo.SyncConfig.Source) ||
 			(sc.Expiration.ValueString() != apiExpiration) ||
 			(sc.UniqueTags.ValueBool() != repo.SyncConfig.UniqueTags) ||
@@ -522,8 +529,53 @@ func (r *imageRepoResource) Read(ctx context.Context, req resource.ReadRequest, 
 		}
 	}
 
+	// Refresh custom_overlay from the API, comparing normalized protos so a
+	// cleared overlay (which reads back as an empty non-nil message) never
+	// produces a perpetual diff against an absent block.
+	stateOverlay, diags := customOverlayToProto(ctx, state.CustomOverlay)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	apiOverlay := normalizeCustomOverlay(repo.CustomOverlay)
+	if !proto.Equal(stateOverlay, apiOverlay) {
+		if state.CustomOverlay == nil && apiOverlay != nil {
+			// Adopt an overlay set outside Terraform (console/chainctl)
+			// rather than ignoring it: updates replace the whole repo, so an
+			// unmanaged overlay would otherwise be silently wiped by the next
+			// apply. Adopting makes the plan show the removal honestly.
+			resp.Diagnostics.AddWarning(
+				"custom_overlay set outside of Terraform",
+				fmt.Sprintf("Image repo %s has a custom assembly overlay that was set outside of Terraform "+
+					"(e.g. via the Chainguard Console or chainctl). It has been recorded in state; the next plan "+
+					"will propose removing it. To keep it, add a matching custom_overlay block to your configuration.",
+					state.ID.ValueString()),
+			)
+		}
+		overlayModel, diags := customOverlayV1ToModel(ctx, apiOverlay)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		state.CustomOverlay = overlayModel
+	}
+
 	// Set state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+}
+
+// formatExpiration renders a sync_config expiration for state. Precision
+// matters: UpdateRepo is a full PUT and the server compares the echoed
+// expiration against the stored one nanosecond-exact when deciding whether
+// the caller (illegally) changed it, so a truncated echo of a
+// server-stamped timestamp is rejected. RFC3339Nano keeps the exact
+// instant while remaining parseable by time.RFC3339 (and checkRFC3339).
+// Returns "" for nil or zero timestamps.
+func formatExpiration(ts *timestamppb.Timestamp) string {
+	if ts == nil || ts.AsTime().IsZero() {
+		return ""
+	}
+	return ts.AsTime().Format(time.RFC3339Nano)
 }
 
 // Update updates the resource and sets the updated Terraform state on success.
@@ -617,19 +669,29 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 		return
 	}
 
+	// Convert the planned overlay; a nil result (block removed or empty)
+	// clears the overlay on the platform, since UpdateRepo is a full
+	// replacement of the repo.
+	overlay, overlayDiags := customOverlayToProto(ctx, data.CustomOverlay)
+	resp.Diagnostics.Append(overlayDiags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	repo, err := r.prov.client.Registry().Registry().UpdateRepo(ctx, &registry.Repo{
-		Id:          data.ID.ValueString(),
-		Name:        data.Name.ValueString(),
-		Bundles:     bundles,
-		Readme:      data.Readme.ValueString(),
-		Description: data.Description.ValueString(),
-		SyncConfig:  sc,
-		CatalogTier: registry.CatalogTier(registry.CatalogTier_value[data.Tier.ValueString()]),
-		Aliases:     aliases,
-		ActiveTags:  activeTags,
+		Id:            data.ID.ValueString(),
+		Name:          data.Name.ValueString(),
+		Bundles:       bundles,
+		Readme:        data.Readme.ValueString(),
+		Description:   data.Description.ValueString(),
+		SyncConfig:    sc,
+		CatalogTier:   registry.CatalogTier(registry.CatalogTier_value[data.Tier.ValueString()]),
+		Aliases:       aliases,
+		ActiveTags:    activeTags,
+		CustomOverlay: overlay,
 	})
 	if err != nil {
-		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to update image repo"))
+		resp.Diagnostics.Append(overlayErrorDiagnostic(err, "failed to update image repo"))
 		return
 	}
 
@@ -659,8 +721,8 @@ func (r *imageRepoResource) Update(ctx context.Context, req resource.UpdateReque
 			return
 		}
 		// Populate all computed fields from API response (don't overwrite Source)
-		if repo.SyncConfig.Expiration != nil && !repo.SyncConfig.Expiration.AsTime().IsZero() {
-			cfg.Expiration = types.StringValue(repo.SyncConfig.Expiration.AsTime().Format(time.RFC3339))
+		if exp := formatExpiration(repo.SyncConfig.Expiration); exp != "" {
+			cfg.Expiration = types.StringValue(exp)
 		}
 		cfg.UniqueTags = types.BoolValue(repo.SyncConfig.UniqueTags)
 		cfg.GracePeriod = types.BoolValue(repo.SyncConfig.GracePeriod)
