@@ -95,7 +95,7 @@ resource "chainguard_rolebinding" "binding" {
   for_each = toset(local.filtered_identities)
   identity = each.value
   group    = "1a6bcc003e8fac173e2c60c98011c79f5d561901"
-  role     = data.chainguard_roles.viewer.items[0].id
+  role     = data.chainguard_role.viewer.items[0].id
 }
 ```
 
@@ -124,6 +124,6 @@ Finally, grant access to a Chainguard group using the identity.
 resource "chainguard_rolebinding" "nfsmith-binding" {
   identity = data.chainguard_identity.nfsmith.id
   group    = "1a6bcc003e8fac173e2c60c98011c79f5d561901"
-  role     = data.chainguard_roles.viewer.items[0].id
+  role     = data.chainguard_role.viewer.items[0].id
 }
 ```
