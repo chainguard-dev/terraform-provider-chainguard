@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	apkotypes "chainguard.dev/apko/pkg/build/types"
+	"chainguard.dev/apko/pkg/build/types/registryconv"
 	v1 "chainguard.dev/sdk/proto/platform/common/v1"
 	registry "chainguard.dev/sdk/proto/platform/registry/v1"
 	"github.com/chainguard-dev/terraform-provider-chainguard/internal/validators"
@@ -112,7 +113,7 @@ func (r *BuildResource) Create(ctx context.Context, req resource.CreateRequest, 
 		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to parse configuration"))
 		return
 	}
-	cfg := registry.ToApkoProto(*ic)
+	cfg := registryconv.ToApkoProto(*ic)
 
 	build, err := r.prov.client.Registry().Apko().BuildImage(ctx, &registry.BuildImageRequest{
 		Config:    cfg,
@@ -172,7 +173,7 @@ func (r *BuildResource) Read(ctx context.Context, req resource.ReadRequest, resp
 				resp.Diagnostics.Append(errorToDiagnostic(err, "failed to parse configuration"))
 				return
 			}
-			cfg := registry.ToApkoProto(*cfgRaw)
+			cfg := registryconv.ToApkoProto(*cfgRaw)
 			want, err := r.prov.client.Registry().Apko().ResolveConfig(ctx, &registry.ResolveConfigRequest{
 				Config:   cfg,
 				RepoUidp: data.Repo.ValueString(),
@@ -187,7 +188,7 @@ func (r *BuildResource) Read(ctx context.Context, req resource.ReadRequest, resp
 				resp.Diagnostics.Append(errorToDiagnostic(err, "failed to parse configuration"))
 				return
 			}
-			got := registry.ToApkoProto(*gotRaw)
+			got := registryconv.ToApkoProto(*gotRaw)
 
 			if diff := cmp.Diff(want, got, protocmp.Transform()); diff != "" {
 				tflog.Trace(ctx, fmt.Sprintf("triggering rebuild due to diff: %s", diff))
@@ -214,7 +215,7 @@ func (r *BuildResource) Update(ctx context.Context, req resource.UpdateRequest, 
 		resp.Diagnostics.Append(errorToDiagnostic(err, "failed to parse configuration"))
 		return
 	}
-	cfg := registry.ToApkoProto(*ic)
+	cfg := registryconv.ToApkoProto(*ic)
 
 	build, err := r.prov.client.Registry().Apko().BuildImage(ctx, &registry.BuildImageRequest{
 		Config:    cfg,
